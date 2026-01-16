@@ -1,13 +1,17 @@
 //! Filesystem scanning for applications.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures::stream::{self, StreamExt};
+use parking_lot::Mutex;
 use tokio::time::timeout;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
+use crate::indexer::alias::{canonical_path, resolve_path};
 use crate::indexer::metadata::parse_app_metadata;
 use crate::indexer::IndexedApp;
 
@@ -120,9 +124,12 @@ impl AppScanner {
 
     /// Internal scanning logic without timeout wrapper.
     async fn scan_all_internal(&self) -> Result<Vec<IndexedApp>> {
+        // Track seen canonical paths to prevent duplicates
+        let seen_paths: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+
         // Collect app bundles from all directories concurrently
         let dir_results: Vec<Result<Vec<PathBuf>>> = stream::iter(&self.scan_paths)
-            .map(|path| self.find_app_bundles(path))
+            .map(|path| self.find_app_bundles(path, Arc::clone(&seen_paths)))
             .buffer_unordered(self.scan_paths.len())
             .collect()
             .await;
@@ -164,7 +171,18 @@ impl AppScanner {
     }
 
     /// Finds all .app bundles in a directory.
-    async fn find_app_bundles(&self, path: &Path) -> Result<Vec<PathBuf>> {
+    ///
+    /// This method handles:
+    /// - Direct .app bundles
+    /// - Unix symlinks to .app bundles
+    /// - macOS Finder aliases to .app bundles
+    ///
+    /// Uses `seen_paths` to deduplicate apps that are linked from multiple locations.
+    async fn find_app_bundles(
+        &self,
+        path: &Path,
+        seen_paths: Arc<Mutex<HashSet<PathBuf>>>,
+    ) -> Result<Vec<PathBuf>> {
         if !path.exists() {
             debug!("Scan path does not exist: {}", path.display());
             return Ok(Vec::new());
@@ -178,23 +196,104 @@ impl AppScanner {
         while let Some(entry) = entries.next_entry().await? {
             let entry_path = entry.path();
 
-            // Check if it's an .app bundle
-            if !Self::is_app_bundle(&entry_path) {
+            // Resolve symlinks and aliases to get the actual app path
+            let resolved = match self.resolve_app_path(&entry_path) {
+                Some(p) => p,
+                None => continue,
+            };
+
+            // Check if it's an .app bundle (after resolution)
+            if !Self::is_app_bundle(&resolved) {
                 continue;
             }
 
-            // Check exclusion patterns
-            if self.is_excluded(&entry_path) {
-                debug!("Excluding app: {}", entry_path.display());
+            // Check exclusion patterns (on resolved path)
+            if self.is_excluded(&resolved) {
+                debug!("Excluding app: {}", resolved.display());
                 continue;
             }
 
-            bundles.push(entry_path);
+            // Get canonical path for deduplication
+            let canonical = match canonical_path(&resolved) {
+                Ok(p) => p,
+                Err(e) => {
+                    trace!(
+                        "Could not canonicalize {}: {} - using resolved path",
+                        resolved.display(),
+                        e
+                    );
+                    resolved.clone()
+                },
+            };
+
+            // Check for duplicates using canonical path
+            {
+                let mut seen = seen_paths.lock();
+                if seen.contains(&canonical) {
+                    debug!(
+                        "Skipping duplicate app: {} (canonical: {})",
+                        entry_path.display(),
+                        canonical.display()
+                    );
+                    continue;
+                }
+                seen.insert(canonical);
+            }
+
+            bundles.push(resolved);
         }
 
         debug!("Found {} apps in {}", bundles.len(), path.display());
 
         Ok(bundles)
+    }
+
+    /// Resolves symlinks and aliases to get the actual app path.
+    ///
+    /// Returns `None` if resolution fails or the target doesn't exist.
+    fn resolve_app_path(&self, path: &Path) -> Option<PathBuf> {
+        match resolve_path(path) {
+            Ok(resolved) => {
+                let target = &resolved.target;
+
+                // Verify the target exists
+                if !target.exists() {
+                    debug!(
+                        "Resolved path does not exist: {} -> {}",
+                        path.display(),
+                        target.display()
+                    );
+                    return None;
+                }
+
+                if resolved.was_alias {
+                    debug!(
+                        "Resolved alias/symlink: {} -> {}",
+                        path.display(),
+                        target.display()
+                    );
+                }
+
+                Some(target.clone())
+            },
+            Err(e) => {
+                // Resolution failed - try using the original path if it exists
+                if path.exists() {
+                    trace!(
+                        "Alias resolution failed for {}: {} - using original",
+                        path.display(),
+                        e
+                    );
+                    Some(path.to_path_buf())
+                } else {
+                    debug!(
+                        "Could not resolve path and original doesn't exist: {}",
+                        path.display()
+                    );
+                    None
+                }
+            },
+        }
     }
 
     /// Scans a single directory for applications.
@@ -203,7 +302,8 @@ impl AppScanner {
     ///
     /// Returns an error if the directory cannot be read.
     pub async fn scan_directory(&self, path: &Path) -> Result<Vec<IndexedApp>> {
-        let bundles = self.find_app_bundles(path).await?;
+        let seen_paths = Arc::new(Mutex::new(HashSet::new()));
+        let bundles = self.find_app_bundles(path, seen_paths).await?;
 
         let apps: Vec<IndexedApp> = stream::iter(bundles)
             .map(|bundle_path| async move { parse_app_metadata(&bundle_path).await.ok() })

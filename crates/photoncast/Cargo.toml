@@ -40,6 +40,10 @@ once_cell.workspace = true
 parking_lot.workspace = true
 directories.workspace = true
 
+# macOS Integration
+plist.workspace = true
+dirs.workspace = true
+
 [dev-dependencies]
 proptest.workspace = true
 tempfile.workspace = true
@@ -48,3 +52,5 @@ tempfile.workspace = true
 objc2.workspace = true
 objc2-foundation.workspace = true
 objc2-app-kit.workspace = true
+core-graphics.workspace = true
+core-foundation.workspace = true

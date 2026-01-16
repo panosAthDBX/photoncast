@@ -143,7 +143,7 @@ photoncast/
 │   │   ├── empty_state.rs          # No results / loading states
 │   │   └── permission_dialog.rs    # Accessibility permission UI
 │   │
-│   ├── search/                     # Search engine
+│   ├── search/                     # Search engine (Main Search: Apps + Commands)
 │   │   ├── mod.rs
 │   │   ├── engine.rs               # Search orchestration
 │   │   ├── fuzzy.rs                # nucleo integration
@@ -151,8 +151,13 @@ photoncast/
 │   │   └── providers/              # Search providers
 │   │       ├── mod.rs
 │   │       ├── apps.rs             # Application provider
-│   │       ├── commands.rs         # System commands provider
-│   │       └── files.rs            # Spotlight file provider
+│   │       └── commands.rs         # System commands provider
+│   │
+│   ├── file_search/                # File Search Mode (separate, Raycast-style)
+│   │   ├── mod.rs
+│   │   ├── spotlight.rs            # NSMetadataQuery wrapper
+│   │   ├── recent_files.rs         # Recent documents provider
+│   │   └── actions.rs              # Quick Look, Reveal, Copy Path
 │   │
 │   ├── indexer/                    # Application indexer
 │   │   ├── mod.rs
@@ -271,6 +276,8 @@ User Types Query
 
 ### 3.1 Window Layout
 
+**Main Search (Apps + Commands only - instant results)**
+
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                                                                     │
@@ -296,13 +303,37 @@ User Types Query
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │  🔒  Lock Screen                                         ⌘4    │  │
 │  │      Lock your Mac                                             │  │
+│  ├───────────────────────────────────────────────────────────────┤  │
+│  │  🔍  Search Files                                        ⌘5    │  │
+│  │      Find files using Spotlight                                │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
-│    Files                                                            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**File Search Mode (separate command, Raycast-style)**
+
+When user activates "Search Files" command, the launcher enters file search mode:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │  📄  safari_bookmarks.html                               ⌘5    │  │
-│  │      ~/Documents/safari_bookmarks.html                         │  │
+│  │  📁  Search Files...                              esc to exit │  │
 │  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ─────────────────────────────────────────────────────────────────  │
+│                                                                     │
+│    Recent Files                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  📄  project_notes.md                                    ⌘1    │◀─ selected
+│  │      ~/Documents/project_notes.md                              │  │
+│  ├───────────────────────────────────────────────────────────────┤  │
+│  │  📊  report.xlsx                                         ⌘2    │  │
+│  │      ~/Desktop/report.xlsx                                     │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│    Actions: ↵ Open  ⌘⏎ Reveal in Finder  ⌘Y Quick Look            │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -323,7 +354,7 @@ User Types Query
 ### 3.3 Component Hierarchy
 
 ```rust
-// Root window structure
+// Root window structure - Main Search Mode
 LauncherWindow
 ├── SearchBar
 │   ├── SearchIcon
@@ -334,12 +365,23 @@ LauncherWindow
     ├── ResultGroup ("Apps")
     │   ├── GroupHeader
     │   └── ResultItem[] (apps)
-    ├── ResultGroup ("Commands")
-    │   ├── GroupHeader
-    │   └── ResultItem[] (commands)
-    └── ResultGroup ("Files")
+    └── ResultGroup ("Commands")
         ├── GroupHeader
-        └── ResultItem[] (files)
+        └── ResultItem[] (commands, including "Search Files")
+
+// File Search Mode (entered via "Search Files" command)
+LauncherWindow
+├── SearchBar
+│   ├── FolderIcon
+│   └── TextInput
+│       └── Placeholder ("Search Files...")
+│   └── EscHint ("esc to exit")
+├── Divider (horizontal)
+└── FileResultsContainer (scrollable)
+    ├── ResultGroup ("Recent Files") // shown when query is empty
+    │   └── FileItem[]
+    └── ResultGroup ("Search Results") // shown when searching
+        └── FileItem[] (with Quick Look, Reveal actions)
 ```
 
 ### 3.4 Component Specifications
@@ -451,6 +493,8 @@ const RESULT_PADDING_Y: Pixels = px(8.0);
 
 ### 3.6 Keyboard Shortcuts
 
+#### Main Search Mode
+
 | Shortcut | Action | Context |
 |----------|--------|---------|
 | `Cmd+Space` | Toggle launcher | Global (default) |
@@ -461,6 +505,17 @@ const RESULT_PADDING_Y: Pixels = px(8.0);
 | `⌘1` - `⌘9` | Quick select result 1-9 | In launcher |
 | `⌘,` | Open preferences | In launcher |
 | `Tab` | Cycle through groups | In launcher |
+
+#### File Search Mode (entered via "Search Files" command)
+
+| Shortcut | Action | Context |
+|----------|--------|---------|
+| `Enter` | Open file | File Search Mode |
+| `⌘Enter` | Reveal in Finder | File Search Mode |
+| `⌘Y` | Quick Look preview | File Search Mode |
+| `⌘C` | Copy file path | File Search Mode |
+| `Escape` | Exit File Search Mode | File Search Mode |
+| `↓` / `↑` | Navigate files | File Search Mode |
 
 ### 3.7 Animations
 
@@ -497,8 +552,13 @@ pub fn animation_duration(base: Duration, cx: &App) -> Duration {
 
 #### Architecture
 
+The search engine follows a **Raycast-style architecture** where the main search only includes
+Apps and Commands for instant results. File search is a separate mode triggered by the
+"Search Files" command.
+
 ```rust
 pub struct SearchEngine {
+    // Main search providers (Apps + Commands only - instant results)
     providers: Vec<Box<dyn SearchProvider>>,
     matcher: Matcher,
     ranker: ResultRanker,
@@ -510,12 +570,13 @@ pub trait SearchProvider: Send + Sync {
     fn result_type(&self) -> ResultType;
 }
 
+// Main search results (Apps + Commands)
 pub struct SearchResult {
     pub id: String,
     pub title: String,
     pub subtitle: String,
     pub icon: IconSource,
-    pub result_type: ResultType,
+    pub result_type: ResultType,  // Application or SystemCommand only
     pub score: u32,
     pub match_ranges: Vec<Range<usize>>,
     pub action: SearchAction,
@@ -524,10 +585,20 @@ pub struct SearchResult {
 pub enum SearchAction {
     LaunchApp { bundle_id: String, path: PathBuf },
     ExecuteCommand { command: SystemCommand },
+    // File actions only used in File Search Mode
     OpenFile { path: PathBuf },
     RevealInFinder { path: PathBuf },
+    // Special: enters File Search Mode
+    EnterFileSearchMode,
 }
 ```
+
+#### Search Modes
+
+| Mode | Providers | Latency Target | Trigger |
+|------|-----------|----------------|---------|
+| **Main Search** | Apps, Commands | <30ms | Default on hotkey |
+| **File Search** | Spotlight | <100ms | "Search Files" command |
 
 #### nucleo Integration
 
@@ -557,16 +628,17 @@ impl FuzzyMatcher {
 }
 ```
 
-#### Search Flow
+#### Search Flow (Main Search - Apps + Commands)
 
 ```rust
 impl SearchEngine {
+    /// Main search - Apps and Commands only (instant results)
     pub async fn search(&self, query: &str) -> SearchResults {
         if query.is_empty() {
             return SearchResults::empty();
         }
         
-        // 1. Collect results from all providers in parallel
+        // 1. Collect results from Apps + Commands providers (no file I/O)
         let raw_results: Vec<RawSearchResult> = futures::future::join_all(
             self.providers.iter().map(|p| p.search(query))
         ).await.into_iter().flatten().collect();
@@ -583,8 +655,41 @@ impl SearchEngine {
         // 3. Apply ranking (usage frequency, boosts)
         let ranked = self.ranker.rank(scored);
         
-        // 4. Group by type
+        // 4. Group by type (Apps, Commands)
         SearchResults::grouped(ranked)
+    }
+}
+```
+
+#### File Search Flow (Separate Mode)
+
+```rust
+impl FileSearchEngine {
+    /// File search mode - uses Spotlight, triggered by "Search Files" command
+    pub async fn search_files(&self, query: &str) -> FileSearchResults {
+        if query.is_empty() {
+            // Show recent files when query is empty
+            return self.get_recent_files().await;
+        }
+        
+        // Query Spotlight with timeout
+        let spotlight_results = tokio::time::timeout(
+            Duration::from_millis(100),
+            self.spotlight.search(query, self.config.file_result_limit)
+        ).await;
+        
+        match spotlight_results {
+            Ok(Ok(files)) => FileSearchResults::from_files(files),
+            Ok(Err(e)) => FileSearchResults::error(e),
+            Err(_) => FileSearchResults::timeout(),
+        }
+    }
+    
+    /// Get recently opened files for empty state
+    async fn get_recent_files(&self) -> FileSearchResults {
+        // Query recent documents from Launch Services
+        let recent = self.launch_services.get_recent_documents(10).await;
+        FileSearchResults::recent(recent)
     }
 }
 ```
@@ -1347,6 +1452,9 @@ impl PermissionDialog {
 ```rust
 #[derive(Debug, Clone)]
 pub enum SystemCommand {
+    // File Search (Raycast-style separate mode)
+    SearchFiles,
+    // System commands
     Sleep,
     SleepDisplays,
     LockScreen,
@@ -1361,6 +1469,15 @@ pub enum SystemCommand {
 impl SystemCommand {
     pub fn all() -> Vec<CommandInfo> {
         vec![
+            // File Search command - appears prominently in search results
+            CommandInfo {
+                command: Self::SearchFiles,
+                name: "Search Files",
+                aliases: vec!["files", "find", "documents", "search files"],
+                description: "Find files using Spotlight",
+                icon: IconName::Search,
+                requires_confirmation: false,
+            },
             CommandInfo {
                 command: Self::Sleep,
                 name: "Sleep",
@@ -1428,6 +1545,12 @@ impl SystemCommand {
 impl SystemCommand {
     pub fn execute(&self) -> Result<()> {
         match self {
+            Self::SearchFiles => {
+                // Special case: doesn't execute, triggers mode change
+                // Handled by the launcher to enter File Search Mode
+                Ok(())
+            }
+            
             Self::Sleep => {
                 Command::new("pmset")
                     .args(["sleepnow"])
@@ -1523,14 +1646,36 @@ fn run_applescript(script: &str) -> Result<()> {
 }
 ```
 
-### 5.4 Spotlight Integration
+### 5.4 Spotlight Integration (File Search Mode)
 
-#### File Search Provider
+File search is a **separate mode** in PhotonCast, not part of the main search.
+This follows Raycast's architecture for instant main search results.
+
+#### When File Search Mode is Active
+
+1. User enters "Search Files" command (or types "files", "find", etc.)
+2. Launcher enters File Search Mode with dedicated UI
+3. Shows recent files when query is empty
+4. Searches via Spotlight when user types
+5. Press `Esc` to return to main search
+
+#### File Search Features
+
+| Feature | Description |
+|---------|-------------|
+| Quick Look | Press `⌘Y` to preview file |
+| Open | Press `Enter` to open file |
+| Reveal in Finder | Press `⌘Enter` to show in Finder |
+| Copy Path | Press `⌘C` to copy file path |
+| Recent Files | Shown when query is empty |
+
+#### Spotlight File Search Provider
 
 ```rust
 use objc2_foundation::{NSMetadataQuery, NSMetadataQueryDidFinishGatheringNotification};
 
-pub struct SpotlightProvider {
+/// Dedicated file search engine for File Search Mode
+pub struct SpotlightFileSearch {
     query: Option<NSMetadataQuery>,
 }
 
@@ -1727,13 +1872,11 @@ pub enum IconSource {
     Emoji { char: char },
 }
 
-/// Type of search result for grouping
+/// Type of search result for grouping (Main Search)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResultType {
     Application,
     SystemCommand,
-    File,
-    Folder,
 }
 
 impl ResultType {
@@ -1741,8 +1884,6 @@ impl ResultType {
         match self {
             Self::Application => "Apps",
             Self::SystemCommand => "Commands",
-            Self::File => "Files",
-            Self::Folder => "Folders",
         }
     }
     
@@ -1750,8 +1891,24 @@ impl ResultType {
         match self {
             Self::Application => 0,
             Self::SystemCommand => 1,
-            Self::File => 2,
-            Self::Folder => 3,
+        }
+    }
+}
+
+/// Type of file result (File Search Mode only)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FileResultType {
+    File,
+    Folder,
+    RecentFile,
+}
+
+impl FileResultType {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::File => "Files",
+            Self::Folder => "Folders",
+            Self::RecentFile => "Recent Files",
         }
     }
 }
@@ -2693,26 +2850,28 @@ fn arbitrary_result() -> impl Strategy<Value = ScoredResult> {
 - [ ] Global hotkey registers
 - [ ] Conflicts detected and warned
 
-#### Week 11-12: System Commands & Files
+#### Week 11-12: System Commands & File Search Mode
 
 | Task | Description | Estimate |
 |------|-------------|----------|
 | System commands | Sleep, lock, restart, etc. | 3d |
-| Command provider | Search integration | 1d |
-| Spotlight integration | NSMetadataQuery wrapper | 3d |
-| File provider | Search files, display results | 2d |
-| Result grouping | Apps, Commands, Files sections | 2d |
+| Command provider | Search integration (including "Search Files" command) | 1d |
+| File Search Mode UI | Dedicated file search interface | 2d |
+| Spotlight integration | NSMetadataQuery wrapper for File Search Mode | 2d |
+| File actions | Quick Look, Reveal in Finder, Copy Path | 2d |
 
 **Deliverables:**
 - [ ] System commands execute
-- [ ] Commands searchable
-- [ ] Files searchable via Spotlight
-- [ ] Results grouped by type
+- [ ] Commands searchable (including "Search Files")
+- [ ] File Search Mode with dedicated UI
+- [ ] Spotlight-powered file search
+- [ ] Quick Look preview support
 
 **Sprint 3 Acceptance Criteria:**
 - Hotkey responds within 50ms
 - System commands execute correctly
-- File search returns results in under 100ms
+- File Search Mode returns results in under 100ms
+- Quick Look preview works for supported files
 - Clear permission flow with recovery
 
 ---
@@ -2726,8 +2885,10 @@ fn arbitrary_result() -> impl Strategy<Value = ScoredResult> {
 - [ ] Global hotkey (Cmd+Space default)
 - [ ] Keyboard navigation (↑↓, Enter, Esc)
 - [ ] System commands (sleep, lock, restart, shutdown, logout, empty trash, screen saver)
-- [ ] File search via Spotlight
-- [ ] Result grouping (Apps, Commands, Files)
+- [ ] "Search Files" command opens File Search Mode
+- [ ] File Search Mode with Spotlight integration
+- [ ] File actions (Quick Look, Reveal in Finder, Copy Path)
+- [ ] Result grouping (Apps, Commands - no files in main search)
 - [ ] Quick select (⌘1-9)
 - [ ] Frecency-based ranking
 

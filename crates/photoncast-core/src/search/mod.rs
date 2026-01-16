@@ -105,6 +105,8 @@ pub enum IconSource {
     AppIcon {
         /// Bundle identifier.
         bundle_id: String,
+        /// Path to cached icon (if extracted).
+        icon_path: Option<PathBuf>,
     },
     /// System icon by name.
     SystemIcon {
@@ -183,6 +185,13 @@ pub enum SearchAction {
     /// Reveal a file in Finder.
     RevealInFinder {
         /// Path to reveal.
+        path: PathBuf,
+    },
+    /// Enter File Search Mode (triggered by "Search Files" command).
+    EnterFileSearchMode,
+    /// Quick Look preview a file (triggered by Cmd+Y in File Search Mode).
+    QuickLookFile {
+        /// Path to the file to preview.
         path: PathBuf,
     },
 }
@@ -511,7 +520,7 @@ pub mod async_search {
                 }
 
                 // Debounce timer
-                _ = sleep(debounce), if pending_query.is_some() => {
+                () = sleep(debounce), if pending_query.is_some() => {
                     if let Some(query) = pending_query.take() {
                         let results = engine.search(&query).await;
                         let event = SearchCompletedEvent {

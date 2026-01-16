@@ -7,6 +7,7 @@ mod hotkey_test;
 mod indexer_test;
 mod keyboard_test;
 mod launch_test;
+mod launcher_test;
 mod search_test;
 mod spotlight_test;
 mod watcher_test;

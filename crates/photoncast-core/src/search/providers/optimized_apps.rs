@@ -184,6 +184,7 @@ impl SearchProvider for OptimizedAppProvider {
                     subtitle: app.path.display().to_string(),
                     icon: IconSource::AppIcon {
                         bundle_id: app.bundle_id.as_str().to_string(),
+                        icon_path: app.icon_path.clone(),
                     },
                     result_type: ResultType::Application,
                     score: f64::from(score) + entry.frecency * 10.0,

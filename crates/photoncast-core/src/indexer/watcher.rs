@@ -193,7 +193,7 @@ impl AppWatcher {
                     }
 
                     // Handle debounce timeout
-                    _ = async {
+                    () = async {
                         if let Some(deadline) = debounce_timer {
                             tokio::time::sleep_until(deadline).await;
                         } else {

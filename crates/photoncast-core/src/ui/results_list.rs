@@ -151,7 +151,10 @@ impl ResultsList {
     /// Shift+Tab moves to the first item of the previous group, wrapping to
     /// the last group if currently in the first group.
     pub fn previous_group(&mut self, cx: &mut ViewContext<Self>) {
-        if let Some(new_index) = self.search_results.previous_group_start(self.selected_index) {
+        if let Some(new_index) = self
+            .search_results
+            .previous_group_start(self.selected_index)
+        {
             self.set_selected_index(new_index, cx);
         }
     }
@@ -311,7 +314,7 @@ impl Render for ResultsList {
             // Add items in this group
             for result in &group.items {
                 let is_selected = flat_index == selected_index;
-                let is_hovered = hovered_index.map_or(false, |h| h == flat_index);
+                let is_hovered = hovered_index == Some(flat_index);
                 let shortcut = if flat_index < 9 {
                     Some(format!("⌘{}", flat_index + 1))
                 } else {
@@ -334,7 +337,7 @@ impl Render for ResultsList {
         if self.grouped_results.is_empty() && !self.flat_results.is_empty() {
             for (idx, result) in self.flat_results.iter().enumerate() {
                 let is_selected = idx == selected_index;
-                let is_hovered = hovered_index.map_or(false, |h| h == idx);
+                let is_hovered = hovered_index == Some(idx);
                 let shortcut = if idx < 9 {
                     Some(format!("⌘{}", idx + 1))
                 } else {
@@ -360,20 +363,16 @@ impl Render for ResultsList {
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, cx| {
                 this.handle_scroll(event.delta.pixel_delta(px(1.0)), cx);
             }))
-            .child(
-                div()
-                    .w_full()
-                    .flex()
-                    .flex_col()
-                    .children(elements),
-            )
+            .child(div().w_full().flex().flex_col().children(elements))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::search::{IconSource, ResultGroup as SearchResultGroup, ResultType, SearchAction, SearchResultId};
+    use crate::search::{
+        IconSource, ResultGroup as SearchResultGroup, ResultType, SearchAction, SearchResultId,
+    };
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -404,9 +403,11 @@ mod tests {
                 },
                 SearchResultGroup {
                     result_type: ResultType::SystemCommand,
-                    results: vec![
-                        create_test_result("cmd1", "Sleep", ResultType::SystemCommand),
-                    ],
+                    results: vec![create_test_result(
+                        "cmd1",
+                        "Sleep",
+                        ResultType::SystemCommand,
+                    )],
                 },
                 SearchResultGroup {
                     result_type: ResultType::File,

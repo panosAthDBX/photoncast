@@ -156,12 +156,10 @@ impl SearchBar {
                 .w_full()
                 .text_size(SEARCH_INPUT_FONT_SIZE)
                 .when(is_empty, |el: Div| {
-                    el.text_color(placeholder_color)
-                        .child(placeholder.clone())
+                    el.text_color(placeholder_color).child(placeholder.clone())
                 })
                 .when(!is_empty, |el: Div| {
-                    el.text_color(text_color)
-                        .child(query.clone())
+                    el.text_color(text_color).child(query.clone())
                 })
                 .when(is_focused && is_empty, |el: Div| {
                     // Show blinking cursor indicator when focused

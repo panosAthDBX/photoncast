@@ -4,9 +4,10 @@ use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, info, warn};
 
 use crate::commands::SystemCommand;
+use crate::platform::LoginItemManager;
 
 /// Errors that can occur during command execution.
 #[derive(Error, Debug)]
@@ -112,11 +113,13 @@ impl ConfirmationDialog {
                 is_destructive: true,
             }),
             // Commands that don't require confirmation
-            SystemCommand::Sleep
+            SystemCommand::SearchFiles
+            | SystemCommand::Sleep
             | SystemCommand::SleepDisplays
             | SystemCommand::LockScreen
             | SystemCommand::ScreenSaver
-            | SystemCommand::ToggleAppearance => None,
+            | SystemCommand::ToggleAppearance
+            | SystemCommand::ToggleLaunchAtLogin => None,
         }
     }
 }
@@ -127,10 +130,22 @@ impl SystemCommand {
     /// # Errors
     ///
     /// Returns an error if the command cannot be executed.
+    ///
+    /// # Note
+    ///
+    /// `SearchFiles` is a special mode-switching command that doesn't execute
+    /// any system action. The launcher handles the mode change directly.
+    /// Calling execute on `SearchFiles` is a no-op.
     pub fn execute(&self) -> Result<()> {
         debug!(command = self.id(), "executing system command");
 
         match self {
+            Self::SearchFiles => {
+                // No-op: SearchFiles is a mode-switching command.
+                // The launcher handles entering File Search Mode directly.
+                debug!("SearchFiles: no-op, launcher handles mode switch");
+            },
+
             Self::Sleep => {
                 Command::new("pmset")
                     .arg("sleepnow")
@@ -186,6 +201,24 @@ impl SystemCommand {
                     end tell
                     "#,
                 )?;
+            },
+
+            Self::ToggleLaunchAtLogin => {
+                let mut manager = LoginItemManager::for_photoncast();
+                match manager.toggle() {
+                    Ok(()) => {
+                        let status = manager.status();
+                        info!(
+                            status = ?status,
+                            "Launch at login toggled: {}",
+                            status.description()
+                        );
+                    },
+                    Err(e) => {
+                        warn!(error = %e, "Failed to toggle launch at login");
+                        // Don't fail the command - this is a best-effort operation
+                    },
+                }
             },
         }
 

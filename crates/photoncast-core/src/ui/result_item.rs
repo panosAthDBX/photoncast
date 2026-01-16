@@ -196,8 +196,7 @@ impl ResultItem {
                 .children(spans.into_iter().map(move |(text, is_match)| {
                     div()
                         .when(is_match, |el: Div| {
-                            el.text_color(accent_color)
-                                .font_weight(FontWeight::BOLD)
+                            el.text_color(accent_color).font_weight(FontWeight::BOLD)
                         })
                         .when(!is_match, |el: Div| el.text_color(text_color))
                         .child(text)
@@ -266,18 +265,16 @@ impl IntoElement for ResultItem {
                 .border_color(theme.colors.accent.to_gpui());
         }
 
-        let mut element = element
-            .child(self.render_icon(&theme))
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap_0p5()
-                    .overflow_hidden()
-                    .child(self.render_title(&theme))
-                    .child(self.render_subtitle(&theme)),
-            );
+        let mut element = element.child(self.render_icon(&theme)).child(
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .overflow_hidden()
+                .child(self.render_title(&theme))
+                .child(self.render_subtitle(&theme)),
+        );
 
         // Add shortcut badge if present
         if let Some(shortcut) = self.render_shortcut(&theme) {

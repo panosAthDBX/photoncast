@@ -48,6 +48,7 @@ plist.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation.workspace = true
 core-foundation-sys.workspace = true
+objc2-foundation = { workspace = true, features = ["NSURL", "NSString", "NSError"] }
 
 # File System Watching
 notify.workspace = true

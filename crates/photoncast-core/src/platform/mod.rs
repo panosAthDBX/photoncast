@@ -32,8 +32,8 @@ pub use launch::{
 };
 pub use login_item::{LoginItemError, LoginItemManager, LoginItemStatus};
 pub use menu_bar::{
-    default_menu_items, MenuBarAction, MenuBarConfig, MenuBarError, MenuBarHandler,
-    MenuBarManager, MenuBarStatus, MenuItem,
+    default_menu_items, MenuBarAction, MenuBarConfig, MenuBarError, MenuBarHandler, MenuBarManager,
+    MenuBarStatus, MenuItem,
 };
 pub use spotlight::{
     FileKind, FileResult, SpotlightError, SpotlightProvider, SpotlightQuery, DEFAULT_MAX_RESULTS,

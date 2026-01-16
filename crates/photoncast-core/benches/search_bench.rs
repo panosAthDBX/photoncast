@@ -443,6 +443,7 @@ fn bench_ranking(c: &mut Criterion) {
             subtitle: app.path.display().to_string(),
             icon: photoncast_core::search::IconSource::AppIcon {
                 bundle_id: app.bundle_id.as_str().to_string(),
+                icon_path: app.icon_path.clone(),
             },
             result_type: photoncast_core::search::ResultType::Application,
             score: (100 - i) as f64,

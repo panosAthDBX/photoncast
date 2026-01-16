@@ -101,6 +101,17 @@ impl SearchProvider for CommandProvider {
                     cmd_info.description.to_string()
                 };
 
+                // Determine the action based on command type
+                let action = if command.is_mode_command() {
+                    // Mode-switching commands like SearchFiles
+                    SearchAction::EnterFileSearchMode
+                } else {
+                    // Regular commands that execute
+                    SearchAction::ExecuteCommand {
+                        command_id: command.id().to_string(),
+                    }
+                };
+
                 results.push(SearchResult {
                     id: SearchResultId::new(format!("command:{}", command.id())),
                     title: cmd_info.name.to_string(),
@@ -115,9 +126,7 @@ impl SearchProvider for CommandProvider {
                     } else {
                         Vec::new() // Don't highlight title for alias matches
                     },
-                    action: SearchAction::ExecuteCommand {
-                        command_id: command.id().to_string(),
-                    },
+                    action,
                 });
             }
         }
@@ -306,7 +315,10 @@ mod tests {
 
         // With smart case: lowercase query = case-insensitive matching
         let results_lower = provider.search("sleep", 10);
-        assert!(!results_lower.is_empty(), "lowercase 'sleep' should find Sleep command");
+        assert!(
+            !results_lower.is_empty(),
+            "lowercase 'sleep' should find Sleep command"
+        );
         assert!(results_lower.iter().any(|r| r.title == "Sleep"));
 
         // Note: With smart case enabled, uppercase queries use case-sensitive matching

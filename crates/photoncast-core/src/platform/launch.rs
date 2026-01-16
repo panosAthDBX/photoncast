@@ -472,6 +472,16 @@ impl AppLauncher {
                 debug!(command_id = %command_id, "ignoring command action in AppLauncher");
                 Ok(())
             },
+            SearchAction::EnterFileSearchMode => {
+                // File search mode is handled by the UI, not the app launcher
+                debug!("ignoring EnterFileSearchMode action in AppLauncher");
+                Ok(())
+            },
+            SearchAction::QuickLookFile { path } => {
+                // Quick Look is handled separately
+                debug!(path = %path.display(), "ignoring QuickLookFile action in AppLauncher");
+                Ok(())
+            },
         }
     }
 
@@ -515,6 +525,16 @@ impl AppLauncher {
             },
             SearchAction::ExecuteCommand { command_id } => {
                 debug!(command_id = %command_id, "ignoring command action in AppLauncher");
+                Ok(())
+            },
+            SearchAction::EnterFileSearchMode => {
+                // File search mode is handled by the UI, not the app launcher
+                debug!("ignoring EnterFileSearchMode action in AppLauncher");
+                Ok(())
+            },
+            SearchAction::QuickLookFile { path } => {
+                // Quick Look is handled separately
+                debug!(path = %path.display(), "ignoring QuickLookFile action in AppLauncher");
                 Ok(())
             },
         }

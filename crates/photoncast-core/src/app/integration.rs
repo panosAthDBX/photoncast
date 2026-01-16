@@ -243,6 +243,42 @@ impl PhotonCastApp {
         self.app_index.write().extend(apps);
     }
 
+    /// Updates the icon path for an app by bundle ID.
+    pub fn update_app_icon(&self, bundle_id: &str, icon_path: std::path::PathBuf) {
+        let mut apps = self.app_index.write();
+        if let Some(app) = apps.iter_mut().find(|a| a.bundle_id.as_str() == bundle_id) {
+            app.icon_path = Some(icon_path);
+        }
+    }
+
+    /// Removes an app from the index by its path.
+    ///
+    /// Returns `true` if an app was removed, `false` if no app was found at that path.
+    pub fn remove_app_by_path(&self, path: &std::path::Path) -> bool {
+        let mut apps = self.app_index.write();
+        let initial_len = apps.len();
+        apps.retain(|app| app.path != path);
+        let removed = apps.len() < initial_len;
+        if removed {
+            debug!(path = %path.display(), "Removed app from index");
+        }
+        removed
+    }
+
+    /// Updates an existing app in the index, or adds it if not present.
+    ///
+    /// This is useful when an app is modified and needs to be re-indexed.
+    pub fn update_or_add_app(&self, app: IndexedApp) {
+        let mut apps = self.app_index.write();
+        if let Some(existing) = apps.iter_mut().find(|a| a.path == app.path) {
+            debug!(path = %app.path.display(), name = %app.name, "Updated app in index");
+            *existing = app;
+        } else {
+            debug!(path = %app.path.display(), name = %app.name, "Added new app to index");
+            apps.push(app);
+        }
+    }
+
     /// Returns the number of indexed apps.
     #[must_use]
     pub fn app_count(&self) -> usize {
@@ -394,5 +430,81 @@ mod tests {
         let outcome = app.search_async("safari").await;
         assert!(!outcome.timed_out, "async search should not timeout");
         assert!(!outcome.results.is_empty());
+    }
+
+    #[test]
+    fn test_remove_app_by_path() {
+        let app = PhotonCastApp::new();
+        let safari = create_test_app("Safari", "com.apple.Safari");
+        let safari_path = safari.path.clone();
+        let finder = create_test_app("Finder", "com.apple.finder");
+
+        app.set_apps(vec![safari, finder]);
+        assert_eq!(app.app_count(), 2);
+
+        // Remove Safari
+        let removed = app.remove_app_by_path(&safari_path);
+        assert!(removed);
+        assert_eq!(app.app_count(), 1);
+
+        // Try to remove again - should return false
+        let removed_again = app.remove_app_by_path(&safari_path);
+        assert!(!removed_again);
+        assert_eq!(app.app_count(), 1);
+
+        // Try to remove non-existent path
+        let removed_fake = app.remove_app_by_path(&PathBuf::from("/Applications/Fake.app"));
+        assert!(!removed_fake);
+        assert_eq!(app.app_count(), 1);
+    }
+
+    #[test]
+    fn test_update_or_add_app_new() {
+        let app = PhotonCastApp::new();
+        assert_eq!(app.app_count(), 0);
+
+        // Add new app
+        let safari = create_test_app("Safari", "com.apple.Safari");
+        app.update_or_add_app(safari);
+        assert_eq!(app.app_count(), 1);
+
+        // Add another new app
+        let finder = create_test_app("Finder", "com.apple.finder");
+        app.update_or_add_app(finder);
+        assert_eq!(app.app_count(), 2);
+    }
+
+    #[test]
+    fn test_update_or_add_app_existing() {
+        let app = PhotonCastApp::new();
+        let safari = create_test_app("Safari", "com.apple.Safari");
+        app.set_apps(vec![safari]);
+        assert_eq!(app.app_count(), 1);
+
+        // Update existing app (same path, different name)
+        let updated_safari = IndexedApp {
+            name: "Safari Updated".to_string(),
+            bundle_id: AppBundleId::new("com.apple.Safari"),
+            path: PathBuf::from("/Applications/Safari.app"),
+            icon_path: None,
+            category: None,
+            keywords: vec!["browser".to_string()],
+            last_modified: Utc::now(),
+        };
+        app.update_or_add_app(updated_safari);
+
+        // Should still have 1 app, not 2
+        assert_eq!(app.app_count(), 1);
+
+        // Verify the app was updated (we can check by searching)
+        let outcome = app.search("Updated");
+        // The search should find the updated name
+        assert!(
+            outcome
+                .results
+                .iter()
+                .any(|r| r.title.contains("Updated")),
+            "Should find updated app name"
+        );
     }
 }

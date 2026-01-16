@@ -352,6 +352,7 @@ fn test_grouped_results_correct_order() {
                 subtitle: "Apps".to_string(),
                 icon: IconSource::AppIcon {
                     bundle_id: "com.apple.Safari".to_string(),
+                    icon_path: None,
                 },
                 result_type: ResultType::Application,
                 score: 100.0,

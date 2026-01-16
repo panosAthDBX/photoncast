@@ -5,6 +5,8 @@
 /// A system command that can be executed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SystemCommand {
+    /// Search for files using Spotlight (enters File Search Mode).
+    SearchFiles,
     /// Put the Mac to sleep.
     Sleep,
     /// Sleep only the displays.
@@ -23,6 +25,8 @@ pub enum SystemCommand {
     ScreenSaver,
     /// Toggle dark mode.
     ToggleAppearance,
+    /// Toggle launch at login.
+    ToggleLaunchAtLogin,
 }
 
 /// Information about a system command.
@@ -47,6 +51,15 @@ impl SystemCommand {
     #[must_use]
     pub fn all() -> Vec<CommandInfo> {
         vec![
+            // Search Files appears first - prominent command for file search mode
+            CommandInfo {
+                command: Self::SearchFiles,
+                name: "Search Files",
+                aliases: &["files", "find", "documents", "search files", "spotlight"],
+                description: "Find files using Spotlight",
+                icon: "magnifyingglass",
+                requires_confirmation: false,
+            },
             CommandInfo {
                 command: Self::Sleep,
                 name: "Sleep",
@@ -119,6 +132,14 @@ impl SystemCommand {
                 icon: "sun-moon",
                 requires_confirmation: false,
             },
+            CommandInfo {
+                command: Self::ToggleLaunchAtLogin,
+                name: "Toggle Launch at Login",
+                aliases: &["launch at login", "startup", "auto start", "login item"],
+                description: "Enable or disable launching PhotonCast at login",
+                icon: "power",
+                requires_confirmation: false,
+            },
         ]
     }
 
@@ -126,6 +147,7 @@ impl SystemCommand {
     #[must_use]
     pub const fn id(&self) -> &'static str {
         match self {
+            Self::SearchFiles => "search_files",
             Self::Sleep => "sleep",
             Self::SleepDisplays => "sleep_displays",
             Self::LockScreen => "lock_screen",
@@ -135,6 +157,7 @@ impl SystemCommand {
             Self::EmptyTrash => "empty_trash",
             Self::ScreenSaver => "screen_saver",
             Self::ToggleAppearance => "toggle_appearance",
+            Self::ToggleLaunchAtLogin => "toggle_launch_at_login",
         }
     }
 
@@ -142,6 +165,7 @@ impl SystemCommand {
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
+            Self::SearchFiles => "Search Files",
             Self::Sleep => "Sleep",
             Self::SleepDisplays => "Sleep Displays",
             Self::LockScreen => "Lock Screen",
@@ -151,6 +175,7 @@ impl SystemCommand {
             Self::EmptyTrash => "Empty Trash",
             Self::ScreenSaver => "Screen Saver",
             Self::ToggleAppearance => "Toggle Appearance",
+            Self::ToggleLaunchAtLogin => "Toggle Launch at Login",
         }
     }
 
@@ -158,6 +183,7 @@ impl SystemCommand {
     #[must_use]
     pub const fn aliases(&self) -> &'static [&'static str] {
         match self {
+            Self::SearchFiles => &["files", "find", "documents", "search files", "spotlight"],
             Self::Sleep => &["sleep", "suspend"],
             Self::SleepDisplays => &["sleep displays", "display sleep"],
             Self::LockScreen => &["lock"],
@@ -167,6 +193,7 @@ impl SystemCommand {
             Self::EmptyTrash => &["empty trash", "clear trash"],
             Self::ScreenSaver => &["screensaver"],
             Self::ToggleAppearance => &["dark mode", "light mode", "toggle dark"],
+            Self::ToggleLaunchAtLogin => &["launch at login", "startup", "auto start", "login item"],
         }
     }
 
@@ -174,6 +201,7 @@ impl SystemCommand {
     #[must_use]
     pub const fn description(&self) -> &'static str {
         match self {
+            Self::SearchFiles => "Find files using Spotlight",
             Self::Sleep => "Put Mac to sleep",
             Self::SleepDisplays => "Turn off displays",
             Self::LockScreen => "Lock your Mac",
@@ -183,6 +211,7 @@ impl SystemCommand {
             Self::EmptyTrash => "Empty the Trash",
             Self::ScreenSaver => "Start screen saver",
             Self::ToggleAppearance => "Switch between light and dark mode",
+            Self::ToggleLaunchAtLogin => "Enable or disable launching PhotonCast at login",
         }
     }
 
@@ -190,6 +219,7 @@ impl SystemCommand {
     #[must_use]
     pub const fn icon(&self) -> &'static str {
         match self {
+            Self::SearchFiles => "magnifyingglass",
             Self::Sleep => "moon",
             Self::SleepDisplays | Self::ScreenSaver => "monitor",
             Self::LockScreen => "lock",
@@ -198,6 +228,7 @@ impl SystemCommand {
             Self::LogOut => "log-out",
             Self::EmptyTrash => "trash",
             Self::ToggleAppearance => "sun-moon",
+            Self::ToggleLaunchAtLogin => "power",
         }
     }
 
@@ -208,6 +239,16 @@ impl SystemCommand {
             self,
             Self::Restart | Self::ShutDown | Self::LogOut | Self::EmptyTrash
         )
+        // ToggleLaunchAtLogin does not require confirmation
+    }
+
+    /// Returns whether this command is a mode-switching command (doesn't execute directly).
+    ///
+    /// Mode-switching commands like `SearchFiles` don't execute an action themselves;
+    /// instead, they trigger a UI mode change in the launcher.
+    #[must_use]
+    pub const fn is_mode_command(&self) -> bool {
+        matches!(self, Self::SearchFiles)
     }
 
     /// Returns the command info for this command.

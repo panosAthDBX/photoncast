@@ -17,6 +17,12 @@ pub struct MatcherConfig {
     pub normalize_unicode: bool,
     /// Whether to prefer prefix matches.
     pub prefer_prefix: bool,
+    /// Maximum allowed spread factor for matched characters.
+    /// Spread factor = (last_match_idx - first_match_idx) / query.len()
+    /// A spread of 1.0 means matches are consecutive.
+    /// A spread of 3.0 means matches span 3x the query length.
+    /// Higher values allow more scattered matches.
+    pub max_spread_factor: f32,
 }
 
 impl Default for MatcherConfig {
@@ -25,6 +31,10 @@ impl Default for MatcherConfig {
             smart_case: true,
             normalize_unicode: true,
             prefer_prefix: true,
+            // Allow matches to span up to 1.5x the query length.
+            // This filters out scattered matches like "test" -> "System Settings" (spread 1.75)
+            // while still allowing reasonable fuzzy matches like "calc" -> "Calculator" (spread ~1.25).
+            max_spread_factor: 1.5,
         }
     }
 }
@@ -139,6 +149,19 @@ impl FuzzyMatcher {
             score
         };
 
+        // Check spread of matched characters to filter out scattered matches
+        if match_indices.len() >= 2 {
+            let first_idx = match_indices[0];
+            let last_idx = match_indices[match_indices.len() - 1];
+            let span = (last_idx - first_idx + 1) as f32;
+            let query_len = query.len() as f32;
+            let spread_factor = span / query_len;
+
+            if spread_factor > self.config.max_spread_factor {
+                return None;
+            }
+        }
+
         Some((u32::from(final_score), match_indices))
     }
 
@@ -232,12 +255,11 @@ mod tests {
     #[test]
     fn test_fuzzy_match() {
         let mut matcher = FuzzyMatcher::default();
-        let result = matcher.score("sfr", "Safari");
+        // "clc" matches "Calculator" - c(0), l(2), c(3) - reasonable fuzzy match
+        let result = matcher.score("clc", "Calculator");
         assert!(result.is_some());
         let (score, indices) = result.unwrap();
         assert!(score > 0);
-        // s, a, r are at positions 0, 1, 4 - but 'f' at position 2
-        // The actual match positions depend on nucleo's algorithm
         assert!(!indices.is_empty());
     }
 
@@ -313,5 +335,42 @@ mod tests {
         let mut matcher = FuzzyMatcher::default();
         let result = matcher.score("test", "");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_weak_fuzzy_match_filtered() {
+        let mut matcher = FuzzyMatcher::default();
+        // "test" should NOT match "System Settings" because characters are too scattered
+        // nucleo finds indices [3, 4, 7, 9] -> spread = (9-3+1)/4 = 1.75 > 1.5
+        let result = matcher.score("test", "System Settings");
+        assert!(
+            result.is_none(),
+            "Weak fuzzy matches should be filtered out"
+        );
+    }
+
+    #[test]
+    fn test_strong_fuzzy_match_allowed() {
+        let mut matcher = FuzzyMatcher::default();
+        // "term" should match "Terminal" - consecutive characters
+        let result = matcher.score("term", "Terminal");
+        assert!(result.is_some(), "Strong fuzzy matches should be allowed");
+    }
+
+    #[test]
+    fn test_spread_factor_configurable() {
+        // Create matcher with very high spread factor (allows scattered matches)
+        let config = MatcherConfig {
+            max_spread_factor: 100.0,
+            ..Default::default()
+        };
+        let mut matcher = FuzzyMatcher::new(config);
+
+        // With high spread factor, even scattered matches should pass
+        let result = matcher.score("test", "System Settings");
+        assert!(
+            result.is_some(),
+            "High spread factor should allow scattered matches"
+        );
     }
 }

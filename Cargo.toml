@@ -42,9 +42,10 @@ nucleo = "0.5"
 plist = "1.6"
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
+core-graphics = "0.24"
 objc2 = "0.5"
-objc2-foundation = { version = "0.2", features = ["NSGeometry"] }
-objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSApplication", "NSRunningApplication", "NSResponder", "NSView"] }
+objc2-foundation = { version = "0.2", features = ["NSGeometry", "NSData", "NSString", "NSArray"] }
+objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSApplication", "NSRunningApplication", "NSResponder", "NSView", "NSWorkspace", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphicsContext", "NSGraphics", "bitflags", "NSStatusBar", "NSStatusItem", "NSMenu", "NSMenuItem", "NSEvent", "NSButton", "NSControl"] }
 
 # File System Watching
 notify = "6.1"

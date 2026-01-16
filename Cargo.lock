@@ -3545,7 +3545,10 @@ name = "photoncast"
 version = "0.1.0-alpha"
 dependencies = [
  "anyhow",
+ "core-foundation 0.10.0",
+ "core-graphics 0.24.0",
  "directories",
+ "dirs 5.0.1",
  "futures",
  "gpui",
  "objc2",
@@ -3554,6 +3557,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "photoncast-core",
+ "plist",
  "proptest",
  "serde",
  "tempfile",
@@ -3579,6 +3583,7 @@ dependencies = [
  "gpui",
  "notify",
  "nucleo",
+ "objc2-foundation",
  "once_cell",
  "parking_lot",
  "plist",

@@ -8,10 +8,11 @@ mod command_definitions {
     #[test]
     fn test_all_commands_returns_all_variants() {
         let commands = SystemCommand::all();
-        assert_eq!(commands.len(), 9, "expected 9 system commands");
+        assert_eq!(commands.len(), 11, "expected 11 system commands");
 
         // Verify all command types are present
         let command_ids: Vec<&str> = commands.iter().map(|c| c.command.id()).collect();
+        assert!(command_ids.contains(&"search_files"));
         assert!(command_ids.contains(&"sleep"));
         assert!(command_ids.contains(&"sleep_displays"));
         assert!(command_ids.contains(&"lock_screen"));
@@ -21,6 +22,7 @@ mod command_definitions {
         assert!(command_ids.contains(&"empty_trash"));
         assert!(command_ids.contains(&"screen_saver"));
         assert!(command_ids.contains(&"toggle_appearance"));
+        assert!(command_ids.contains(&"toggle_launch_at_login"));
     }
 
     #[test]

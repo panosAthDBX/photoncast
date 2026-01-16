@@ -3,6 +3,7 @@
 //! This module handles discovering, parsing, and caching information about
 //! installed applications.
 
+pub mod alias;
 pub mod icons;
 pub mod metadata;
 pub mod scanner;
@@ -12,6 +13,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 
+pub use alias::{canonical_path, is_macos_alias, resolve_path, ResolvedPath};
 pub use icons::{default_cache_dir, extract_icon, IconCache};
 pub use metadata::parse_app_metadata;
 pub use scanner::AppScanner;
