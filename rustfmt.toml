@@ -1,0 +1,29 @@
+# PhotonCast Rust Formatting Configuration
+# See: https://rust-lang.github.io/rustfmt/
+
+edition = "2021"
+
+# Maximum line width
+max_width = 100
+
+# Use tabs vs spaces
+hard_tabs = false
+tab_spaces = 4
+
+# Newline style
+newline_style = "Auto"
+
+# Imports (stable options only)
+reorder_imports = true
+reorder_modules = true
+
+# Functions (stable options only)
+fn_params_layout = "Tall"
+
+# Match expressions
+match_block_trailing_comma = true
+match_arm_leading_pipes = "Never"
+
+# Use shorthand syntax
+use_field_init_shorthand = true
+use_try_shorthand = true

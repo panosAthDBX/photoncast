@@ -1,0 +1,70 @@
+[package]
+name = "photoncast-core"
+description = "Core library for PhotonCast - search, indexing, and platform integration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ui"]
+ui = ["dep:gpui"]
+
+[lib]
+name = "photoncast_core"
+path = "src/lib.rs"
+
+[dependencies]
+# GPUI for UI components (optional, causes test compilation issues due to macro depth)
+gpui = { workspace = true, optional = true }
+
+# Async Runtime
+tokio.workspace = true
+futures.workspace = true
+
+# Error Handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Serialization & Configuration
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+# Database
+rusqlite.workspace = true
+
+# Search
+nucleo.workspace = true
+
+# macOS Integration
+plist.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation.workspace = true
+core-foundation-sys.workspace = true
+
+# File System Watching
+notify.workspace = true
+
+# Utilities
+chrono.workspace = true
+uuid.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+directories.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "search_bench"
+harness = false

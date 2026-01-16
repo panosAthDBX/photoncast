@@ -1,0 +1,50 @@
+[package]
+name = "photoncast"
+description = "Lightning-fast macOS launcher built in pure Rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "photoncast"
+path = "src/main.rs"
+
+[dependencies]
+# Local crates
+photoncast-core = { path = "../photoncast-core" }
+
+# GPUI & UI
+gpui.workspace = true
+
+# Async Runtime
+tokio.workspace = true
+futures.workspace = true
+
+# Error Handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Serialization
+serde.workspace = true
+toml.workspace = true
+
+# Utilities
+once_cell.workspace = true
+parking_lot.workspace = true
+directories.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true

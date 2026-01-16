@@ -1,0 +1,36 @@
+# PhotonCast Clippy Configuration
+# See: https://rust-lang.github.io/rust-clippy/master/index.html
+
+# Maximum cognitive complexity for functions
+cognitive-complexity-threshold = 25
+
+# Maximum lines for a single function
+too-many-lines-threshold = 100
+
+# Maximum number of arguments for functions
+too-many-arguments-threshold = 7
+
+# Maximum number of struct fields
+max-struct-bools = 3
+
+# Type complexity threshold
+type-complexity-threshold = 250
+
+# Disallowed names (overly generic)
+disallowed-names = ["foo", "bar", "baz", "quux", "temp", "tmp"]
+
+# Documentation configuration
+doc-valid-idents = ["PhotonCast", "macOS", "GPUI", "NSWorkspace", "NSMetadataQuery", "Catppuccin"]
+
+# MSRV for lint suggestions
+msrv = "1.75"
+
+# Arithmetic side effects - allow for now
+arithmetic-side-effects-allowed = []
+
+# Semicolon in if blocks
+semicolon-inside-block-ignore-singleline = true
+semicolon-outside-block-ignore-multiline = true
+
+# Single char binding names (allow common ones)
+single-char-binding-names-threshold = 4
