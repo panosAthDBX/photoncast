@@ -22,6 +22,8 @@ pub enum AppEvent {
     BrowseQuicklinkLibrary,
     // Timer events (from background polling thread)
     TimerExpired { action: String },
+    // Window management events (executed outside GPUI context to avoid reentrancy)
+    ExecuteWindowCommand { command_id: String },
 }
 
 static EVENT_SENDER: OnceCell<Sender<AppEvent>> = OnceCell::new();
