@@ -202,9 +202,57 @@ impl AccessibilityManager {
 
         // NSWorkspace doesn't require accessibility permission
         let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-        if let Some(app) = unsafe { workspace.frontmostApplication() } {
-            if let Some(bundle_id) = unsafe { app.bundleIdentifier() } {
-                return Ok(bundle_id.to_string());
+        let app_opt = unsafe { workspace.frontmostApplication() };
+        
+        if app_opt.is_none() {
+            tracing::debug!("NSWorkspace.frontmostApplication() returned None");
+            return Err(WindowError::WindowNotFound);
+        }
+        
+        let app = app_opt.unwrap();
+        let name = unsafe { app.localizedName() }
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "<no name>".to_string());
+        
+        if let Some(bundle_id) = unsafe { app.bundleIdentifier() } {
+            return Ok(bundle_id.to_string());
+        }
+        
+        tracing::debug!("Frontmost app '{}' has no bundle ID", name);
+        Err(WindowError::WindowNotFound)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn get_frontmost_app(&self) -> Result<String> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
+    /// Activates a running application by bundle ID, making it frontmost.
+    #[cfg(target_os = "macos")]
+    pub fn activate_app(&self, bundle_id: &str) -> Result<()> {
+        use objc2_app_kit::NSWorkspace;
+
+        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+        let running_apps = unsafe { workspace.runningApplications() };
+        let count = running_apps.len();
+
+        for i in 0..count {
+            let app = &running_apps[i];
+            if let Some(app_bundle_id) = unsafe { app.bundleIdentifier() } {
+                if app_bundle_id.to_string() == bundle_id {
+                    #[allow(deprecated)]
+                    let activated = unsafe { 
+                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty()) 
+                    };
+                    if activated {
+                        tracing::debug!("Activated app: {}", bundle_id);
+                        return Ok(());
+                    } else {
+                        return Err(WindowError::AccessibilityError {
+                            message: format!("Failed to activate app: {}", bundle_id),
+                        });
+                    }
+                }
             }
         }
 
@@ -212,7 +260,51 @@ impl AccessibilityManager {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn get_frontmost_app(&self) -> Result<String> {
+    pub fn activate_app(&self, _bundle_id: &str) -> Result<()> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
+    /// Finds and activates the first visible application that isn't the given bundle ID.
+    #[cfg(target_os = "macos")]
+    pub fn activate_any_app_except(&self, except_bundle_id: &str) -> Result<String> {
+        use objc2_app_kit::NSWorkspace;
+
+        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+        let running_apps = unsafe { workspace.runningApplications() };
+        let count = running_apps.len();
+
+        for i in 0..count {
+            let app = &running_apps[i];
+            // Skip hidden apps
+            if unsafe { app.isHidden() } {
+                continue;
+            }
+            // Skip apps without windows (activation policy != regular)
+            // NSApplicationActivationPolicyRegular = 0
+            if unsafe { app.activationPolicy() } != objc2_app_kit::NSApplicationActivationPolicy::Regular {
+                continue;
+            }
+
+            if let Some(app_bundle_id) = unsafe { app.bundleIdentifier() } {
+                let bundle_str = app_bundle_id.to_string();
+                if bundle_str != except_bundle_id && !bundle_str.contains("photoncast") {
+                    #[allow(deprecated)]
+                    let activated = unsafe { 
+                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty()) 
+                    };
+                    if activated {
+                        tracing::debug!("Activated app: {}", bundle_str);
+                        return Ok(bundle_str);
+                    }
+                }
+            }
+        }
+
+        Err(WindowError::WindowNotFound)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn activate_any_app_except(&self, _except_bundle_id: &str) -> Result<String> {
         Err(WindowError::PlatformNotSupported)
     }
 

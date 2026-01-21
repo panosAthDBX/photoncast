@@ -46,6 +46,13 @@ impl WindowCommand {
         manager.get_frontmost_bundle_id()
     }
 
+    /// Finds and activates the first visible app that isn't the given bundle ID.
+    #[cfg(target_os = "macos")]
+    pub fn activate_any_app_except(&self, except_bundle_id: &str) -> crate::Result<String> {
+        let manager = self.manager.read();
+        manager.activate_any_app_except(except_bundle_id)
+    }
+
     /// Applies a window layout.
     #[cfg(target_os = "macos")]
     pub fn apply_layout(&self, layout: WindowLayout) -> crate::Result<()> {

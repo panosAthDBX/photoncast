@@ -805,14 +805,21 @@ fn execute_window_command(command_id: &str) {
         }
     }
 
-    // Small delay to let macOS switch focus back to the previous app
-    // after hiding Photoncast's launcher window
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Log which app we're targeting
-    if let Ok(bundle_id) = window_command.get_frontmost_bundle_id() {
-        tracing::info!("Window command targeting app: {}", bundle_id);
-    }
+    // Explicitly activate another app since hiding Photoncast doesn't automatically
+    // make another app frontmost. We find and activate the first visible regular app.
+    let target_app = match window_command.activate_any_app_except("") {
+        Ok(bundle_id) => {
+            tracing::info!("Window command targeting app: {}", bundle_id);
+            // Small delay for activation to complete
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            bundle_id
+        }
+        Err(e) => {
+            tracing::error!("No target app found for window command: {} - aborting", e);
+            return;
+        }
+    };
+    let _ = target_app; // suppress unused warning
 
     let result = match command_id {
         "window_move_next_display" => {

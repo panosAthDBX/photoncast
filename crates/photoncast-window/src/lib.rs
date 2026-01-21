@@ -151,6 +151,28 @@ impl WindowManager {
         Err(WindowError::PlatformNotSupported)
     }
 
+    /// Activates a running application by bundle ID.
+    #[cfg(target_os = "macos")]
+    pub fn activate_app(&self, bundle_id: &str) -> Result<()> {
+        self.accessibility_manager.activate_app(bundle_id)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn activate_app(&self, _bundle_id: &str) -> Result<()> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
+    /// Finds and activates the first visible app that isn't the given bundle ID.
+    #[cfg(target_os = "macos")]
+    pub fn activate_any_app_except(&self, except_bundle_id: &str) -> Result<String> {
+        self.accessibility_manager.activate_any_app_except(except_bundle_id)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn activate_any_app_except(&self, _except_bundle_id: &str) -> Result<String> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
     /// Applies a layout to the frontmost window.
     #[cfg(target_os = "macos")]
     pub fn apply_layout(&mut self, layout: WindowLayout) -> Result<()> {
