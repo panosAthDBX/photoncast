@@ -381,6 +381,77 @@ pub enum SearchMode {
     },
 }
 
+/// Executes a window management command outside of GPUI event handling.
+/// This avoids reentrancy panics when moving windows triggers windowDidMove notifications.
+fn execute_window_command(command_id: &str) {
+    // Load user config for window management
+    let wm_config = photoncast_core::app::config_file::load_config()
+        .map(|c| c.window_management)
+        .unwrap_or_default();
+
+    // Check if window management is enabled
+    if !wm_config.enabled {
+        tracing::debug!("Window management is disabled in preferences");
+        return;
+    }
+
+    // Create WindowConfig from user preferences
+    let window_config = photoncast_window::WindowConfig {
+        enabled: wm_config.enabled,
+        animation_enabled: wm_config.animation_enabled,
+        animation_duration_ms: 200,
+        cycling_enabled: wm_config.cycling_enabled,
+        window_gap: wm_config.window_gap,
+        respect_menu_bar: true,
+        respect_dock: true,
+        cycle_timeout_ms: 500,
+        almost_maximize_margin: wm_config.almost_maximize_margin,
+        show_visual_feedback: wm_config.show_visual_feedback,
+        visual_feedback_duration_ms: 200,
+    };
+
+    let window_command = photoncast_window::commands::WindowCommand::new(
+        std::rc::Rc::new(parking_lot::RwLock::new(
+            photoncast_window::WindowManager::new(window_config),
+        )),
+    );
+
+    // Check and request accessibility permission if needed
+    if !window_command.has_permission() {
+        tracing::info!("Requesting accessibility permission for window management");
+        if let Err(e) = window_command.request_permission() {
+            tracing::warn!("Accessibility permission not granted: {}", e);
+        }
+    }
+
+    let result = match command_id {
+        "window_move_next_display" => {
+            window_command.move_to_display(photoncast_window::DisplayDirection::Next)
+        }
+        "window_move_previous_display" => {
+            window_command.move_to_display(photoncast_window::DisplayDirection::Previous)
+        }
+        "window_move_display_1" => {
+            window_command.move_to_display(photoncast_window::DisplayDirection::Index(0))
+        }
+        "window_move_display_2" => {
+            window_command.move_to_display(photoncast_window::DisplayDirection::Index(1))
+        }
+        "window_move_display_3" => {
+            window_command.move_to_display(photoncast_window::DisplayDirection::Index(2))
+        }
+        _ => {
+            let layout = photoncast_window::WindowLayout::from_id(command_id)
+                .unwrap_or(photoncast_window::WindowLayout::LeftHalf);
+            window_command.apply_layout(layout)
+        }
+    };
+
+    if let Err(e) = result {
+        tracing::error!("Window command failed: {}", e);
+    }
+}
+
 impl LauncherWindow {
     /// Creates a new launcher window
     pub fn new(cx: &mut ViewContext<Self>, shared_state: &LauncherSharedState) -> Self {
@@ -2445,71 +2516,17 @@ impl LauncherWindow {
                     // Don't hide - calendar will be shown in this window
                 },
                 SearchAction::ExecuteWindowCommand { command_id } => {
-                    // Load user config for window management
-                    let wm_config = photoncast_core::app::config_file::load_config()
-                        .map(|c| c.window_management)
-                        .unwrap_or_default();
-                    
-                    // Check if window management is enabled
-                    if !wm_config.enabled {
-                        tracing::debug!("Window management is disabled in preferences");
-                        self.hide(cx);
-                        return;
-                    }
-                    
-                    // Create WindowConfig from user preferences
-                    let window_config = photoncast_window::WindowConfig {
-                        enabled: wm_config.enabled,
-                        animation_enabled: wm_config.animation_enabled,
-                        animation_duration_ms: 200,
-                        cycling_enabled: wm_config.cycling_enabled,
-                        window_gap: wm_config.window_gap,
-                        respect_menu_bar: true,
-                        respect_dock: true,
-                        cycle_timeout_ms: 500,
-                        almost_maximize_margin: wm_config.almost_maximize_margin,
-                        show_visual_feedback: wm_config.show_visual_feedback,
-                        visual_feedback_duration_ms: 200,
-                    };
-                    
-                    let window_command =
-                        photoncast_window::commands::WindowCommand::new(
-                            std::rc::Rc::new(parking_lot::RwLock::new(
-                                photoncast_window::WindowManager::new(window_config)
-                            ))
-                        );
-                    
-                    // Check and request accessibility permission if needed
-                    if !window_command.has_permission() {
-                        tracing::info!("Requesting accessibility permission for window management");
-                        if let Err(e) = window_command.request_permission() {
-                            tracing::warn!("Accessibility permission not granted: {}", e);
-                            // Still try the command - the error will be more informative
-                        }
-                    }
-                    
-                    let result = match command_id.as_str() {
-                        "window_move_next_display" => window_command
-                            .move_to_display(photoncast_window::DisplayDirection::Next),
-                        "window_move_previous_display" => window_command
-                            .move_to_display(photoncast_window::DisplayDirection::Previous),
-                        "window_move_display_1" => window_command
-                            .move_to_display(photoncast_window::DisplayDirection::Index(0)),
-                        "window_move_display_2" => window_command
-                            .move_to_display(photoncast_window::DisplayDirection::Index(1)),
-                        "window_move_display_3" => window_command
-                            .move_to_display(photoncast_window::DisplayDirection::Index(2)),
-                        _ => {
-                            let layout =
-                                photoncast_window::WindowLayout::from_id(command_id.as_str())
-                                    .unwrap_or(photoncast_window::WindowLayout::LeftHalf);
-                            window_command.apply_layout(layout)
-                        },
-                    };
-                    if let Err(e) = result {
-                        tracing::error!("Window command failed: {}", e);
-                    }
+                    // Hide first to avoid reentrancy issues with GPUI
+                    // (moving windows triggers windowDidMove which can panic if RefCell is borrowed)
                     self.hide(cx);
+                    
+                    // Clone command_id for the deferred execution
+                    let cmd_id = command_id.clone();
+                    
+                    // Defer window command execution to after current event handling completes
+                    cx.defer(move |_, _| {
+                        execute_window_command(&cmd_id);
+                    });
                 },
                 SearchAction::OpenAppManagement { command_id } => {
                     if let Err(e) = app_events::send_event(AppEvent::OpenApps {
