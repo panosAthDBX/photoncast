@@ -27,7 +27,7 @@ use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetValueAtIndex};
 #[cfg(target_os = "macos")]
 use core_foundation_sys::dictionary::CFDictionaryGetValueIfPresent;
 #[cfg(target_os = "macos")]
-use core_foundation_sys::number::CFNumberGetValue;
+use core_foundation_sys::number::{kCFNumberSInt32Type, CFNumberGetValue};
 #[cfg(target_os = "macos")]
 use core_foundation_sys::dictionary::CFDictionaryRef;
 #[cfg(target_os = "macos")]
@@ -359,7 +359,18 @@ impl AccessibilityManager {
         }
 
         let system_wide = unsafe { AXUIElementCreateSystemWide() };
-
+        
+        // Use inner function to ensure cleanup happens on all paths
+        let result = self.get_frontmost_window_inner(system_wide);
+        
+        // Always release system_wide
+        unsafe { CFRelease(system_wide.cast()) };
+        
+        result
+    }
+    
+    #[cfg(target_os = "macos")]
+    fn get_frontmost_window_inner(&mut self, system_wide: AXUIElementRef) -> Result<WindowInfo> {
         // Get focused application
         let focused_app_ref = unsafe {
             get_ax_attribute(system_wide, AX_FOCUSED_APPLICATION).map_err(|e| {
@@ -369,13 +380,17 @@ impl AccessibilityManager {
             })?
         };
 
-        // Get focused window
-        let window_ref = unsafe {
-            get_ax_attribute(focused_app_ref as AXUIElementRef, AX_FOCUSED_WINDOW).map_err(|e| {
-                WindowError::AccessibilityError {
+        // Get focused window (clean up focused_app_ref on error)
+        let window_ref = match unsafe {
+            get_ax_attribute(focused_app_ref as AXUIElementRef, AX_FOCUSED_WINDOW)
+        } {
+            Ok(w) => w,
+            Err(e) => {
+                unsafe { CFRelease(focused_app_ref) };
+                return Err(WindowError::AccessibilityError {
                     message: format!("Failed to get focused window: {e}"),
-                }
-            })?
+                });
+            }
         };
 
         // Get window title
@@ -393,11 +408,29 @@ impl AccessibilityManager {
         // Get bundle ID
         let bundle_id = self.get_frontmost_app().unwrap_or_default();
 
-        // Get window frame
-        let position = Self::get_position_from_ref(window_ref as AXUIElementRef)?;
-        let size = Self::get_size_from_ref(window_ref as AXUIElementRef)?;
+        // Get window frame (clean up on error)
+        let position = match Self::get_position_from_ref(window_ref as AXUIElementRef) {
+            Ok(p) => p,
+            Err(e) => {
+                unsafe {
+                    CFRelease(focused_app_ref);
+                    // Don't release window_ref here - it wasn't retained yet
+                }
+                return Err(e);
+            }
+        };
+        
+        let size = match Self::get_size_from_ref(window_ref as AXUIElementRef) {
+            Ok(s) => s,
+            Err(e) => {
+                unsafe {
+                    CFRelease(focused_app_ref);
+                }
+                return Err(e);
+            }
+        };
+        
         let frame = CGRect::new(&position, &size);
-
         let element_ref = window_ref as usize;
 
         // Cache the element ref for later operations (retain it)
@@ -405,11 +438,8 @@ impl AccessibilityManager {
         self.element_cache
             .insert(element_ref, window_ref as AXUIElementRef);
 
-        // Clean up
-        unsafe {
-            CFRelease(focused_app_ref);
-            CFRelease(system_wide.cast());
-        };
+        // Clean up focused_app_ref (window_ref is now retained in cache)
+        unsafe { CFRelease(focused_app_ref) };
 
         Ok(WindowInfo {
             element_ref,
@@ -424,19 +454,38 @@ impl AccessibilityManager {
         Err(WindowError::PlatformNotSupported)
     }
 
+    /// Gets a cached element reference, validating it's still valid.
+    /// Removes stale elements from cache if they're no longer accessible.
+    #[cfg(target_os = "macos")]
+    fn get_validated_element(&mut self, element_ref: usize) -> Result<AXUIElementRef> {
+        let element = self
+            .element_cache
+            .get(&element_ref)
+            .copied()
+            .ok_or(WindowError::WindowNotFound)?;
+
+        // Validate the element is still accessible by trying to get its position
+        // If this fails, the window has likely been closed
+        if Self::get_position_from_ref(element).is_err() {
+            tracing::debug!("Cached element {} is stale, removing from cache", element_ref);
+            if let Some(stale_element) = self.element_cache.remove(&element_ref) {
+                unsafe { CFRelease(stale_element.cast()) };
+            }
+            self.saved_frames.remove(&element_ref);
+            return Err(WindowError::WindowNotFound);
+        }
+
+        Ok(element)
+    }
+
     /// Gets the window frame.
     #[cfg(target_os = "macos")]
-    pub fn get_window_frame(&self, window: &WindowInfo) -> Result<CGRect> {
+    pub fn get_window_frame(&mut self, window: &WindowInfo) -> Result<CGRect> {
         if !self.has_permission {
             return Err(WindowError::PermissionDenied);
         }
 
-        let element = self
-            .element_cache
-            .get(&window.element_ref)
-            .copied()
-            .ok_or(WindowError::WindowNotFound)?;
-
+        let element = self.get_validated_element(window.element_ref)?;
         let position = Self::get_position_from_ref(element)?;
         let size = Self::get_size_from_ref(element)?;
 
@@ -450,16 +499,12 @@ impl AccessibilityManager {
 
     /// Sets the window frame.
     #[cfg(target_os = "macos")]
-    pub fn set_window_frame(&self, window: &WindowInfo, frame: CGRect) -> Result<()> {
+    pub fn set_window_frame(&mut self, window: &WindowInfo, frame: CGRect) -> Result<()> {
         if !self.has_permission {
             return Err(WindowError::PermissionDenied);
         }
 
-        let element = self
-            .element_cache
-            .get(&window.element_ref)
-            .copied()
-            .ok_or(WindowError::WindowNotFound)?;
+        let element = self.get_validated_element(window.element_ref)?;
 
         tracing::debug!(
             "Setting window frame: x={}, y={}, w={}, h={}",
@@ -707,11 +752,7 @@ impl AccessibilityManager {
             })?;
 
         // Raise the window using AXRaise action
-        let element = self
-            .element_cache
-            .get(&window.element_ref)
-            .copied()
-            .ok_or(WindowError::WindowNotFound)?;
+        let element = self.get_validated_element(window.element_ref)?;
 
         let result = unsafe {
             let action = core_foundation::string::CFString::new("AXRaise");
@@ -757,11 +798,7 @@ impl AccessibilityManager {
             })?;
 
         // Raise the window
-        let element = self
-            .element_cache
-            .get(&window.element_ref)
-            .copied()
-            .ok_or(WindowError::WindowNotFound)?;
+        let element = self.get_validated_element(window.element_ref)?;
 
         let result = unsafe {
             let action = core_foundation::string::CFString::new("AXRaise");
@@ -783,18 +820,14 @@ impl AccessibilityManager {
 
     /// Checks if a window is minimized.
     #[cfg(target_os = "macos")]
-    pub fn is_minimized(&self, window: &WindowInfo) -> Result<bool> {
+    pub fn is_minimized(&mut self, window: &WindowInfo) -> Result<bool> {
         use core_foundation_sys::number::CFBooleanGetValue;
 
         if !self.has_permission {
             return Err(WindowError::PermissionDenied);
         }
 
-        let element = self
-            .element_cache
-            .get(&window.element_ref)
-            .copied()
-            .ok_or(WindowError::WindowNotFound)?;
+        let element = self.get_validated_element(window.element_ref)?;
 
         let value = unsafe {
             get_ax_attribute(element, AX_MINIMIZED).map_err(|e| {
@@ -811,24 +844,20 @@ impl AccessibilityManager {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn is_minimized(&self, _window: &WindowInfo) -> Result<bool> {
+    pub fn is_minimized(&mut self, _window: &WindowInfo) -> Result<bool> {
         Err(WindowError::PlatformNotSupported)
     }
 
     /// Checks if a window is in fullscreen mode.
     #[cfg(target_os = "macos")]
-    pub fn is_fullscreen(&self, window: &WindowInfo) -> Result<bool> {
+    pub fn is_fullscreen(&mut self, window: &WindowInfo) -> Result<bool> {
         use core_foundation_sys::number::CFBooleanGetValue;
 
         if !self.has_permission {
             return Err(WindowError::PermissionDenied);
         }
 
-        let element = self
-            .element_cache
-            .get(&window.element_ref)
-            .copied()
-            .ok_or(WindowError::WindowNotFound)?;
+        let element = self.get_validated_element(window.element_ref)?;
 
         let value = unsafe {
             get_ax_attribute(element, AX_FULLSCREEN).map_err(|e| {
@@ -845,28 +874,42 @@ impl AccessibilityManager {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn is_fullscreen(&self, _window: &WindowInfo) -> Result<bool> {
+    pub fn is_fullscreen(&mut self, _window: &WindowInfo) -> Result<bool> {
         Err(WindowError::PlatformNotSupported)
     }
 
     /// Toggles fullscreen mode for a window.
     #[cfg(target_os = "macos")]
-    pub fn toggle_fullscreen(&self, window: &WindowInfo) -> Result<()> {
+    pub fn toggle_fullscreen(&mut self, window: &WindowInfo) -> Result<()> {
         if !self.has_permission {
             return Err(WindowError::PermissionDenied);
         }
 
-        let element = self
-            .element_cache
-            .get(&window.element_ref)
-            .copied()
-            .ok_or(WindowError::WindowNotFound)?;
+        let element = self.get_validated_element(window.element_ref)?;
 
-        // Get current fullscreen state
-        let is_fullscreen = self.is_fullscreen(window)?;
+        // Get current fullscreen state - need to do this before getting element
+        // to avoid double mutable borrow
+        let is_fs = {
+            let fs_element = self
+                .element_cache
+                .get(&window.element_ref)
+                .copied()
+                .ok_or(WindowError::WindowNotFound)?;
+            
+            let value = unsafe {
+                get_ax_attribute(fs_element, AX_FULLSCREEN).map_err(|e| {
+                    WindowError::AccessibilityError {
+                        message: format!("Failed to get fullscreen state: {e}"),
+                    }
+                })?
+            };
+            let fullscreen = unsafe { core_foundation_sys::number::CFBooleanGetValue(value.cast()) };
+            unsafe { CFRelease(value) };
+            fullscreen
+        };
 
         // Toggle fullscreen state
-        let new_value = if is_fullscreen {
+        let new_value = if is_fs {
             CFBoolean::false_value()
         } else {
             CFBoolean::true_value()
@@ -882,7 +925,7 @@ impl AccessibilityManager {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn toggle_fullscreen(&self, _window: &WindowInfo) -> Result<()> {
+    pub fn toggle_fullscreen(&mut self, _window: &WindowInfo) -> Result<()> {
         Err(WindowError::PlatformNotSupported)
     }
 
@@ -930,7 +973,7 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
             CFDictionaryGetValueIfPresent(dict, layer_key.as_CFTypeRef().cast(), &mut layer_value)
         } != 0 && !layer_value.is_null() {
             let mut val: i32 = 0;
-            if unsafe { CFNumberGetValue(layer_value.cast(), 3 /* kCFNumberSInt32Type */, &mut val as *mut _ as *mut c_void) } {
+            if unsafe { CFNumberGetValue(layer_value.cast(), kCFNumberSInt32Type, &mut val as *mut _ as *mut c_void) } {
                 val
             } else {
                 continue;
@@ -978,7 +1021,7 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
             CFDictionaryGetValueIfPresent(dict, pid_key.as_CFTypeRef().cast(), &mut pid_value)
         } != 0 && !pid_value.is_null() {
             let mut val: i32 = 0;
-            if unsafe { CFNumberGetValue(pid_value.cast(), 3 /* kCFNumberSInt32Type */, &mut val as *mut _ as *mut c_void) } {
+            if unsafe { CFNumberGetValue(pid_value.cast(), kCFNumberSInt32Type, &mut val as *mut _ as *mut c_void) } {
                 val
             } else {
                 0
