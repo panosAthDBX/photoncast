@@ -2523,8 +2523,12 @@ impl LauncherWindow {
                     // Clone command_id for the deferred execution
                     let cmd_id = command_id.clone();
                     
-                    // Defer window command execution to after current event handling completes
-                    cx.defer(move |_, _| {
+                    // Execute window command in a background thread after a small delay
+                    // to fully escape GPUI's event handling context.
+                    // cx.defer() is not sufficient as it still runs within GPUI's update cycle.
+                    std::thread::spawn(move || {
+                        // Small delay to ensure GPUI has finished processing
+                        std::thread::sleep(std::time::Duration::from_millis(50));
                         execute_window_command(&cmd_id);
                     });
                 },
