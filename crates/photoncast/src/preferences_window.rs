@@ -426,6 +426,66 @@ impl PreferencesWindow {
         }
     }
 
+    // ==================== Window Management Handlers ====================
+
+    fn toggle_window_management_enabled(&mut self, cx: &mut ViewContext<Self>) {
+        self.config.window_management.enabled = !self.config.window_management.enabled;
+        self.has_changes = true;
+        self.save_config();
+        cx.notify();
+    }
+
+    fn toggle_window_cycling(&mut self, cx: &mut ViewContext<Self>) {
+        self.config.window_management.cycling_enabled = !self.config.window_management.cycling_enabled;
+        self.has_changes = true;
+        self.save_config();
+        cx.notify();
+    }
+
+    fn increment_window_gap(&mut self, cx: &mut ViewContext<Self>) {
+        if self.config.window_management.window_gap < 50 {
+            self.config.window_management.window_gap += 1;
+            self.has_changes = true;
+            self.save_config();
+            cx.notify();
+        }
+    }
+
+    fn decrement_window_gap(&mut self, cx: &mut ViewContext<Self>) {
+        if self.config.window_management.window_gap > 0 {
+            self.config.window_management.window_gap -= 1;
+            self.has_changes = true;
+            self.save_config();
+            cx.notify();
+        }
+    }
+
+    fn increment_almost_maximize_margin(&mut self, cx: &mut ViewContext<Self>) {
+        if self.config.window_management.almost_maximize_margin < 100 {
+            self.config.window_management.almost_maximize_margin += 5;
+            self.has_changes = true;
+            self.save_config();
+            cx.notify();
+        }
+    }
+
+    fn decrement_almost_maximize_margin(&mut self, cx: &mut ViewContext<Self>) {
+        if self.config.window_management.almost_maximize_margin > 0 {
+            self.config.window_management.almost_maximize_margin = 
+                self.config.window_management.almost_maximize_margin.saturating_sub(5);
+            self.has_changes = true;
+            self.save_config();
+            cx.notify();
+        }
+    }
+
+    fn toggle_window_management_animation(&mut self, cx: &mut ViewContext<Self>) {
+        self.config.window_management.animation_enabled = !self.config.window_management.animation_enabled;
+        self.has_changes = true;
+        self.save_config();
+        cx.notify();
+    }
+
     // ==================== Sleep Timer Handlers ====================
 
     fn toggle_sleep_timer_enabled(&mut self, cx: &mut ViewContext<Self>) {
@@ -1042,16 +1102,58 @@ impl PreferencesWindow {
             .flex()
             .flex_col()
             .gap(px(16.0))
+            // Enable Window Management
+            .child(
+                self.render_toggle_row(
+                    "wm_enabled",
+                    "Enable Window Management",
+                    "Enable keyboard shortcuts for window positioning",
+                    self.config.window_management.enabled,
+                    &colors,
+                )
+                .on_click(cx.listener(|this, _, cx| this.toggle_window_management_enabled(cx))),
+            )
+            // Window Gap
+            .child(self.render_number_row_with_suffix(
+                "Window Gap",
+                "Gap between windows and screen edges",
+                self.config.window_management.window_gap as usize,
+                "px",
+                cx,
+                |this, cx| this.decrement_window_gap(cx),
+                |this, cx| this.increment_window_gap(cx),
+            ))
+            // Cycling
+            .child(
+                self.render_toggle_row(
+                    "wm_cycling",
+                    "Enable Size Cycling",
+                    "Cycle through sizes when pressing same shortcut repeatedly",
+                    self.config.window_management.cycling_enabled,
+                    &colors,
+                )
+                .on_click(cx.listener(|this, _, cx| this.toggle_window_cycling(cx))),
+            )
+            // Almost Maximize Margin
+            .child(self.render_number_row_with_suffix(
+                "Almost Maximize Margin",
+                "Margin from screen edges for 'Almost Maximize' layout",
+                self.config.window_management.almost_maximize_margin as usize,
+                "px",
+                cx,
+                |this, cx| this.decrement_almost_maximize_margin(cx),
+                |this, cx| this.increment_almost_maximize_margin(cx),
+            ))
             // Window Animation
             .child(
                 self.render_toggle_row(
                     "wm_animation",
                     "Window Animation",
                     "Animate window resizing transitions",
-                    self.config.appearance.window_animation,
+                    self.config.window_management.animation_enabled,
                     &colors,
                 )
-                .on_click(cx.listener(|this, _, cx| this.toggle_window_animation(cx))),
+                .on_click(cx.listener(|this, _, cx| this.toggle_window_management_animation(cx))),
             )
             // Info about window layouts
             .child(

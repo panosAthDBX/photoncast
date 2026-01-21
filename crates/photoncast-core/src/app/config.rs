@@ -36,6 +36,10 @@ pub struct Config {
     /// Sleep timer settings.
     #[serde(default)]
     pub sleep_timer: SleepTimerConfig,
+
+    /// Window management settings.
+    #[serde(default)]
+    pub window_management: WindowManagementConfig,
 }
 
 impl Default for Config {
@@ -49,6 +53,7 @@ impl Default for Config {
             calendar: CalendarConfig::default(),
             app_management: AppManagementConfig::default(),
             sleep_timer: SleepTimerConfig::default(),
+            window_management: WindowManagementConfig::default(),
         }
     }
 }
@@ -432,6 +437,34 @@ impl Default for SleepTimerConfig {
     }
 }
 
+/// Window management configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct WindowManagementConfig {
+    /// Whether window management is enabled.
+    pub enabled: bool,
+    /// Gap between windows and screen edges (0-50px).
+    pub window_gap: u32,
+    /// Whether animations are enabled.
+    pub animation_enabled: bool,
+    /// Whether cycling is enabled (repeatedly pressing same shortcut cycles sizes).
+    pub cycling_enabled: bool,
+    /// Margin for "almost maximize" layout (pixels).
+    pub almost_maximize_margin: u32,
+}
+
+impl Default for WindowManagementConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            window_gap: 0,
+            animation_enabled: true,
+            cycling_enabled: true,
+            almost_maximize_margin: 20,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -510,6 +543,16 @@ mod tests {
         assert!(calendar.enabled);
         assert_eq!(calendar.days_ahead, 7);
         assert!(calendar.show_all_day_first);
+    }
+
+    #[test]
+    fn test_window_management_config_default() {
+        let wm = WindowManagementConfig::default();
+        assert!(wm.enabled);
+        assert_eq!(wm.window_gap, 0);
+        assert!(wm.animation_enabled);
+        assert!(wm.cycling_enabled);
+        assert_eq!(wm.almost_maximize_margin, 20);
     }
 
     #[test]
