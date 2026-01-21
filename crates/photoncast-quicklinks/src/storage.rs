@@ -411,17 +411,13 @@ impl QuickLinksStorage {
     fn db_to_icon(icon_type: &str, icon_value: Option<&str>) -> QuickLinkIcon {
         match icon_type {
             "favicon" => icon_value
-                .map(|v| QuickLinkIcon::Favicon(PathBuf::from(v)))
-                .unwrap_or(QuickLinkIcon::Default),
+                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::Favicon(PathBuf::from(v))),
             "emoji" => icon_value
-                .map(|v| QuickLinkIcon::Emoji(v.to_string()))
-                .unwrap_or(QuickLinkIcon::Default),
+                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::Emoji(v.to_string())),
             "system" => icon_value
-                .map(|v| QuickLinkIcon::SystemIcon(v.to_string()))
-                .unwrap_or(QuickLinkIcon::Default),
+                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::SystemIcon(v.to_string())),
             "custom" => icon_value
-                .map(|v| QuickLinkIcon::CustomImage(PathBuf::from(v)))
-                .unwrap_or(QuickLinkIcon::Default),
+                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::CustomImage(PathBuf::from(v))),
             _ => QuickLinkIcon::Default,
         }
     }

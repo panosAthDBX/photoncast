@@ -23,18 +23,21 @@ use std::time::{Duration, Instant};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use parking_lot::RwLock;
-use photoncast_apps::{AppManager, AppsConfig};
+use photoncast_apps::{
+    AppManager, AppsConfig, AutoQuitConfig, AutoQuitManager, UninstallPreview,
+    DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES,
+};
 use photoncast_calculator::commands::{is_calculator_expression, CalculatorCommand};
 use photoncast_calculator::{CalculatorResult, CalculatorResultKind};
 use photoncast_timer::commands::TimerManager;
-use std::rc::Rc;
 
 use crate::app_events::{self, AppEvent};
 use crate::{
-    Activate, Cancel, ConfirmDialog, CopyFile, CopyPath, NextGroup, OpenPreferences, PreviousGroup,
-    QuickLook, QuickSelect1, QuickSelect2, QuickSelect3, QuickSelect4, QuickSelect5, QuickSelect6,
-    QuickSelect7, QuickSelect8, QuickSelect9, RevealInFinder, SelectNext, SelectPrevious,
-    ShowActionsMenu, LAUNCHER_BORDER_RADIUS, LAUNCHER_MAX_HEIGHT, LAUNCHER_MIN_HEIGHT,
+    Activate, Cancel, ConfirmDialog, CopyBundleId, CopyFile, CopyPath, ForceQuitApp, HideApp,
+    NextGroup, OpenPreferences, PreviousGroup, QuickLook, QuickSelect1, QuickSelect2, QuickSelect3,
+    QuickSelect4, QuickSelect5, QuickSelect6, QuickSelect7, QuickSelect8, QuickSelect9, QuitApp,
+    RevealInFinder, SelectNext, SelectPrevious, ShowActionsMenu, ShowInFinder, ToggleAutoQuit,
+    UninstallApp, LAUNCHER_BORDER_RADIUS,
 };
 
 use photoncast_core::app::integration::PhotonCastApp;
@@ -52,8 +55,6 @@ use photoncast_core::ui::animations::{
     WINDOW_APPEAR_OPACITY_START, WINDOW_APPEAR_SCALE_END, WINDOW_APPEAR_SCALE_START,
     WINDOW_DISMISS_SCALE_END,
 };
-
-use crate::platform::resize_window_height;
 
 /// Helper struct holding theme colors for launcher UI
 #[derive(Clone)]
@@ -193,6 +194,36 @@ pub struct LauncherWindow {
     calendar_all_events: Vec<photoncast_calendar::CalendarEvent>,
     /// Scroll handle for results list scrolling
     results_scroll_handle: gpui::ScrollHandle,
+    // ========================================================================
+    // Uninstall Preview State (Task 7.5)
+    // ========================================================================
+    /// Current uninstall preview being displayed
+    uninstall_preview: Option<UninstallPreview>,
+    /// Selected index in the uninstall files list
+    uninstall_files_selected_index: usize,
+    // ========================================================================
+    // Auto Quit Settings State (Task 7.6)
+    // ========================================================================
+    /// Currently selected app for auto-quit settings (bundle_id)
+    auto_quit_settings_app: Option<(String, String)>, // (bundle_id, app_name)
+    /// Selected timeout index in auto-quit settings (0 = toggle, 1-7 = timeout options)
+    auto_quit_settings_index: usize,
+    /// Auto quit manager
+    auto_quit_manager: Arc<RwLock<AutoQuitManager>>,
+    // ========================================================================
+    // Manage Auto Quits State (Task 7.7)
+    // ========================================================================
+    /// Whether we're in the "Manage Auto Quits" mode
+    manage_auto_quits_mode: bool,
+    /// Selected index in the manage auto quits list
+    manage_auto_quits_index: usize,
+    // ========================================================================
+    // Toast Notification State (Task 7.8)
+    // ========================================================================
+    /// Current toast message to display
+    toast_message: Option<String>,
+    /// When the toast was shown (for auto-dismiss)
+    toast_shown_at: Option<Instant>,
 }
 
 #[derive(Clone)]
@@ -290,6 +321,10 @@ pub struct ResultItem {
     /// Path to the app icon (.icns file) if available
     pub icon_path: Option<std::path::PathBuf>,
     pub result_type: ResultType,
+    /// Bundle ID for applications (used for running/auto-quit indicators)
+    pub bundle_id: Option<String>,
+    /// App path for applications (used for reveal in finder, uninstall)
+    pub app_path: Option<std::path::PathBuf>,
 }
 
 /// Type of search result for grouping
@@ -403,13 +438,28 @@ impl LauncherWindow {
             suggestions: vec![],
             calendar_all_events: vec![],
             results_scroll_handle: gpui::ScrollHandle::new(),
+            // Task 7.5: Uninstall Preview
+            uninstall_preview: None,
+            uninstall_files_selected_index: 0,
+            // Task 7.6: Auto Quit Settings
+            auto_quit_settings_app: None,
+            auto_quit_settings_index: 0,
+            auto_quit_manager: Arc::new(RwLock::new(
+                AutoQuitManager::load().unwrap_or_else(|_| AutoQuitManager::new(AutoQuitConfig::default()))
+            )),
+            // Task 7.7: Manage Auto Quits
+            manage_auto_quits_mode: false,
+            manage_auto_quits_index: 0,
+            // Task 7.8: Toast Notifications
+            toast_message: None,
+            toast_shown_at: None,
         };
 
         // Start the appear animation
         window.start_appear_animation(cx);
 
-        // Set initial window height
-        window.update_window_height(cx);
+        // Start the auto-quit background timer
+        window.start_auto_quit_timer(cx);
 
         // Fetch next meeting (doesn't depend on index)
         window.fetch_next_meeting(cx);
@@ -645,6 +695,55 @@ impl LauncherWindow {
         .detach();
     }
 
+    /// Starts the auto-quit background timer.
+    ///
+    /// This periodically checks for idle apps and quits them based on user settings.
+    /// The timer runs every 30 seconds and:
+    /// 1. Updates activity tracking for the currently frontmost app
+    /// 2. Quits any apps that have been idle longer than their configured timeout
+    fn start_auto_quit_timer(&self, cx: &mut ViewContext<Self>) {
+        let auto_quit_manager = Arc::clone(&self.auto_quit_manager);
+
+        cx.spawn(|this, mut cx| async move {
+            const CHECK_INTERVAL_SECS: u64 = 5; // Check every 5 seconds for precise timing
+
+            loop {
+                // Wait for the check interval
+                cx.background_executor()
+                    .timer(Duration::from_secs(CHECK_INTERVAL_SECS))
+                    .await;
+
+                // Skip if no apps have auto-quit enabled
+                {
+                    let manager = auto_quit_manager.read();
+                    if !manager.has_enabled_apps() {
+                        continue;
+                    }
+                }
+
+                // Perform the auto-quit tick
+                let (frontmost, quit_apps) = {
+                    let mut manager = auto_quit_manager.write();
+                    manager.tick()
+                };
+
+                // Log activity for debugging
+                if let Some(ref bundle_id) = frontmost {
+                    tracing::trace!("Auto-quit tick: frontmost app = {}", bundle_id);
+                }
+
+                // Show toast notifications for quit apps
+                for bundle_id in quit_apps {
+                    tracing::info!("Auto-quit: Quit idle app: {}", bundle_id);
+                    let _ = this.update(&mut cx, |this, cx| {
+                        this.show_toast(format!("Auto-quit: {}", bundle_id), cx);
+                    });
+                }
+            }
+        })
+        .detach();
+    }
+
     /// Handles a single watch event by updating the app index.
     #[allow(clippy::future_not_send)]
     async fn handle_watch_event(
@@ -724,7 +823,31 @@ impl LauncherWindow {
                         cx.notify();
                     });
                 } else {
-                    tracing::warn!(path = %path.display(), "Failed to parse modified app metadata");
+                    // Parsing failed - check if app still exists
+                    if !path.exists() {
+                        // App was likely uninstalled, remove from index
+                        tracing::info!(path = %path.display(), "App no longer exists, removing from index");
+                        let removed = photoncast_app.write().remove_app_by_path(&path);
+                        if removed {
+                            // Clear cached icon
+                            let path_for_icon = path.clone();
+                            cx.background_executor()
+                                .spawn(async move {
+                                    Self::clear_cached_icon(&path_for_icon);
+                                })
+                                .detach();
+
+                            // Notify UI to refresh
+                            let _ = this.update(cx, |this, cx| {
+                                if !this.query.is_empty() {
+                                    this.on_query_change(this.query.clone(), cx);
+                                }
+                                cx.notify();
+                            });
+                        }
+                    } else {
+                        tracing::warn!(path = %path.display(), "Failed to parse modified app metadata");
+                    }
                 }
             },
             WatchEvent::AppRemoved(path) => {
@@ -1085,6 +1208,14 @@ impl LauncherWindow {
             _ => None,
         };
 
+        // Extract bundle_id and app_path from action for app-related features
+        let (bundle_id, app_path) = match &result.action {
+            SearchAction::LaunchApp { bundle_id, path } => {
+                (Some(bundle_id.clone()), Some(path.clone()))
+            },
+            _ => (None, None),
+        };
+
         ResultItem {
             id: SharedString::from(result.id.to_string()),
             title: result.title.clone().into(),
@@ -1092,6 +1223,8 @@ impl LauncherWindow {
             icon_emoji: Self::icon_to_emoji(&result.icon),
             icon_path,
             result_type: result.result_type.into(),
+            bundle_id,
+            app_path,
         }
     }
 
@@ -1124,6 +1257,8 @@ impl LauncherWindow {
             icon_emoji: SharedString::from(Self::calculator_icon(result).to_string()),
             icon_path: None,
             result_type: ResultType::Calculator,
+            bundle_id: None,
+            app_path: None,
         }
     }
 
@@ -1184,7 +1319,6 @@ impl LauncherWindow {
                         this.meeting_selected = false;
                     },
                 }
-                this.update_window_height(cx);
                 cx.notify();
             });
         })
@@ -1259,9 +1393,6 @@ impl LauncherWindow {
             tracing::info!("Populated {} results from suggestions", self.results.len());
         }
 
-        // Update window height to accommodate suggestions
-        self.update_window_height(cx);
-        
         // Notify to trigger re-render
         cx.notify();
     }
@@ -1519,7 +1650,6 @@ impl LauncherWindow {
                 error: error.clone(),
             };
             self.selected_index = 0;
-            self.update_window_height(cx);
             cx.notify();
             return;
         }
@@ -1573,8 +1703,6 @@ impl LauncherWindow {
             }
         }
 
-        // Update window height based on results
-        self.update_window_height(cx);
         cx.notify();
     }
 
@@ -1751,7 +1879,6 @@ impl LauncherWindow {
                     // Insert active timer at the beginning of results
                     view.core_results.insert(0, search_result.clone());
                     view.results.insert(0, Self::search_result_to_result_item(&search_result));
-                    view.update_window_height(cx);
                     cx.notify();
                 });
             }
@@ -1828,7 +1955,7 @@ impl LauncherWindow {
         .detach();
     }
 
-    fn rebuild_results(&mut self, cx: &mut ViewContext<Self>) {
+    fn rebuild_results(&mut self, _cx: &mut ViewContext<Self>) {
         self.core_results.clear();
         self.results.clear();
 
@@ -1848,85 +1975,6 @@ impl LauncherWindow {
                 .push(Self::search_result_to_result_item(result));
         }
 
-        self.update_window_height(cx);
-    }
-
-    /// Update window height based on result count
-    fn update_window_height(&self, cx: &mut ViewContext<Self>) {
-        let result_count = self.results.len().min(MAX_VISIBLE_RESULTS);
-        let query_empty = self.query.is_empty();
-
-        // Count unique result types for group headers
-        let group_count = if result_count > 0 {
-            self.results
-                .iter()
-                .map(|r| r.result_type)
-                .collect::<std::collections::HashSet<_>>()
-                .len()
-        } else {
-            0
-        };
-        let group_header_height = 24.0;
-        let action_bar_height = 32.0; // Action bar with ⌘K hint (only when results)
-        let bottom_padding = 8.0; // Extra padding at bottom
-
-        // Calculate content height (action bar only visible with results)
-        let content_height = if let SearchMode::Calendar { events, .. } = &self.search_mode {
-            let calendar_count = events.len().clamp(1, MAX_VISIBLE_RESULTS);
-            SEARCH_BAR_HEIGHT.0
-                + 1.0
-                + group_header_height
-                + (calendar_count as f32 * RESULT_ITEM_HEIGHT.0)
-                + bottom_padding
-        } else if result_count > 0 {
-            // Search bar + divider + group headers + results + action bar + padding
-            let mut height = SEARCH_BAR_HEIGHT.0
-                + 1.0
-                + (group_count as f32 * group_header_height)
-                + (result_count as f32 * RESULT_ITEM_HEIGHT.0)
-                + action_bar_height
-                + bottom_padding;
-
-            // Add meeting widget height when showing suggestions with meeting
-            if query_empty && self.next_meeting.is_some() {
-                height += 72.0; // Meeting card height (56px) + margins (16px)
-            }
-
-            height
-        } else if !query_empty {
-            // Search bar + no results message (no action bar)
-            SEARCH_BAR_HEIGHT.0 + 60.0
-        } else {
-            // Search bar + empty state with next meeting and/or suggestions
-            let mut height = SEARCH_BAR_HEIGHT.0;
-
-            // Add height for next meeting widget if present
-            if self.next_meeting.is_some() {
-                height += 60.0; // Meeting card height with margins
-            }
-
-            // Add height for suggestions if present
-            if !self.suggestions.is_empty() {
-                height += 100.0; // Header + one row of apps
-            }
-
-            // Minimum empty state height
-            if height < SEARCH_BAR_HEIGHT.0 + 60.0 {
-                height = SEARCH_BAR_HEIGHT.0 + 60.0;
-            }
-
-            height
-        };
-
-        let new_height = content_height.clamp(LAUNCHER_MIN_HEIGHT.0, LAUNCHER_MAX_HEIGHT.0);
-
-        // Spawn async task to resize after current frame completes
-        cx.spawn(|_, _| async move {
-            // Small delay to ensure we're outside GPUI's borrow
-            gpui::Timer::after(Duration::from_millis(1)).await;
-            resize_window_height(f64::from(new_height));
-        })
-        .detach();
     }
 
     // Action handlers
@@ -1989,6 +2037,15 @@ impl LauncherWindow {
     }
 
     fn select_next(&mut self, _: &SelectNext, cx: &mut ViewContext<Self>) {
+        // If auto-quit settings is open, navigate within it
+        // Options: 0 = toggle, 1-7 = timeout options (1, 2, 3, 5, 10, 15, 30 minutes)
+        if self.auto_quit_settings_app.is_some() {
+            let option_count = 8; // toggle + 7 timeout options
+            self.auto_quit_settings_index = (self.auto_quit_settings_index + 1) % option_count;
+            cx.notify();
+            return;
+        }
+
         // If actions menu is open, navigate within it
         if self.show_actions_menu {
             let action_count = self.get_actions_count();
@@ -2051,6 +2108,18 @@ impl LauncherWindow {
     }
 
     fn select_previous(&mut self, _: &SelectPrevious, cx: &mut ViewContext<Self>) {
+        // If auto-quit settings is open, navigate within it
+        if self.auto_quit_settings_app.is_some() {
+            let option_count = 8; // toggle + 7 timeout options
+            self.auto_quit_settings_index = if self.auto_quit_settings_index == 0 {
+                option_count - 1
+            } else {
+                self.auto_quit_settings_index - 1
+            };
+            cx.notify();
+            return;
+        }
+
         // If actions menu is open, navigate within it
         if self.show_actions_menu {
             let action_count = self.get_actions_count();
@@ -2120,6 +2189,18 @@ impl LauncherWindow {
     }
 
     fn activate(&mut self, _: &Activate, cx: &mut ViewContext<Self>) {
+        // If uninstall preview is showing, perform the uninstall
+        if self.uninstall_preview.is_some() {
+            self.perform_uninstall(cx);
+            return;
+        }
+
+        // If auto-quit settings is open, activate the selected option
+        if self.auto_quit_settings_app.is_some() {
+            self.activate_auto_quit_settings_option(cx);
+            return;
+        }
+
         // If actions menu is open, execute the selected action
         if self.show_actions_menu {
             self.execute_selected_action(cx);
@@ -2292,8 +2373,8 @@ impl LauncherWindow {
                     // Substitute arguments into URL template
                     let final_url = if !arguments.is_empty() {
                         photoncast_quicklinks::placeholder::substitute_argument(
-                            &url_template,
-                            &arguments,
+                            url_template,
+                            arguments,
                         )
                     } else {
                         url_template.clone()
@@ -2450,6 +2531,18 @@ impl LauncherWindow {
     }
 
     fn cancel(&mut self, _: &Cancel, cx: &mut ViewContext<Self>) {
+        // If uninstall preview is showing, close it first
+        if self.uninstall_preview.is_some() {
+            self.cancel_uninstall_preview(cx);
+            return;
+        }
+
+        // If auto-quit settings is showing, close it first
+        if self.auto_quit_settings_app.is_some() {
+            self.close_auto_quit_settings(cx);
+            return;
+        }
+
         // If actions menu is showing, close it first
         if self.show_actions_menu {
             self.show_actions_menu = false;
@@ -2488,7 +2581,6 @@ impl LauncherWindow {
             self.calculator_generation = self.calculator_generation.saturating_add(1);
             // Reload suggestions for empty state
             self.load_suggestions(cx);
-            self.update_window_height(cx);
             cx.notify();
         }
     }
@@ -2544,7 +2636,6 @@ impl LauncherWindow {
         self.file_search_generation += 1; // Invalidate pending searches
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
-        self.update_window_height(cx);
         cx.notify();
     }
 
@@ -2571,7 +2662,6 @@ impl LauncherWindow {
         self.file_search_pending_query = None;
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
-        self.update_window_height(cx);
         cx.notify();
     }
 
@@ -2596,7 +2686,6 @@ impl LauncherWindow {
         self.file_search_pending_query = None;
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
-        self.update_window_height(cx);
         cx.notify();
     }
 
@@ -2616,7 +2705,6 @@ impl LauncherWindow {
         self.calculator_generation = self.calculator_generation.saturating_add(1);
         // Reload suggestions for empty state
         self.load_suggestions(cx);
-        self.update_window_height(cx);
         cx.notify();
     }
 
@@ -2636,7 +2724,6 @@ impl LauncherWindow {
         self.file_search_generation += 1; // Invalidate pending searches
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
-        self.update_window_height(cx);
         cx.notify();
     }
 
@@ -2820,7 +2907,28 @@ impl LauncherWindow {
             return 0;
         }
 
-        // Base actions: Open, Copy Path, Copy File
+        // Task 7.3: Check if selected result is an app
+        let selected_result = self.results.get(self.selected_index);
+        let is_app = selected_result.is_some_and(|r| r.result_type == ResultType::Application);
+        let app_bundle_id = selected_result.and_then(|r| r.bundle_id.clone());
+        let is_running = app_bundle_id.as_ref().is_some_and(|id| photoncast_apps::is_app_running(id));
+
+        if is_app {
+            // App actions:
+            // Primary: Open (0), Show in Finder (1)
+            // Info: Copy Path (2), Copy Bundle ID (3)
+            // Auto Quit: Toggle (4)
+            // Running only: Quit (5), Force Quit (6), Hide (7)
+            // Danger: Uninstall (5 or 8)
+            let mut count = 5; // Open, Show in Finder, Copy Path, Copy Bundle ID, Toggle Auto Quit
+            if is_running {
+                count += 3; // Quit, Force Quit, Hide
+            }
+            count += 1; // Uninstall
+            return count;
+        }
+
+        // Base actions for non-apps: Open, Copy Path, Copy File
         let mut count = 3;
 
         // File mode adds: Reveal in Finder, Quick Look
@@ -2907,7 +3015,149 @@ impl LauncherWindow {
             return;
         }
 
-        // Map index to action based on current mode
+        // Task 7.3: Check if selected result is an app
+        let selected_result = self.results.get(self.selected_index);
+        let is_app = selected_result.is_some_and(|r| r.result_type == ResultType::Application);
+        let app_bundle_id = selected_result.and_then(|r| r.bundle_id.clone());
+        let app_path = selected_result.and_then(|r| r.app_path.clone());
+        let is_running = app_bundle_id.as_ref().is_some_and(|id| photoncast_apps::is_app_running(id));
+
+        // Task 7.3: Handle app-specific actions
+        if is_app {
+            // App actions order:
+            // 0: Open
+            // 1: Show in Finder
+            // 2: Copy Path
+            // 3: Copy Bundle ID
+            // 4: Toggle Auto Quit
+            // 5+ (if running): Quit, Force Quit, Hide
+            // Last: Uninstall
+            let uninstall_idx = if is_running { 8 } else { 5 };
+
+            match self.actions_menu_index {
+                0 => {
+                    // Open
+                    self.show_actions_menu = false;
+                    self.activate(&Activate, cx);
+                },
+                1 => {
+                    // Show in Finder
+                    self.show_actions_menu = false;
+                    if let Some(path) = &app_path {
+                        if let Err(e) = photoncast_apps::reveal_in_finder(path) {
+                            tracing::error!("Failed to reveal in Finder: {}", e);
+                        }
+                    }
+                    self.hide(cx);
+                },
+                2 => {
+                    // Copy Path
+                    self.show_actions_menu = false;
+                    if let Some(path) = &app_path {
+                        if let Err(e) = photoncast_apps::copy_path_to_clipboard(path) {
+                            tracing::error!("Failed to copy path: {}", e);
+                        } else {
+                            tracing::info!("Copied path to clipboard");
+                        }
+                    }
+                    cx.notify();
+                },
+                3 => {
+                    // Copy Bundle ID
+                    self.show_actions_menu = false;
+                    if let Some(bundle_id) = &app_bundle_id {
+                        if let Err(e) = photoncast_apps::copy_bundle_id_to_clipboard(bundle_id) {
+                            tracing::error!("Failed to copy bundle ID: {}", e);
+                        } else {
+                            tracing::info!("Copied bundle ID to clipboard");
+                        }
+                    }
+                    cx.notify();
+                },
+                4 => {
+                    // Toggle Auto Quit - show settings modal to configure
+                    self.show_actions_menu = false;
+                    if let Some(bundle_id) = &app_bundle_id {
+                        let is_enabled = {
+                            self.auto_quit_manager.read().is_auto_quit_enabled(bundle_id)
+                        };
+                        if is_enabled {
+                            // Disable directly
+                            {
+                                let mut manager = self.auto_quit_manager.write();
+                                manager.disable_auto_quit(bundle_id);
+                                let _ = manager.save();
+                            }
+                            tracing::info!("Disabled auto-quit for {}", bundle_id);
+                            self.show_toast("Auto Quit disabled".to_string(), cx);
+                        } else {
+                            // Show settings modal to configure timeout
+                            let app_name = selected_result.map(|r| r.title.clone()).unwrap_or_default();
+                            self.show_auto_quit_settings(bundle_id, &app_name, cx);
+                        }
+                    }
+                    cx.notify();
+                },
+                5 if is_running => {
+                    // Quit
+                    self.show_actions_menu = false;
+                    if let Some(bundle_id) = &app_bundle_id {
+                        match photoncast_apps::quit_app_by_bundle_id(bundle_id) {
+                            Ok(_) => tracing::info!("Quit app: {}", bundle_id),
+                            Err(e) => tracing::error!("Failed to quit app: {}", e),
+                        }
+                    }
+                    self.hide(cx);
+                },
+                6 if is_running => {
+                    // Force Quit
+                    self.show_actions_menu = false;
+                    if let Some(bundle_id) = &app_bundle_id {
+                        // Get the PID for the bundle ID
+                        if let Ok(running_apps) = photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default()).get_running_apps() {
+                            if let Some(app) = running_apps.iter().find(|a| a.bundle_id.as_deref() == Some(bundle_id)) {
+                                #[allow(clippy::cast_possible_wrap)]
+                                let pid = app.pid as i32;
+                                match photoncast_apps::force_quit_app_action(pid) {
+                                    Ok(()) => tracing::info!("Force quit app: {} (PID {})", bundle_id, pid),
+                                    Err(e) => tracing::error!("Failed to force quit app: {}", e),
+                                }
+                            }
+                        }
+                    }
+                    self.hide(cx);
+                },
+                7 if is_running => {
+                    // Hide app
+                    self.show_actions_menu = false;
+                    if let Some(bundle_id) = &app_bundle_id {
+                        if let Err(e) = photoncast_apps::hide_app(bundle_id) {
+                            tracing::error!("Failed to hide app: {}", e);
+                        } else {
+                            tracing::info!("Hid app: {}", bundle_id);
+                        }
+                    }
+                    self.hide(cx);
+                },
+                idx if idx == uninstall_idx => {
+                    // Uninstall - show uninstall preview dialog
+                    self.show_actions_menu = false;
+                    if let Some(path) = &app_path {
+                        let app_name = selected_result.map(|r| r.title.clone()).unwrap_or_default();
+                        tracing::info!("Starting uninstall flow for: {} at {:?}", app_name, path);
+                        self.show_uninstall_preview(std::path::Path::new(path), cx);
+                    }
+                    cx.notify();
+                },
+                _ => {
+                    self.show_actions_menu = false;
+                    cx.notify();
+                },
+            }
+            return;
+        }
+
+        // Map index to action based on current mode (non-app)
         // Order: Open, Copy Path, Copy File, [Reveal in Finder, Quick Look]
         match self.actions_menu_index {
             0 => {
@@ -3444,8 +3694,12 @@ impl LauncherWindow {
         let cursor_color = colors.accent;
         let show_cursor = self.cursor_visible();
 
+        // Block cursor dimensions (like Ghostty terminal)
+        let cursor_width = px(9.0);
+        let cursor_height = px(20.0);
+
         if self.query.is_empty() {
-            // Show placeholder with blinking cursor at start
+            // Show block cursor at start (no placeholder text)
             return div()
                 .w_full()
                 .text_size(px(16.0))
@@ -3454,17 +3708,19 @@ impl LauncherWindow {
                 .when(show_cursor, |el| {
                     el.child(
                         div()
-                            .w(px(2.0))
-                            .h(px(18.0))
+                            .w(cursor_width)
+                            .h(cursor_height)
                             .bg(cursor_color)
-                            .rounded(px(1.0)),
+                            .rounded(px(2.0)),
                     )
                 })
-                .child(
-                    div()
-                        .text_color(placeholder_color)
-                        .child(placeholder.to_string()),
-                );
+                .when(!placeholder.is_empty(), |el| {
+                    el.child(
+                        div()
+                            .text_color(placeholder_color)
+                            .child(placeholder.to_string()),
+                    )
+                });
         }
 
         let chars: Vec<char> = self.query.chars().collect();
@@ -3490,10 +3746,10 @@ impl LauncherWindow {
             .when(has_selection && cursor_at_start && show_cursor, |el| {
                 el.child(
                     div()
-                        .w(px(2.0))
-                        .h(px(18.0))
+                        .w(cursor_width)
+                        .h(cursor_height)
                         .bg(cursor_color)
-                        .rounded(px(1.0)),
+                        .rounded(px(2.0)),
                 )
             })
             // Cursor at position (if no selection)
@@ -3503,10 +3759,10 @@ impl LauncherWindow {
                     .when(show_cursor, |el| {
                         el.child(
                             div()
-                                .w(px(2.0))
-                                .h(px(18.0))
+                                .w(cursor_width)
+                                .h(cursor_height)
                                 .bg(cursor_color)
-                                .rounded(px(1.0)),
+                                .rounded(px(2.0)),
                         )
                     })
             })
@@ -3514,10 +3770,10 @@ impl LauncherWindow {
                 // Cursor in the middle
                 el.child(
                     div()
-                        .w(px(2.0))
-                        .h(px(18.0))
+                        .w(cursor_width)
+                        .h(cursor_height)
                         .bg(cursor_color)
-                        .rounded(px(1.0)),
+                        .rounded(px(2.0)),
                 )
             })
             // Selected text with background
@@ -3533,10 +3789,10 @@ impl LauncherWindow {
             .when(has_selection && !cursor_at_start && show_cursor, |el| {
                 el.child(
                     div()
-                        .w(px(2.0))
-                        .h(px(18.0))
+                        .w(cursor_width)
+                        .h(cursor_height)
                         .bg(cursor_color)
-                        .rounded(px(1.0)),
+                        .rounded(px(2.0)),
                 )
             })
             // Text after selection
@@ -3548,13 +3804,17 @@ impl LauncherWindow {
         let colors = get_launcher_colors(cx);
         // Determine icon and placeholder based on search mode
         let (icon, placeholder) = match &self.search_mode {
-            SearchMode::Normal => ("🔍", "Search PhotonCast..."),
-            SearchMode::FileSearch => ("📁", "Search files..."),
+            SearchMode::Normal => ("🔍", ""),
+            SearchMode::FileSearch => ("📁", ""),
             SearchMode::Calendar { title, .. } => ("📅", title.as_str()),
         };
         let placeholder = placeholder.to_string();
         let text_muted = colors.text_muted;
         let text_placeholder = colors.text_placeholder;
+
+        // Suppress unused variable warnings
+        let _ = icon;
+        let _ = text_placeholder;
 
         div()
             .h(SEARCH_BAR_HEIGHT)
@@ -3562,19 +3822,8 @@ impl LauncherWindow {
             .px_4()
             .flex()
             .items_center()
-            .gap_3()
             .child(
-                // Search icon
-                div()
-                    .size(SEARCH_ICON_SIZE)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(colors.text_muted)
-                    .child(icon),
-            )
-            .child(
-                // Search input with cursor and selection
+                // Search input with cursor and selection (no icon)
                 div().flex_1().h_full().flex().items_center().child(
                     self.render_query_with_cursor(&colors, &placeholder),
                 ),
@@ -3992,29 +4241,72 @@ impl LauncherWindow {
             )
     }
 
-    /// Render the icon for a result item
+    /// Render the icon for a result item with status indicators
     fn render_icon(&self, result: &ResultItem) -> impl IntoElement {
         let icon_size = px(32.0);
 
+        // Check if app is running and has auto-quit enabled
+        let is_running = result.bundle_id.as_ref().is_some_and(|id| {
+            photoncast_apps::is_app_running(id)
+        });
+        let has_auto_quit = result.bundle_id.as_ref().is_some_and(|id| {
+            self.auto_quit_manager.read().is_auto_quit_enabled(id)
+        });
+
         div()
+            .relative()
             .size(icon_size)
-            .flex()
-            .items_center()
-            .justify_center()
-            .overflow_hidden()
-            .rounded(px(6.0))
-            .map(|el| {
-                if let Some(icon_path) = &result.icon_path {
-                    // Use the actual app icon - pass PathBuf for ImageSource::File
-                    el.child(
-                        img(icon_path.clone())
-                            .size(icon_size)
-                            .object_fit(ObjectFit::Contain),
-                    )
-                } else {
-                    // Fall back to emoji
-                    el.text_size(px(24.0)).child(result.icon_emoji.clone())
-                }
+            .child(
+                // Main icon
+                div()
+                    .size(icon_size)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .overflow_hidden()
+                    .rounded(px(6.0))
+                    .map(|el| {
+                        if let Some(icon_path) = &result.icon_path {
+                            // Use the actual app icon - pass PathBuf for ImageSource::File
+                            el.child(
+                                img(icon_path.clone())
+                                    .size(icon_size)
+                                    .object_fit(ObjectFit::Contain),
+                            )
+                        } else {
+                            // Fall back to emoji
+                            el.text_size(px(24.0)).child(result.icon_emoji.clone())
+                        }
+                    }),
+            )
+            // Task 7.1: Running app indicator (8px green dot, bottom-right)
+            .when(is_running, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .bottom(px(-2.0))
+                        .right(px(-2.0))
+                        .size(px(8.0))
+                        .rounded_full()
+                        .bg(hsla(120.0 / 360.0, 1.0, 0.5, 1.0)) // Green #00FF00
+                        .border_1()
+                        .border_color(hsla(0.0, 0.0, 0.1, 1.0)), // Dark border for visibility
+                )
+            })
+            // Task 7.2: Auto Quit indicator (orange dot, below green dot or bottom-right if not running)
+            .when(has_auto_quit, |el| {
+                let offset = if is_running { px(-10.0) } else { px(-2.0) };
+                el.child(
+                    div()
+                        .absolute()
+                        .bottom(offset)
+                        .right(px(-2.0))
+                        .size(px(6.0))
+                        .rounded_full()
+                        .bg(hsla(30.0 / 360.0, 1.0, 0.5, 1.0)) // Orange
+                        .border_1()
+                        .border_color(hsla(0.0, 0.0, 0.1, 1.0)), // Dark border for visibility
+                )
             })
     }
 
@@ -4695,14 +4987,23 @@ impl LauncherWindow {
             false
         };
 
+        // Task 7.3: Check if selected result is an app and if it's running
+        let selected_result = self.results.get(self.selected_index);
+        let is_app = selected_result.is_some_and(|r| r.result_type == ResultType::Application);
+        let app_bundle_id = selected_result.and_then(|r| r.bundle_id.clone());
+        let is_running = app_bundle_id.as_ref().is_some_and(|id| photoncast_apps::is_app_running(id));
+        let has_auto_quit = app_bundle_id.as_ref().is_some_and(|id| {
+            self.auto_quit_manager.read().is_auto_quit_enabled(id)
+        });
+
         div()
-            // Overlay background - position menu at bottom-right
+            // Overlay background - position menu above action bar at bottom-right
             .absolute()
             .inset_0()
             .flex()
             .items_end()
             .justify_end()
-            .pb_2()
+            .pb(px(8.0)) // Small padding from bottom
             .pr_2()
             // Click outside to close
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, cx| {
@@ -4732,10 +5033,13 @@ impl LauncherWindow {
                             .text_color(colors.text)
                             .child("Actions"),
                     )
-                    // Action items with selection highlighting
+                    // Action items with selection highlighting (scrollable for long lists)
                     .child(
                         div()
+                            .id("actions-menu-list")
                             .py_1()
+                            .max_h(px(420.0)) // Fits within 475px modal
+                            .overflow_y_scroll()
                             .when(is_calendar_mode, |el| {
                                 // Calendar actions: Join Meeting (if available), Copy Title, Copy Details, Open in Calendar
                                 let mut idx = 0;
@@ -4750,7 +5054,8 @@ impl LauncherWindow {
                                     .child(self.render_action_item("Copy Details", "⇧⌘C", has_selection, selected == idx + 1, &colors))
                                     .child(self.render_action_item("Open in Calendar", "⌘O", has_selection, selected == idx + 2, &colors))
                             })
-                            .when(!is_calendar_mode, |el| {
+                            .when(!is_calendar_mode && !is_app, |el| {
+                                // Non-app actions (files, commands, etc.)
                                 el.child(self.render_action_item("Open", "↵", has_selection, selected == 0, &colors))
                                     .child(self.render_action_item("Copy Path", "⌘C", has_selection, selected == 1, &colors))
                                     .child(self.render_action_item("Copy File", "⇧⌘C", has_selection, selected == 2, &colors))
@@ -4758,6 +5063,46 @@ impl LauncherWindow {
                                         el.child(self.render_action_item("Reveal in Finder", "⌘↵", has_selection, selected == 3, &colors))
                                             .child(self.render_action_item("Quick Look", "⌘Y", has_selection, selected == 4, &colors))
                                     })
+                            })
+                            // Task 7.3: App-specific actions with grouped sections
+                            .when(!is_calendar_mode && is_app, |el| {
+                                let mut idx = 0;
+                                // Primary actions
+                                let el = el.child(self.render_action_group_header("Primary", &colors));
+                                let el = el.child(self.render_action_item("Open", "↵", has_selection, selected == idx, &colors));
+                                idx += 1;
+                                let el = el.child(self.render_action_item("Show in Finder", "⌘⇧F", has_selection, selected == idx, &colors));
+                                idx += 1;
+
+                                // Info actions
+                                let el = el.child(self.render_action_group_header("Info", &colors));
+                                let el = el.child(self.render_action_item("Copy Path", "⌘⇧C", has_selection, selected == idx, &colors));
+                                idx += 1;
+                                let el = el.child(self.render_action_item("Copy Bundle ID", "⌘⇧B", has_selection, selected == idx, &colors));
+                                idx += 1;
+
+                                // Auto Quit toggle
+                                let el = el.child(self.render_action_group_header("Auto Quit", &colors));
+                                let auto_quit_label = if has_auto_quit { "Disable Auto Quit" } else { "Enable Auto Quit" };
+                                let el = el.child(self.render_action_item(auto_quit_label, "⌘⇧A", has_selection, selected == idx, &colors));
+                                idx += 1;
+
+                                // Running app actions (only show if app is running)
+                                let el = if is_running {
+                                    let el = el.child(self.render_action_group_header("Running App", &colors));
+                                    let el = el.child(self.render_action_item("Quit", "⌘Q", has_selection, selected == idx, &colors));
+                                    idx += 1;
+                                    let el = el.child(self.render_action_item("Force Quit", "⌘⌥Q", has_selection, selected == idx, &colors));
+                                    idx += 1;
+                                    el.child(self.render_action_item("Hide", "⌘H", has_selection, selected == idx, &colors))
+                                } else {
+                                    el
+                                };
+                                let idx = if is_running { idx + 1 } else { idx };
+
+                                // Danger zone
+                                let el = el.child(self.render_action_group_header("Danger Zone", &colors));
+                                el.child(self.render_action_item_danger("Uninstall", "⌘⌫", has_selection, selected == idx, &colors))
                             })
                     )
                     // Footer hint
@@ -4776,6 +5121,74 @@ impl LauncherWindow {
                                     .child("↑↓ Navigate  ↵ Select  esc Close"),
                             ),
                     ),
+            )
+    }
+
+    /// Render a group header in the actions menu
+    fn render_action_group_header(&self, label: &str, colors: &LauncherColors) -> impl IntoElement {
+        div()
+            .px_3()
+            .py(px(4.0))
+            .mt(px(4.0))
+            .text_size(px(10.0))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(colors.text_placeholder)
+            .child(label.to_string().to_uppercase())
+    }
+
+    /// Render a danger action item (red text)
+    fn render_action_item_danger(
+        &self,
+        label: &str,
+        shortcut: &str,
+        enabled: bool,
+        selected: bool,
+        colors: &LauncherColors,
+    ) -> impl IntoElement {
+        let text_color = if enabled {
+            colors.error
+        } else {
+            colors.text_placeholder
+        };
+        let shortcut_color = if enabled {
+            colors.error.opacity(0.7)
+        } else {
+            colors.text_placeholder
+        };
+        let bg_color = if selected {
+            colors.error.opacity(0.2)
+        } else {
+            gpui::transparent_black()
+        };
+        let hover_bg = colors.error.opacity(0.1);
+        let surface = colors.surface;
+
+        div()
+            .px_3()
+            .py(px(6.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .bg(bg_color)
+            .when(enabled && !selected, move |el| {
+                el.hover(move |el| el.bg(hover_bg)).cursor_pointer()
+            })
+            .when(selected, |el| el.cursor_pointer())
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .text_color(text_color)
+                    .child(label.to_string()),
+            )
+            .child(
+                div()
+                    .px_1()
+                    .py(px(2.0))
+                    .rounded(px(4.0))
+                    .bg(surface)
+                    .text_size(px(10.0))
+                    .text_color(shortcut_color)
+                    .child(shortcut.to_string()),
             )
     }
 
@@ -4834,6 +5247,1033 @@ impl LauncherWindow {
                     .child(shortcut.to_string()),
             )
     }
+
+    // ========================================================================
+    // Task 7.4: App Management Action Handlers
+    // ========================================================================
+
+    /// Handler for Show in Finder action (⌘⇧F)
+    fn show_in_finder(&mut self, _: &ShowInFinder, cx: &mut ViewContext<Self>) {
+        if let Some(result) = self.results.get(self.selected_index) {
+            if let Some(path) = &result.app_path {
+                if let Err(e) = photoncast_apps::reveal_in_finder(path) {
+                    tracing::error!("Failed to reveal in Finder: {}", e);
+                } else {
+                    self.hide(cx);
+                    return;
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Handler for Copy Bundle ID action (⌘⇧B)
+    fn copy_bundle_id(&mut self, _: &CopyBundleId, cx: &mut ViewContext<Self>) {
+        if let Some(result) = self.results.get(self.selected_index) {
+            if let Some(bundle_id) = &result.bundle_id {
+                if let Err(e) = photoncast_apps::copy_bundle_id_to_clipboard(bundle_id) {
+                    tracing::error!("Failed to copy bundle ID: {}", e);
+                } else {
+                    tracing::info!("Copied bundle ID to clipboard: {}", bundle_id);
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Handler for Quit App action (⌘Q)
+    fn quit_app(&mut self, _: &QuitApp, cx: &mut ViewContext<Self>) {
+        if let Some(result) = self.results.get(self.selected_index) {
+            if result.result_type == ResultType::Application {
+                if let Some(bundle_id) = &result.bundle_id {
+                    if photoncast_apps::is_app_running(bundle_id) {
+                        match photoncast_apps::quit_app_by_bundle_id(bundle_id) {
+                            Ok(_) => tracing::info!("Quit app: {}", bundle_id),
+                            Err(e) => tracing::error!("Failed to quit app: {}", e),
+                        }
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Handler for Force Quit App action (⌘⌥Q)
+    fn force_quit_app(&mut self, _: &ForceQuitApp, cx: &mut ViewContext<Self>) {
+        if let Some(result) = self.results.get(self.selected_index) {
+            if result.result_type == ResultType::Application {
+                if let Some(bundle_id) = &result.bundle_id {
+                    if photoncast_apps::is_app_running(bundle_id) {
+                        if let Ok(running_apps) = photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default()).get_running_apps() {
+                            if let Some(app) = running_apps.iter().find(|a| a.bundle_id.as_deref() == Some(bundle_id)) {
+                                #[allow(clippy::cast_possible_wrap)]
+                                let pid = app.pid as i32;
+                                match photoncast_apps::force_quit_app_action(pid) {
+                                    Ok(()) => tracing::info!("Force quit app: {} (PID {})", bundle_id, pid),
+                                    Err(e) => tracing::error!("Failed to force quit app: {}", e),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Handler for Hide App action (⌘H)
+    fn hide_app(&mut self, _: &HideApp, cx: &mut ViewContext<Self>) {
+        if let Some(result) = self.results.get(self.selected_index) {
+            if result.result_type == ResultType::Application {
+                if let Some(bundle_id) = &result.bundle_id {
+                    if photoncast_apps::is_app_running(bundle_id) {
+                        if let Err(e) = photoncast_apps::hide_app(bundle_id) {
+                            tracing::error!("Failed to hide app: {}", e);
+                        } else {
+                            tracing::info!("Hid app: {}", bundle_id);
+                        }
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Handler for Uninstall App action (⌘⌫)
+    fn uninstall_app(&mut self, _: &UninstallApp, cx: &mut ViewContext<Self>) {
+        // Clone the path to avoid borrow issues
+        let app_path = self.results.get(self.selected_index).and_then(|result| {
+            if result.result_type == ResultType::Application {
+                result.app_path.clone()
+            } else {
+                None
+            }
+        });
+        
+        if let Some(path) = app_path {
+            // Show the uninstall preview dialog
+            self.show_uninstall_preview(&path, cx);
+            return;
+        }
+        cx.notify();
+    }
+
+    /// Handler for Toggle Auto Quit action (⌘⇧A)
+    fn toggle_auto_quit_for_selected(&mut self, _: &ToggleAutoQuit, cx: &mut ViewContext<Self>) {
+        if let Some(result) = self.results.get(self.selected_index).cloned() {
+            if result.result_type == ResultType::Application {
+                if let Some(bundle_id) = &result.bundle_id {
+                    let is_enabled = self.auto_quit_manager.read().is_auto_quit_enabled(bundle_id);
+                    if is_enabled {
+                        // If already enabled, disable it directly
+                        let mut manager = self.auto_quit_manager.write();
+                        manager.disable_auto_quit(bundle_id);
+                        let _ = manager.save();
+                        tracing::info!("Disabled auto-quit for {}", bundle_id);
+                        drop(manager);
+                        self.show_toast("Auto Quit disabled".to_string(), cx);
+                    } else {
+                        // If not enabled, show settings modal to configure timeout
+                        self.show_auto_quit_settings(bundle_id, &result.title, cx);
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    // ========================================================================
+    // Task 7.5: Uninstall Preview UI
+    // ========================================================================
+
+    /// Shows the uninstall preview dialog for an app
+    pub fn show_uninstall_preview(&mut self, app_path: &std::path::Path, cx: &mut ViewContext<Self>) {
+        match self.app_manager.create_uninstall_preview(app_path) {
+            Ok(preview) => {
+                tracing::info!("Created uninstall preview for: {}", preview.app.name);
+                self.uninstall_preview = Some(preview);
+                self.uninstall_files_selected_index = 0;
+                cx.notify();
+            },
+            Err(e) => {
+                tracing::error!("Failed to create uninstall preview: {}", e);
+                self.show_toast(format!("Cannot uninstall: {}", e), cx);
+            },
+        }
+    }
+
+    /// Handles the uninstall action (called when "Uninstall" button is clicked)
+    fn perform_uninstall(&mut self, cx: &mut ViewContext<Self>) {
+        if let Some(preview) = self.uninstall_preview.take() {
+            let app_name = preview.app.name.clone();
+            match self.app_manager.uninstall_selected(&preview) {
+                Ok(()) => {
+                    tracing::info!("Successfully uninstalled: {}", app_name);
+                    self.show_toast(format!("{} uninstalled", app_name), cx);
+                },
+                Err(e) => {
+                    tracing::error!("Failed to uninstall {}: {}", app_name, e);
+                    self.show_toast(format!("Uninstall failed: {}", e), cx);
+                },
+            }
+        }
+    }
+
+    /// Handles "Keep Related Files" action - uninstalls app only
+    fn perform_uninstall_app_only(&mut self, cx: &mut ViewContext<Self>) {
+        if let Some(mut preview) = self.uninstall_preview.take() {
+            let app_name = preview.app.name.clone();
+            // Deselect all related files
+            for file in &mut preview.related_files {
+                file.selected = false;
+            }
+            match self.app_manager.uninstall_selected(&preview) {
+                Ok(()) => {
+                    tracing::info!("Successfully uninstalled {} (kept related files)", app_name);
+                    self.show_toast(format!("{} uninstalled (kept related files)", app_name), cx);
+                },
+                Err(e) => {
+                    tracing::error!("Failed to uninstall {}: {}", app_name, e);
+                    self.show_toast(format!("Uninstall failed: {}", e), cx);
+                },
+            }
+        }
+    }
+
+    /// Cancels the uninstall preview dialog
+    fn cancel_uninstall_preview(&mut self, cx: &mut ViewContext<Self>) {
+        self.uninstall_preview = None;
+        cx.notify();
+    }
+
+    /// Toggles selection of a related file in the uninstall preview
+    fn toggle_uninstall_file_selection(&mut self, index: usize, cx: &mut ViewContext<Self>) {
+        if let Some(preview) = &mut self.uninstall_preview {
+            if let Some(file) = preview.related_files.get_mut(index) {
+                file.selected = !file.selected;
+                // Recalculate total size
+                let selected_size = photoncast_apps::calculate_selected_size(preview);
+                preview.space_freed_formatted = UninstallPreview::format_bytes(selected_size);
+                cx.notify();
+            }
+        }
+    }
+
+    /// Renders the uninstall preview dialog
+    fn render_uninstall_preview(
+        &self,
+        preview: &UninstallPreview,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
+        let colors = get_launcher_colors(cx);
+        let app_name = preview.app.name.clone();
+        let space_freed = preview.space_freed_formatted.clone();
+
+        // Group files by category
+        let mut categories: std::collections::BTreeMap<&str, Vec<(usize, &photoncast_apps::RelatedFile)>> =
+            std::collections::BTreeMap::new();
+        for (idx, file) in preview.related_files.iter().enumerate() {
+            let category_name = file.category.display_name();
+            categories.entry(category_name).or_default().push((idx, file));
+        }
+
+        // Get icon path for the app
+        let icon_path = Self::get_app_icon_path(&preview.app.path);
+
+        // Pre-build category sections to avoid borrowing cx inside nested iterators
+        let category_sections: Vec<_> = categories
+            .into_iter()
+            .map(|(category_name, files)| {
+                let text_muted = colors.text_muted;
+                let text = colors.text;
+                let text_placeholder = colors.text_placeholder;
+                let surface = colors.surface;
+                let surface_hover = colors.surface_hover;
+                let accent = colors.accent;
+                let border = colors.border;
+
+                // Pre-build file items for this category
+                let file_items: Vec<_> = files
+                    .into_iter()
+                    .map(|(idx, file)| {
+                        let file_name = file
+                            .path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let file_size = UninstallPreview::format_bytes(file.size_bytes);
+                        let is_selected = file.selected;
+
+                        div()
+                            .id(SharedString::from(format!("uninstall-file-{}", idx)))
+                            .px_3()
+                            .py_2()
+                            .rounded(px(6.0))
+                            .bg(surface)
+                            .hover(move |el| el.bg(surface_hover))
+                            .cursor_pointer()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .on_click(cx.listener(move |this, _, cx| {
+                                this.toggle_uninstall_file_selection(idx, cx);
+                            }))
+                            // Checkbox
+                            .child(
+                                div()
+                                    .size(px(18.0))
+                                    .rounded(px(4.0))
+                                    .border_1()
+                                    .border_color(if is_selected { accent } else { border })
+                                    .bg(if is_selected {
+                                        accent
+                                    } else {
+                                        gpui::transparent_black()
+                                    })
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .text_color(text)
+                                            .when(is_selected, |el| el.child("✓")),
+                                    ),
+                            )
+                            // File info
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .flex()
+                                    .flex_col()
+                                    .overflow_hidden()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .text_color(text)
+                                            .truncate()
+                                            .child(file_name),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(text_placeholder)
+                                            .child(file_size),
+                                    ),
+                            )
+                    })
+                    .collect();
+
+                (category_name.to_string(), text_muted, file_items)
+            })
+            .collect();
+
+        div()
+            .id("uninstall-preview-overlay")
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(colors.overlay)
+            .child(
+                div()
+                    .id("uninstall-preview-dialog")
+                    .w(px(420.0))
+                    .max_h(px(500.0))
+                    .flex()
+                    .flex_col()
+                    .bg(colors.surface_elevated)
+                    .rounded(px(12.0))
+                    .border_1()
+                    .border_color(colors.border)
+                    .shadow_xl()
+                    .overflow_hidden()
+                    // Header with app info
+                    .child(
+                        div()
+                            .px_5()
+                            .pt_5()
+                            .pb_4()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_3()
+                            // App icon
+                            .child(
+                                div()
+                                    .size(px(64.0))
+                                    .rounded(px(12.0))
+                                    .overflow_hidden()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .map(|el| {
+                                        if let Some(icon) = &icon_path {
+                                            el.child(
+                                                img(icon.clone())
+                                                    .size(px(64.0))
+                                                    .object_fit(ObjectFit::Contain),
+                                            )
+                                        } else {
+                                            el.text_size(px(32.0)).child("📦")
+                                        }
+                                    }),
+                            )
+                            // App name
+                            .child(
+                                div()
+                                    .text_size(px(18.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(colors.text)
+                                    .child(format!("Uninstall {}", app_name)),
+                            )
+                            // Space to be freed
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .text_color(colors.text_muted)
+                                            .child("Space to be freed:"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(colors.success)
+                                            .child(space_freed),
+                                    ),
+                            ),
+                    )
+                    // Related files list
+                    .child(
+                        div()
+                            .id("uninstall-files-list")
+                            .flex_1()
+                            .overflow_y_scroll()
+                            .px_5()
+                            .pb_3()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .children(
+                                category_sections
+                                    .into_iter()
+                                    .map(|(category_name, text_muted, file_items)| {
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_1()
+                                            // Category header
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.0))
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .text_color(text_muted)
+                                                    .child(category_name.to_uppercase()),
+                                            )
+                                            // Files in category
+                                            .children(file_items)
+                                    }),
+                            ),
+                    )
+                    // Action buttons
+                    .child(
+                        div()
+                            .px_5()
+                            .py_4()
+                            .border_t_1()
+                            .border_color(colors.border)
+                            .flex()
+                            .gap_3()
+                            // Cancel button
+                            .child({
+                                let surface = colors.surface;
+                                let surface_hover = colors.surface_hover;
+                                let text = colors.text;
+                                div()
+                                    .id("uninstall-cancel")
+                                    .flex_1()
+                                    .h(px(36.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(8.0))
+                                    .bg(surface)
+                                    .hover(move |el| el.bg(surface_hover))
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, cx| {
+                                        this.cancel_uninstall_preview(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.0))
+                                            .text_color(text)
+                                            .child("Cancel"),
+                                    )
+                            })
+                            // Keep Related Files button
+                            .child({
+                                let surface = colors.surface;
+                                let surface_hover = colors.surface_hover;
+                                let text = colors.text;
+                                div()
+                                    .id("uninstall-keep-files")
+                                    .flex_1()
+                                    .h(px(36.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(8.0))
+                                    .bg(surface)
+                                    .hover(move |el| el.bg(surface_hover))
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, cx| {
+                                        this.perform_uninstall_app_only(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.0))
+                                            .text_color(text)
+                                            .child("Keep Files"),
+                                    )
+                            })
+                            // Uninstall button (primary, destructive)
+                            .child({
+                                let error = colors.error;
+                                let error_hover =
+                                    hsla(error.h, error.s, (error.l + 0.1).min(1.0), error.a);
+                                let text = colors.text;
+                                div()
+                                    .id("uninstall-confirm")
+                                    .flex_1()
+                                    .h(px(36.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(8.0))
+                                    .bg(error)
+                                    .hover(move |el| el.bg(error_hover))
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, cx| {
+                                        this.perform_uninstall(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.0))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(text)
+                                            .child("Uninstall"),
+                                    )
+                            }),
+                    ),
+            )
+    }
+
+    // ========================================================================
+    // Task 7.6: Auto Quit Settings UI
+    // ========================================================================
+
+    /// Shows the auto quit settings panel for an app
+    pub fn show_auto_quit_settings(&mut self, bundle_id: &str, app_name: &str, cx: &mut ViewContext<Self>) {
+        self.auto_quit_settings_app = Some((bundle_id.to_string(), app_name.to_string()));
+        self.auto_quit_settings_index = 0; // Reset selection to toggle option
+        cx.notify();
+    }
+
+    /// Closes the auto quit settings panel
+    fn close_auto_quit_settings(&mut self, cx: &mut ViewContext<Self>) {
+        self.auto_quit_settings_app = None;
+        cx.notify();
+    }
+
+    /// Toggles auto quit for the currently shown app in settings panel
+    fn toggle_auto_quit_in_settings(&mut self, cx: &mut ViewContext<Self>) {
+        if let Some((ref bundle_id, _)) = self.auto_quit_settings_app {
+            let mut manager = self.auto_quit_manager.write();
+            if manager.is_auto_quit_enabled(bundle_id) {
+                manager.disable_auto_quit(bundle_id);
+            } else {
+                manager.enable_auto_quit(bundle_id, DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES);
+            }
+            let _ = manager.save();
+            cx.notify();
+        }
+    }
+
+    /// Sets the auto quit timeout for the currently selected app in settings
+    fn set_auto_quit_timeout(&mut self, minutes: u32, cx: &mut ViewContext<Self>) {
+        if let Some((ref bundle_id, _)) = self.auto_quit_settings_app {
+            let mut manager = self.auto_quit_manager.write();
+            manager.enable_auto_quit(bundle_id, minutes);
+            let _ = manager.save();
+            cx.notify();
+        }
+    }
+
+    /// Activates the currently selected option in auto-quit settings
+    fn activate_auto_quit_settings_option(&mut self, cx: &mut ViewContext<Self>) {
+        let timeout_options = [1, 2, 3, 5, 10, 15, 30];
+        match self.auto_quit_settings_index {
+            0 => {
+                // Toggle auto quit
+                self.toggle_auto_quit_in_settings(cx);
+            }
+            idx if (1..=7).contains(&idx) => {
+                // Set timeout (index 1 = 1 min, index 2 = 2 min, etc.)
+                let minutes = timeout_options[idx - 1];
+                self.set_auto_quit_timeout(minutes, cx);
+            }
+            _ => {}
+        }
+    }
+
+    /// Renders the auto quit settings panel
+    fn render_auto_quit_settings(
+        &self,
+        bundle_id: &str,
+        app_name: &str,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
+        let colors = get_launcher_colors(cx);
+        let manager = self.auto_quit_manager.read();
+        let is_enabled = manager.is_auto_quit_enabled(bundle_id);
+        let current_timeout = manager.get_timeout_minutes(bundle_id).unwrap_or(DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES);
+        drop(manager);
+
+        let timeout_options = [1, 2, 3, 5, 10, 15, 30];
+        let selected_index = self.auto_quit_settings_index;
+
+        div()
+            .id("auto-quit-settings-overlay")
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_end()
+            .justify_end()
+            .pb_2()
+            .pr_2()
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, cx| {
+                this.close_auto_quit_settings(cx);
+            }))
+            .child(
+                div()
+                    .w(px(280.0))
+                    .bg(colors.surface_elevated)
+                    .rounded(px(8.0))
+                    .border_1()
+                    .border_color(colors.border)
+                    .shadow_lg()
+                    .overflow_hidden()
+                    .on_mouse_down(MouseButton::Left, |_, cx| cx.stop_propagation())
+                    // Header
+                    .child(
+                        div()
+                            .px_4()
+                            .py_3()
+                            .border_b_1()
+                            .border_color(colors.border)
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(colors.text)
+                                    .child("Auto Quit Settings"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(colors.text_muted)
+                                    .truncate()
+                                    .child(app_name.to_string()),
+                            ),
+                    )
+                    // Enable toggle
+                    .child({
+                        let surface = colors.surface;
+                        let surface_hover = colors.surface_hover;
+                        let text = colors.text;
+                        let accent = colors.accent;
+                        let is_toggle_selected = selected_index == 0;
+                        div()
+                            .id("auto-quit-toggle")
+                            .px_4()
+                            .py_3()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .cursor_pointer()
+                            .bg(if is_toggle_selected { surface_hover } else { gpui::transparent_black() })
+                            .hover(move |el| el.bg(surface_hover))
+                            .on_click(cx.listener(|this, _, cx| {
+                                this.toggle_auto_quit_in_settings(cx);
+                            }))
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .text_color(text)
+                                    .child("Enable Auto Quit"),
+                            )
+                            .child(
+                                div()
+                                    .w(px(36.0))
+                                    .h(px(20.0))
+                                    .rounded(px(10.0))
+                                    .bg(if is_enabled { accent } else { surface })
+                                    .relative()
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .top(px(2.0))
+                                            .left(if is_enabled { px(18.0) } else { px(2.0) })
+                                            .size(px(16.0))
+                                            .rounded_full()
+                                            .bg(text),
+                                    ),
+                            )
+                    })
+                    // Timeout selector (only when enabled)
+                    .when(is_enabled, |el| {
+                        let text_muted = colors.text_muted;
+                        let text = colors.text;
+                        let surface = colors.surface;
+                        let surface_hover = colors.surface_hover;
+                        let accent = colors.accent;
+                        el.child(
+                            div()
+                                .px_4()
+                                .py_2()
+                                .border_t_1()
+                                .border_color(colors.border)
+                                .flex()
+                                .flex_col()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .text_color(text_muted)
+                                        .child("Quit after idle for:"),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_wrap()
+                                        .gap(px(6.0))
+                                        .children(timeout_options.iter().enumerate().map(move |(idx, &minutes)| {
+                                            let is_current = minutes == current_timeout;
+                                            let is_kb_selected = selected_index == idx + 1; // +1 because 0 is toggle
+                                            div()
+                                                .id(SharedString::from(format!("timeout-{}", minutes)))
+                                                .px(px(10.0))
+                                                .py(px(4.0))
+                                                .rounded(px(4.0))
+                                                .bg(if is_current { accent } else if is_kb_selected { surface_hover } else { surface })
+                                                .border_1()
+                                                .border_color(if is_kb_selected { accent } else { gpui::transparent_black() })
+                                                .hover(move |el| el.bg(if is_current { accent } else { surface_hover }))
+                                                .cursor_pointer()
+                                                .on_click(cx.listener(move |this, _, cx| {
+                                                    this.set_auto_quit_timeout(minutes, cx);
+                                                }))
+                                                .child(
+                                                    div()
+                                                        .text_size(px(11.0))
+                                                        .text_color(text)
+                                                        .child(format!("{} min", minutes)),
+                                                )
+                                        })),
+                                ),
+                        )
+                    })
+                    // Footer hint
+                    .child(
+                        div()
+                            .px_4()
+                            .py_2()
+                            .border_t_1()
+                            .border_color(colors.border)
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(colors.text_placeholder)
+                                    .child("Auto Quit stops idle apps to save resources"),
+                            ),
+                    ),
+            )
+    }
+
+    // ========================================================================
+    // Task 7.7: Manage Auto Quits Command
+    // ========================================================================
+
+    /// Enters the "Manage Auto Quits" mode
+    pub fn enter_manage_auto_quits_mode(&mut self, cx: &mut ViewContext<Self>) {
+        self.manage_auto_quits_mode = true;
+        self.manage_auto_quits_index = 0;
+        self.query = SharedString::default();
+        self.cursor_position = 0;
+        self.selection_anchor = None;
+        cx.notify();
+    }
+
+    /// Exits the "Manage Auto Quits" mode
+    fn exit_manage_auto_quits_mode(&mut self, cx: &mut ViewContext<Self>) {
+        self.manage_auto_quits_mode = false;
+        self.manage_auto_quits_index = 0;
+        self.load_suggestions(cx);
+        cx.notify();
+    }
+
+    /// Disables auto quit for the app at the given index
+    fn disable_auto_quit_at_index(&mut self, index: usize, cx: &mut ViewContext<Self>) {
+        let enabled_apps: Vec<_> = {
+            let manager = self.auto_quit_manager.read();
+            manager.get_enabled_apps()
+                .iter()
+                .map(|(id, cfg)| (id.to_string(), cfg.timeout_minutes))
+                .collect()
+        };
+
+        if let Some((bundle_id, _)) = enabled_apps.get(index) {
+            let mut manager = self.auto_quit_manager.write();
+            manager.disable_auto_quit(bundle_id);
+            let _ = manager.save();
+            drop(manager);
+            self.show_toast("Auto Quit disabled".to_string(), cx);
+            cx.notify();
+        }
+    }
+
+    /// Renders the "Manage Auto Quits" view
+    fn render_manage_auto_quits(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+        let colors = get_launcher_colors(cx);
+        let manager = self.auto_quit_manager.read();
+        let enabled_apps: Vec<_> = manager.get_enabled_apps()
+            .iter()
+            .map(|(id, cfg)| (id.to_string(), cfg.timeout_minutes))
+            .collect();
+        drop(manager);
+
+        let selected = self.manage_auto_quits_index;
+        let is_empty = enabled_apps.is_empty();
+
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            // Header
+            .child(
+                div()
+                    .px_4()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(colors.border)
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(colors.text_muted)
+                            .child("AUTO QUIT APPS"),
+                    ),
+            )
+            // App list or empty state
+            .when(is_empty, |el| {
+                el.child(
+                    div()
+                        .py_6()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_size(px(14.0))
+                                .text_color(colors.text_muted)
+                                .child("No apps with Auto Quit enabled"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(colors.text_placeholder)
+                                .child("Use ⌘K on any app to enable Auto Quit"),
+                        ),
+                )
+            })
+            .when(!is_empty, |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .children(enabled_apps.iter().enumerate().map(|(idx, (bundle_id, timeout))| {
+                            let is_selected = idx == selected;
+                            let app_name = photoncast_apps::get_suggested_app_name(bundle_id)
+                                .map(String::from)
+                                .unwrap_or_else(|| {
+                                    // Try to get last component of bundle ID
+                                    bundle_id.split('.').next_back().unwrap_or(bundle_id).to_string()
+                                });
+
+                            let text = colors.text;
+                            let text_muted = colors.text_muted;
+                            let text_placeholder = colors.text_placeholder;
+                            let surface = colors.surface;
+                            let surface_hover = colors.surface_hover;
+                            let selection = colors.selection;
+                            let error = colors.error;
+
+                            div()
+                                .id(SharedString::from(format!("auto-quit-app-{}", idx)))
+                                .h(px(48.0))
+                                .px_4()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .bg(if is_selected { selection } else { gpui::transparent_black() })
+                                .hover(move |el| el.bg(surface_hover))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(2.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(13.0))
+                                                .text_color(text)
+                                                .child(app_name),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(11.0))
+                                                .text_color(text_muted)
+                                                .child(format!("Quit after {} min idle", timeout)),
+                                        ),
+                                )
+                                // Disable button
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("disable-auto-quit-{}", idx)))
+                                        .px(px(8.0))
+                                        .py(px(4.0))
+                                        .rounded(px(4.0))
+                                        .bg(surface)
+                                        .hover(move |el| el.bg(error.opacity(0.2)))
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(move |this, _, cx| {
+                                            this.disable_auto_quit_at_index(idx, cx);
+                                        }))
+                                        .child(
+                                            div()
+                                                .text_size(px(11.0))
+                                                .text_color(text_placeholder)
+                                                .child("Disable"),
+                                        ),
+                                )
+                        })),
+                )
+            })
+            // Footer with hints
+            .child(
+                div()
+                    .px_4()
+                    .py_2()
+                    .border_t_1()
+                    .border_color(colors.border)
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(colors.text_placeholder)
+                            .child("↑↓ Navigate  esc Back"),
+                    ),
+            )
+    }
+
+    // ========================================================================
+    // Task 7.8: Toast Notifications
+    // ========================================================================
+
+    /// Shows a toast notification message
+    pub fn show_toast(&mut self, message: String, cx: &mut ViewContext<Self>) {
+        self.toast_message = Some(message);
+        self.toast_shown_at = Some(Instant::now());
+
+        // Auto-dismiss after 2 seconds
+        cx.spawn(|this, mut cx| async move {
+            gpui::Timer::after(Duration::from_millis(2000)).await;
+            let _ = this.update(&mut cx, |this, cx| {
+                this.toast_message = None;
+                this.toast_shown_at = None;
+                cx.notify();
+            });
+        })
+        .detach();
+
+        cx.notify();
+    }
+
+    /// Renders the toast notification
+    fn render_toast(&self, message: &str, cx: &ViewContext<Self>) -> impl IntoElement {
+        let colors = get_launcher_colors(cx);
+
+        // Calculate opacity based on time (fade in/out)
+        let opacity = if let Some(shown_at) = self.toast_shown_at {
+            let elapsed = shown_at.elapsed().as_millis() as f32;
+            if elapsed < 150.0 {
+                // Fade in
+                elapsed / 150.0
+            } else if elapsed > 1800.0 {
+                // Fade out (after 1.8s, fade out over 200ms)
+                1.0 - ((elapsed - 1800.0) / 200.0).min(1.0)
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
+
+        div()
+            .id("toast-notification")
+            .absolute()
+            .bottom(px(12.0))
+            .left_0()
+            .right_0()
+            .flex()
+            .justify_center()
+            .opacity(opacity)
+            .child(
+                div()
+                    .px_4()
+                    .py_2()
+                    .rounded(px(8.0))
+                    .bg(colors.surface_elevated)
+                    .border_1()
+                    .border_color(colors.border)
+                    .shadow_md()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(16.0))
+                            .child("✓"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .text_color(colors.text)
+                            .child(message.to_string()),
+                    ),
+            )
+    }
 }
 
 impl Render for LauncherWindow {
@@ -4851,6 +6291,13 @@ impl Render for LauncherWindow {
         let empty_state = self.render_empty_state(&colors);
         let no_results = self.render_no_results(&colors);
         let divider_color = colors.border;
+
+        // Check if any overlay is active (need minimum height for overlays)
+        let has_overlay = self.show_actions_menu 
+            || self.auto_quit_settings_app.is_some()
+            || self.uninstall_preview.is_some()
+            || self.manage_auto_quits_mode
+            || pending_dialog.is_some();
 
         // Main container with rounded corners and shadow
         div()
@@ -4871,6 +6318,14 @@ impl Render for LauncherWindow {
             .on_action(cx.listener(Self::copy_path))
             .on_action(cx.listener(Self::copy_file))
             .on_action(cx.listener(Self::show_actions_menu))
+            // Task 7.4: App management action handlers
+            .on_action(cx.listener(Self::show_in_finder))
+            .on_action(cx.listener(Self::copy_bundle_id))
+            .on_action(cx.listener(Self::quit_app))
+            .on_action(cx.listener(Self::force_quit_app))
+            .on_action(cx.listener(Self::hide_app))
+            .on_action(cx.listener(Self::uninstall_app))
+            .on_action(cx.listener(Self::toggle_auto_quit_for_selected))
             .on_action(cx.listener(|this, _: &QuickSelect1, cx| this.quick_select(0, cx)))
             .on_action(cx.listener(|this, _: &QuickSelect2, cx| this.quick_select(1, cx)))
             .on_action(cx.listener(|this, _: &QuickSelect3, cx| this.quick_select(2, cx)))
@@ -4892,6 +6347,8 @@ impl Render for LauncherWindow {
             .shadow_lg()
             .border_1()
             .border_color(colors.border)
+            // Keep minimum height when overlays are visible to prevent clipping
+            .when(has_overlay, |el| el.min_h(px(400.0)))
             .overflow_hidden()
             // Search bar
             .child(self.render_search_bar(cx))
@@ -4930,6 +6387,22 @@ impl Render for LauncherWindow {
             // Confirmation dialog overlay
             .when_some(pending_dialog, |el, dialog| {
                 el.child(self.render_confirmation_dialog(&dialog, cx))
+            })
+            // Task 7.5: Uninstall preview overlay
+            .when_some(self.uninstall_preview.clone(), |el, preview| {
+                el.child(self.render_uninstall_preview(&preview, cx))
+            })
+            // Task 7.6: Auto quit settings overlay
+            .when_some(self.auto_quit_settings_app.clone(), |el, (bundle_id, app_name)| {
+                el.child(self.render_auto_quit_settings(&bundle_id, &app_name, cx))
+            })
+            // Task 7.7: Manage auto quits view
+            .when(self.manage_auto_quits_mode, |el| {
+                el.child(self.render_manage_auto_quits(cx))
+            })
+            // Task 7.8: Toast notification
+            .when_some(self.toast_message.clone(), |el, message| {
+                el.child(self.render_toast(&message, cx))
             })
     }
 }

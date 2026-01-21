@@ -291,10 +291,19 @@ impl PhotonCastApp {
     pub fn remove_app_by_path(&self, path: &std::path::Path) -> bool {
         let mut apps = self.app_index.write();
         let initial_len = apps.len();
-        apps.retain(|app| app.path != path);
+        // Normalize paths for comparison (strip trailing slashes, compare as strings)
+        let path_str = path.to_string_lossy();
+        let path_normalized = path_str.trim_end_matches('/');
+        apps.retain(|app| {
+            let app_path_str = app.path.to_string_lossy();
+            let app_path_normalized = app_path_str.trim_end_matches('/');
+            app_path_normalized != path_normalized
+        });
         let removed = apps.len() < initial_len;
         if removed {
             debug!(path = %path.display(), "Removed app from index");
+        } else {
+            debug!(path = %path.display(), "App not found in index for removal");
         }
         removed
     }

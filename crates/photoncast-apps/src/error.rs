@@ -31,4 +31,8 @@ pub enum AppError {
     /// Permission denied.
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+
+    /// Configuration error.
+    #[error("config error: {0}")]
+    ConfigError(String),
 }

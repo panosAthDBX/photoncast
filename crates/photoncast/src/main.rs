@@ -89,13 +89,20 @@ actions!(
         ShowActionsMenu,
         // Clipboard History
         OpenClipboardHistory,
+        // Task 7.4: App Management actions
+        ShowInFinder,
+        CopyBundleId,
+        QuitApp,
+        ForceQuitApp,
+        HideApp,
+        UninstallApp,
+        ToggleAutoQuit,
     ]
 );
 
-/// Window dimensions constants
-const LAUNCHER_WIDTH: Pixels = px(680.0);
-const LAUNCHER_MIN_HEIGHT: Pixels = px(72.0);
-const LAUNCHER_MAX_HEIGHT: Pixels = px(500.0);
+/// Window dimensions constants (matching Raycast sizing)
+const LAUNCHER_WIDTH: Pixels = px(750.0);
+const LAUNCHER_HEIGHT: Pixels = px(475.0);
 const LAUNCHER_BORDER_RADIUS: Pixels = px(12.0);
 
 /// Position from top of screen (20%)
@@ -798,7 +805,7 @@ fn open_launcher_window(
             display_id: cx.displays().first().map(|d| d.id()),
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast".to_string()),
-            window_min_size: Some(size(LAUNCHER_WIDTH, LAUNCHER_MIN_HEIGHT)),
+            window_min_size: Some(size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT)),
             window_decorations: Some(WindowDecorations::Client),
         },
         |cx| {
@@ -1348,7 +1355,7 @@ fn calculate_window_bounds(cx: &AppContext) -> Bounds<Pixels> {
 
     // Calculate centered-top position
     let window_width = LAUNCHER_WIDTH;
-    let window_height = LAUNCHER_MAX_HEIGHT;
+    let window_height = LAUNCHER_HEIGHT;
 
     let x = display_bounds.origin.x + (display_bounds.size.width - window_width) / 2.0;
     let y = display_bounds.origin.y + display_bounds.size.height * LAUNCHER_TOP_OFFSET_PERCENT;
@@ -1393,6 +1400,14 @@ fn register_key_bindings(cx: &mut AppContext) {
         KeyBinding::new("cmd-shift-c", CopyFile, Some("LauncherWindow")),
         // Actions menu
         KeyBinding::new("cmd-k", ShowActionsMenu, Some("LauncherWindow")),
+        // Task 7.4: App Management keyboard shortcuts
+        KeyBinding::new("cmd-shift-f", ShowInFinder, Some("LauncherWindow")),
+        KeyBinding::new("cmd-shift-b", CopyBundleId, Some("LauncherWindow")),
+        KeyBinding::new("cmd-q", QuitApp, Some("LauncherWindow")),
+        KeyBinding::new("cmd-alt-q", ForceQuitApp, Some("LauncherWindow")),
+        KeyBinding::new("cmd-h", HideApp, Some("LauncherWindow")),
+        KeyBinding::new("cmd-backspace", UninstallApp, Some("LauncherWindow")),
+        KeyBinding::new("cmd-shift-a", ToggleAutoQuit, Some("LauncherWindow")),
         // Clipboard history (global - no context, works from anywhere)
         KeyBinding::new("cmd-shift-v", OpenClipboardHistory, None),
         // Clipboard history actions

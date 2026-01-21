@@ -523,11 +523,11 @@ fn resolve_placeholder_value(
         },
 
         PlaceholderKind::Clipboard => clipboard
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .ok_or(PlaceholderError::ClipboardRequired),
 
         PlaceholderKind::Selection => selection
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .ok_or(PlaceholderError::SelectionRequired),
 
         PlaceholderKind::Date => Ok(format_date(
@@ -595,13 +595,13 @@ fn apply_offset(
 
     // Apply time-based offsets using Duration
     if offset.minutes != 0 {
-        result = result + Duration::minutes(i64::from(offset.minutes));
+        result += Duration::minutes(i64::from(offset.minutes));
     }
     if offset.hours != 0 {
-        result = result + Duration::hours(i64::from(offset.hours));
+        result += Duration::hours(i64::from(offset.hours));
     }
     if offset.days != 0 {
-        result = result + Duration::days(i64::from(offset.days));
+        result += Duration::days(i64::from(offset.days));
     }
 
     // Apply month offset (more complex due to varying month lengths)
@@ -681,7 +681,7 @@ pub fn substitute_argument(link: &str, argument: &str) -> String {
     // Use regex to replace {argument}, {query}, and {argument name="..."} patterns
     // {query} is supported for backward compatibility
     static ARG_RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r#"\{(?:argument|query)(?:\s+[^}]*)?\}"#).expect("Invalid argument regex")
+        Regex::new(r"\{(?:argument|query)(?:\s+[^}]*)?\}").expect("Invalid argument regex")
     });
 
     let encoded = utf8_percent_encode(argument, NON_ALPHANUMERIC).to_string();

@@ -352,7 +352,7 @@ impl QuicklinksManageView {
                 // Filter by search query if present
                 if !query.is_empty() {
                     let matches_name = b.name.to_lowercase().contains(&query);
-                    let matches_alias = b.alias.map_or(false, |a| a.to_lowercase().contains(&query));
+                    let matches_alias = b.alias.is_some_and(|a| a.to_lowercase().contains(&query));
                     let matches_link = b.link.to_lowercase().contains(&query);
                     let matches_category = b.category.to_lowercase().contains(&query);
                     return matches_name || matches_alias || matches_link || matches_category;
@@ -699,9 +699,8 @@ impl QuicklinksManageView {
                         && !event.keystroke.modifiers.control
                         && !event.keystroke.modifiers.alt
                     {
-                        let char_to_add = event.keystroke.ime_key.as_ref()
-                            .map(|s| s.as_str())
-                            .or_else(|| {
+                        let char_to_add = event.keystroke.ime_key.as_deref()
+                            .or({
                                 if event.keystroke.key.len() == 1 {
                                     Some(event.keystroke.key.as_str())
                                 } else {
@@ -917,7 +916,7 @@ impl QuicklinksManageView {
                 colors.accent,
                 colors.text,
                 cx,
-                |this, cx| this.create_new(cx),
+                QuicklinksManageView::create_new,
             ))
             // Browse Library button
             .child(self.render_toolbar_button(
@@ -935,7 +934,7 @@ impl QuicklinksManageView {
                 },
                 colors.text,
                 cx,
-                |this, cx| this.toggle_library(cx),
+                QuicklinksManageView::toggle_library,
             ))
             // Import button
             .child(self.render_toolbar_button(
@@ -1154,7 +1153,7 @@ impl QuicklinksManageView {
                             .gap(px(4.0))
                             .flex_shrink_0()
                             .when(!is_selected && !is_deleting, |el| {
-                                el.invisible().group_hover("quicklink-row", |s| s.visible())
+                                el.invisible().group_hover("quicklink-row", gpui::Styled::visible)
                             })
                             .when(is_deleting, |el| {
                                 el.child(
@@ -1753,7 +1752,7 @@ impl QuicklinksManageView {
                         .border_1()
                         .border_color(if is_focused { accent } else { border })
                         .bg(colors.surface)
-                        .when(is_focused, |el| el.border_2())
+                        .when(is_focused, gpui::Styled::border_2)
                         .cursor_text()
                         .on_click(cx.listener(move |this, _, cx| {
                             if let Some(ref mut editing) = this.editing {

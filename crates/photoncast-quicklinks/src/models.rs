@@ -53,6 +53,7 @@ impl From<i64> for QuickLinkId {
 /// Icon type for quick links.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
+#[derive(Default)]
 pub enum QuickLinkIcon {
     /// Cached favicon from URL.
     Favicon(PathBuf),
@@ -63,14 +64,10 @@ pub enum QuickLinkIcon {
     /// User-provided custom image.
     CustomImage(PathBuf),
     /// Default globe icon.
+    #[default]
     Default,
 }
 
-impl Default for QuickLinkIcon {
-    fn default() -> Self {
-        Self::Default
-    }
-}
 
 impl QuickLinkIcon {
     /// Parses icon from a string representation.
@@ -101,7 +98,7 @@ impl QuickLinkIcon {
         }
 
         // Assume it's an emoji if it's a short string with non-ASCII
-        if s.chars().count() <= 4 && s.chars().any(|c| !c.is_ascii()) {
+        if s.chars().count() <= 4 && !s.is_ascii() {
             return Self::Emoji(s.to_string());
         }
 

@@ -185,10 +185,83 @@ fn find_app_icon(app_path: &Path) -> Option<PathBuf> {
 }
 
 /// Checks if an application is a system app that should be protected from uninstallation.
+///
+/// Protects apps located in:
+/// - `/System/Applications/*`
+/// - `/System/Library/*`
 #[must_use]
 pub fn is_system_app(app_path: &Path) -> bool {
     // Protect apps in /System/Applications or /System/Library
     app_path.starts_with("/System/Applications") || app_path.starts_with("/System/Library")
+}
+
+/// Checks if a bundle ID belongs to a system app that should be protected.
+///
+/// Protects apps with bundle IDs starting with `com.apple.`
+#[must_use]
+pub fn is_system_app_by_bundle_id(bundle_id: &str) -> bool {
+    bundle_id.starts_with("com.apple.")
+}
+
+/// Checks if an application should be protected from uninstallation.
+///
+/// This is a comprehensive check that combines path-based and bundle ID-based protection.
+///
+/// # Arguments
+///
+/// * `app_path` - Path to the application bundle
+/// * `bundle_id` - Optional bundle identifier
+///
+/// # Returns
+///
+/// `true` if the app is a system app that should be protected.
+#[must_use]
+pub fn is_protected_app(app_path: &Path, bundle_id: Option<&str>) -> bool {
+    // Check path-based protection
+    if is_system_app(app_path) {
+        return true;
+    }
+
+    // Check bundle ID-based protection
+    if let Some(id) = bundle_id {
+        if is_system_app_by_bundle_id(id) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Formats a byte count as a human-readable string.
+///
+/// Returns appropriate format like "863 MB", "1.2 GB", etc.
+///
+/// # Examples
+///
+/// ```
+/// use photoncast_apps::format_size;
+///
+/// assert_eq!(format_size(500), "500 bytes");
+/// assert_eq!(format_size(1024), "1.00 KB");
+/// assert_eq!(format_size(1_048_576), "1.00 MB");
+/// assert_eq!(format_size(1_073_741_824), "1.00 GB");
+/// ```
+#[must_use]
+#[allow(clippy::cast_precision_loss)]
+pub fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
 }
 
 #[cfg(test)]
@@ -208,7 +281,60 @@ mod tests {
     }
 
     #[test]
-    fn test_format_bytes() {
+    fn test_is_system_app_by_bundle_id() {
+        // Apple system apps should be protected
+        assert!(is_system_app_by_bundle_id("com.apple.finder"));
+        assert!(is_system_app_by_bundle_id("com.apple.Safari"));
+        assert!(is_system_app_by_bundle_id("com.apple.mail"));
+        assert!(is_system_app_by_bundle_id("com.apple.Music"));
+
+        // Third-party apps should not be protected
+        assert!(!is_system_app_by_bundle_id("com.spotify.client"));
+        assert!(!is_system_app_by_bundle_id("com.tinyspeck.slackmacgap"));
+        assert!(!is_system_app_by_bundle_id("org.mozilla.firefox"));
+    }
+
+    #[test]
+    fn test_is_protected_app() {
+        // System path should be protected
+        assert!(is_protected_app(
+            Path::new("/System/Applications/Safari.app"),
+            None
+        ));
+
+        // Apple bundle ID should be protected even if path is not system
+        assert!(is_protected_app(
+            Path::new("/Applications/Mail.app"),
+            Some("com.apple.mail")
+        ));
+
+        // Third-party app in /Applications should not be protected
+        assert!(!is_protected_app(
+            Path::new("/Applications/Slack.app"),
+            Some("com.tinyspeck.slackmacgap")
+        ));
+
+        // App without bundle ID in user folder should not be protected
+        assert!(!is_protected_app(
+            Path::new("/Users/test/Applications/MyApp.app"),
+            None
+        ));
+    }
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(0), "0 bytes");
+        assert_eq!(format_size(500), "500 bytes");
+        assert_eq!(format_size(1024), "1.00 KB");
+        assert_eq!(format_size(1536), "1.50 KB");
+        assert_eq!(format_size(1_048_576), "1.00 MB");
+        assert_eq!(format_size(1_572_864), "1.50 MB");
+        assert_eq!(format_size(1_073_741_824), "1.00 GB");
+        assert_eq!(format_size(1_610_612_736), "1.50 GB");
+    }
+
+    #[test]
+    fn test_format_bytes_via_uninstall_preview() {
         use crate::models::UninstallPreview;
 
         assert_eq!(UninstallPreview::format_bytes(500), "500 bytes");

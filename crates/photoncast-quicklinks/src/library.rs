@@ -157,7 +157,7 @@ pub fn get_categories() -> Vec<&'static str> {
         .iter()
         .map(|link| link.category)
         .collect();
-    categories.sort();
+    categories.sort_unstable();
     categories.dedup();
     categories
 }

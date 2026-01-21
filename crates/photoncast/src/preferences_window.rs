@@ -781,7 +781,7 @@ impl PreferencesWindow {
             .iter()
             .map(|app| {
                 let app_clone = app.clone();
-                let display_name = app.split('.').last().unwrap_or(app);
+                let display_name = app.split('.').next_back().unwrap_or(app);
                 div()
                     .flex()
                     .items_center()

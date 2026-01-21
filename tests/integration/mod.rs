@@ -1,6 +1,7 @@
 //! Integration test modules.
 
 mod animation_test;
+mod app_management_test;
 mod e2e_test;
 mod gpui_test;
 mod hotkey_test;

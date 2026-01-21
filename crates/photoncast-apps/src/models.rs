@@ -1,5 +1,6 @@
 //! Data models for app management.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -20,6 +21,43 @@ pub struct Application {
     pub icon_path: Option<PathBuf>,
 }
 
+/// Information about a currently running application.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningApplication {
+    /// Process ID of the running application.
+    pub pid: u32,
+    /// Bundle identifier of the application.
+    pub bundle_id: String,
+    /// Whether the application is responding to events.
+    pub is_responding: bool,
+    /// Whether the application is hidden.
+    pub is_hidden: bool,
+    /// When the application was launched.
+    pub launch_time: DateTime<Utc>,
+}
+
+/// Auto quit settings for an application.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
+pub struct AutoQuitSettings {
+    /// Whether auto quit is enabled for this application.
+    pub enabled: bool,
+    /// Idle time in seconds before auto quit triggers.
+    pub idle_seconds: Option<u64>,
+}
+
+
+/// Combined application information with its running state and settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationWithState {
+    /// The application information.
+    pub app: Application,
+    /// Running state, if the application is currently running.
+    pub running_state: Option<RunningApplication>,
+    /// Auto quit settings for this application.
+    pub auto_quit_settings: AutoQuitSettings,
+}
+
 /// Category of related files for an application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RelatedFileCategory {
@@ -35,6 +73,14 @@ pub enum RelatedFileCategory {
     SavedState,
     /// ~/Library/Containers/<bundle-id>
     Containers,
+    /// ~/Library/Cookies/<bundle-id>.binarycookies
+    Cookies,
+    /// ~/Library/WebKit/<bundle-id>
+    WebKit,
+    /// ~/Library/HTTPStorages/<bundle-id>
+    HTTPStorages,
+    /// ~/Library/Group Containers/<group-id>
+    GroupContainers,
 }
 
 impl RelatedFileCategory {
@@ -48,6 +94,10 @@ impl RelatedFileCategory {
             Self::Logs => "Logs",
             Self::SavedState => "Saved Application State",
             Self::Containers => "Containers",
+            Self::Cookies => "Cookies",
+            Self::WebKit => "WebKit Data",
+            Self::HTTPStorages => "HTTP Storages",
+            Self::GroupContainers => "Group Containers",
         }
     }
 }
@@ -61,6 +111,8 @@ pub struct RelatedFile {
     pub size_bytes: u64,
     /// Category of this related file.
     pub category: RelatedFileCategory,
+    /// Whether this file is selected for deletion (defaults to true).
+    pub selected: bool,
 }
 
 /// Preview of what will be uninstalled.
