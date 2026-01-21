@@ -2445,8 +2445,37 @@ impl LauncherWindow {
                     // Don't hide - calendar will be shown in this window
                 },
                 SearchAction::ExecuteWindowCommand { command_id } => {
+                    // Load user config for window management
+                    let wm_config = photoncast_core::app::config_file::load_config()
+                        .map(|c| c.window_management)
+                        .unwrap_or_default();
+                    
+                    // Check if window management is enabled
+                    if !wm_config.enabled {
+                        tracing::debug!("Window management is disabled in preferences");
+                        self.hide(cx);
+                        return;
+                    }
+                    
+                    // Create WindowConfig from user preferences
+                    let window_config = photoncast_window::WindowConfig {
+                        enabled: wm_config.enabled,
+                        animation_enabled: wm_config.animation_enabled,
+                        animation_duration_ms: 200,
+                        cycling_enabled: wm_config.cycling_enabled,
+                        window_gap: wm_config.window_gap,
+                        respect_menu_bar: true,
+                        respect_dock: true,
+                        cycle_timeout_ms: 500,
+                        almost_maximize_margin: wm_config.almost_maximize_margin,
+                    };
+                    
                     let window_command =
-                        photoncast_window::commands::WindowCommand::with_default_config();
+                        photoncast_window::commands::WindowCommand::new(
+                            std::rc::Rc::new(parking_lot::RwLock::new(
+                                photoncast_window::WindowManager::new(window_config)
+                            ))
+                        );
                     let result = match command_id.as_str() {
                         "window_move_next_display" => window_command
                             .move_to_display(photoncast_window::DisplayDirection::Next),
