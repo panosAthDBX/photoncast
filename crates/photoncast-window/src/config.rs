@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Window management configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct WindowConfig {
     /// Whether window management is enabled.
     pub enabled: bool,

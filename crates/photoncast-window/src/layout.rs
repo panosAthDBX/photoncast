@@ -689,4 +689,162 @@ mod tests {
         assert!((frame.origin.y - 24.0).abs() < f64::EPSILON);
         assert!((frame.size.height - (1080.0 - 24.0)).abs() < f64::EPSILON);
     }
+
+    #[test]
+    fn test_almost_maximize_layout() {
+        let calc = LayoutCalculator::with_config(0, true, true, 20);
+        let screen = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 0.0, y: 0.0 },
+            &core_graphics::geometry::CGSize {
+                width: 1920.0,
+                height: 1080.0,
+            },
+        );
+
+        let frame = calc.calculate_frame(WindowLayout::AlmostMaximize, screen, CycleState::Initial);
+        // Should have 20px margin on all sides (plus menu bar adjustment)
+        assert!((frame.origin.x - 20.0).abs() < f64::EPSILON);
+        assert!((frame.size.width - (1920.0 - 40.0)).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_center_half_layout() {
+        let calc = LayoutCalculator::new();
+        let screen = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 0.0, y: 0.0 },
+            &core_graphics::geometry::CGSize {
+                width: 1920.0,
+                height: 1080.0,
+            },
+        );
+
+        let frame = calc.calculate_frame(WindowLayout::CenterHalf, screen, CycleState::Initial);
+        // Should be 50% width, centered
+        assert!((frame.size.width - 960.0).abs() < 0.1);
+        // Origin should be at 25% of screen width (accounting for menu bar adjustment)
+        assert!((frame.origin.x - 480.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_center_two_thirds_layout() {
+        let calc = LayoutCalculator::new();
+        let screen = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 0.0, y: 0.0 },
+            &core_graphics::geometry::CGSize {
+                width: 1920.0,
+                height: 1080.0,
+            },
+        );
+
+        let frame = calc.calculate_frame(WindowLayout::CenterTwoThirds, screen, CycleState::Initial);
+        // Should be 66% width, centered
+        assert!((frame.size.width - 1280.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_reasonable_size_layout() {
+        let calc = LayoutCalculator::new();
+        let screen = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 0.0, y: 0.0 },
+            &core_graphics::geometry::CGSize {
+                width: 1920.0,
+                height: 1080.0,
+            },
+        );
+
+        let frame = calc.calculate_frame(WindowLayout::ReasonableSize, screen, CycleState::Initial);
+        // Should be 75% width, 80% height (accounting for menu bar)
+        assert!((frame.size.width - 1440.0).abs() < 0.1); // 1920 * 0.75
+    }
+
+    #[test]
+    fn test_resize_frame_shrink() {
+        let calc = LayoutCalculator::new();
+        let screen = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 0.0, y: 0.0 },
+            &core_graphics::geometry::CGSize {
+                width: 1920.0,
+                height: 1080.0,
+            },
+        );
+        let current = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 100.0, y: 100.0 },
+            &core_graphics::geometry::CGSize {
+                width: 800.0,
+                height: 600.0,
+            },
+        );
+
+        let frame = calc.resize_frame(current, screen, 0.1, false);
+        // Should shrink by 10%
+        assert!((frame.size.width - 720.0).abs() < 0.1);
+        assert!((frame.size.height - 540.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_resize_frame_grow() {
+        let calc = LayoutCalculator::new();
+        let screen = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 0.0, y: 0.0 },
+            &core_graphics::geometry::CGSize {
+                width: 1920.0,
+                height: 1080.0,
+            },
+        );
+        let current = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 100.0, y: 100.0 },
+            &core_graphics::geometry::CGSize {
+                width: 800.0,
+                height: 600.0,
+            },
+        );
+
+        let frame = calc.resize_frame(current, screen, 0.1, true);
+        // Should grow by 10%
+        assert!((frame.size.width - 880.0).abs() < 0.1);
+        assert!((frame.size.height - 660.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_resize_frame_respects_min() {
+        let calc = LayoutCalculator::new();
+        let screen = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 0.0, y: 0.0 },
+            &core_graphics::geometry::CGSize {
+                width: 1920.0,
+                height: 1080.0,
+            },
+        );
+        let current = CGRect::new(
+            &core_graphics::geometry::CGPoint { x: 100.0, y: 100.0 },
+            &core_graphics::geometry::CGSize {
+                width: 410.0,
+                height: 310.0,
+            },
+        );
+
+        // Shrink by 10% - should hit minimum
+        let frame = calc.resize_frame(current, screen, 0.1, false);
+        assert!(frame.size.width >= 400.0);
+        assert!(frame.size.height >= 300.0);
+    }
+
+    #[test]
+    fn test_new_layout_ids() {
+        assert_eq!(WindowLayout::AlmostMaximize.id(), "window_almost_maximize");
+        assert_eq!(WindowLayout::CenterHalf.id(), "window_center_half");
+        assert_eq!(WindowLayout::CenterTwoThirds.id(), "window_center_two_thirds");
+        assert_eq!(WindowLayout::ReasonableSize.id(), "window_reasonable_size");
+        assert_eq!(WindowLayout::MakeSmaller.id(), "window_make_smaller");
+        assert_eq!(WindowLayout::MakeLarger.id(), "window_make_larger");
+        assert_eq!(WindowLayout::ToggleFullscreen.id(), "window_toggle_fullscreen");
+    }
+
+    #[test]
+    fn test_new_layout_from_id() {
+        assert_eq!(WindowLayout::from_id("window_almost_maximize"), Some(WindowLayout::AlmostMaximize));
+        assert_eq!(WindowLayout::from_id("window_center_half"), Some(WindowLayout::CenterHalf));
+        assert_eq!(WindowLayout::from_id("window_toggle_fullscreen"), Some(WindowLayout::ToggleFullscreen));
+        assert_eq!(WindowLayout::from_id("invalid_id"), None);
+    }
 }
