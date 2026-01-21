@@ -688,6 +688,56 @@ impl AccessibilityManager {
         Err(WindowError::PlatformNotSupported)
     }
 
+    /// Focuses the first window that doesn't look like a launcher/cargo terminal.
+    /// This is a fallback when we can't identify the correct window by title.
+    #[cfg(target_os = "macos")]
+    pub fn focus_first_non_launcher_window(&mut self) -> Result<WindowInfo> {
+        if !self.has_permission {
+            return Err(WindowError::PermissionDenied);
+        }
+
+        let windows = self.list_windows()?;
+        
+        // Find a window that doesn't look like the launcher terminal
+        let window = windows
+            .into_iter()
+            .find(|w| {
+                let title_lower = w.title.to_lowercase();
+                // Exclude windows that look like they're running the launcher
+                !title_lower.contains("cargo run") 
+                    && !title_lower.contains("photoncast")
+                    && !title_lower.contains("cargo build")
+                    && !title_lower.contains("cargo test")
+            })
+            .ok_or_else(|| WindowError::AccessibilityError {
+                message: "No suitable window found (all windows appear to be launcher terminals)".to_string(),
+            })?;
+
+        // Raise the window
+        let element = self
+            .element_cache
+            .get(&window.element_ref)
+            .copied()
+            .ok_or(WindowError::WindowNotFound)?;
+
+        let result = unsafe {
+            let action = core_foundation::string::CFString::new("AXRaise");
+            accessibility_sys::AXUIElementPerformAction(element, action.as_concrete_TypeRef())
+        };
+
+        if result != 0 {
+            tracing::warn!("AXRaise failed with error {}, window may not be raised", result);
+        }
+
+        tracing::info!("Focused non-launcher window: '{}'", window.title);
+        Ok(window)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn focus_first_non_launcher_window(&mut self) -> Result<WindowInfo> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
     /// Checks if a window is minimized.
     #[cfg(target_os = "macos")]
     pub fn is_minimized(&self, window: &WindowInfo) -> Result<bool> {

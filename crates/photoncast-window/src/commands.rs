@@ -67,6 +67,13 @@ impl WindowCommand {
         manager.focus_window_by_title(title)
     }
 
+    /// Focuses the first window that doesn't look like a launcher terminal.
+    #[cfg(target_os = "macos")]
+    pub fn focus_first_non_launcher_window(&self) -> crate::Result<()> {
+        let mut manager = self.manager.write();
+        manager.focus_first_non_launcher_window()
+    }
+
     /// Applies a window layout.
     #[cfg(target_os = "macos")]
     pub fn apply_layout(&self, layout: WindowLayout) -> crate::Result<()> {

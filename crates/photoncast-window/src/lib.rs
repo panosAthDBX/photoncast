@@ -185,6 +185,18 @@ impl WindowManager {
         Err(WindowError::PlatformNotSupported)
     }
 
+    /// Focuses the first window that doesn't look like a launcher terminal.
+    #[cfg(target_os = "macos")]
+    pub fn focus_first_non_launcher_window(&mut self) -> Result<()> {
+        self.accessibility_manager.focus_first_non_launcher_window()?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn focus_first_non_launcher_window(&mut self) -> Result<()> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
     /// Gets info about the frontmost window.
     #[cfg(target_os = "macos")]
     pub fn get_frontmost_window_info(&mut self) -> Result<crate::accessibility::WindowInfo> {

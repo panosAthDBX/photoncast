@@ -367,17 +367,16 @@ fn main() {
                 // Check for app events
                 match event_rx.try_recv() {
                     Ok(AppEvent::ToggleLauncher) => {
-                        info!("Toggle launcher requested");
+                        info!("Toggle launcher requested - capturing frontmost window NOW");
                         
                         // Capture frontmost app AND window BEFORE Photoncast becomes active
                         // This is used for window management commands to target the correct window
                         let (previous_app, previous_window_title) = get_frontmost_window_info();
-                        if let Some(ref bundle_id) = previous_app {
-                            tracing::debug!("Previous frontmost app: {}", bundle_id);
-                        }
-                        if let Some(ref title) = previous_window_title {
-                            tracing::debug!("Previous frontmost window: {}", title);
-                        }
+                        tracing::info!(
+                            "Captured frontmost: app={:?}, window={:?}",
+                            previous_app,
+                            previous_window_title
+                        );
                         
                         // Try to activate existing window or create new one
                         let _ = cx.update(|cx| {
@@ -853,18 +852,38 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = target_app; // suppress unused warning
 
-    // If we have a specific window title, focus that window
-    // This is needed when the app has multiple windows open
-    if let Some(ref title) = target_window_title {
-        if let Err(e) = window_command.focus_window_by_title(title) {
-            tracing::warn!("Could not focus window '{}': {}", title, e);
-            // Continue anyway - we'll operate on whatever window is frontmost
-        } else {
-            tracing::info!("Focused window: '{}'", title);
-            // Small delay for focus to complete
-            std::thread::sleep(std::time::Duration::from_millis(50));
+    // Try to focus the correct window
+    // First try by title if we have one, then fall back to finding a non-launcher window
+    let focused_by_title = if let Some(ref title) = target_window_title {
+        match window_command.focus_window_by_title(title) {
+            Ok(()) => {
+                tracing::info!("Focused window by title: '{}'", title);
+                true
+            }
+            Err(e) => {
+                tracing::warn!("Could not focus window '{}': {}", title, e);
+                false
+            }
+        }
+    } else {
+        false
+    };
+
+    // If we couldn't focus by title, try to find a non-launcher window
+    if !focused_by_title {
+        match window_command.focus_first_non_launcher_window() {
+            Ok(()) => {
+                tracing::info!("Focused first non-launcher window");
+            }
+            Err(e) => {
+                tracing::warn!("Could not focus non-launcher window: {}", e);
+                // Continue anyway - we'll operate on whatever window is frontmost
+            }
         }
     }
+    
+    // Small delay for focus to complete
+    std::thread::sleep(std::time::Duration::from_millis(50));
 
     let result = match command_id {
         "window_move_next_display" => {
