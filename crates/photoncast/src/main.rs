@@ -396,6 +396,13 @@ fn main() {
                                 // Window was closed, open a new one
                                 current_handle =
                                     open_launcher_window(cx, &launcher_state_for_events);
+                                
+                                // Set the captured frontmost window on the new window
+                                if let Some(ref h) = current_handle {
+                                    let _ = h.update(cx, |view, _cx| {
+                                        view.set_previous_frontmost_window(previous_app.clone(), previous_window_title.clone());
+                                    });
+                                }
                             }
                         });
                     },
