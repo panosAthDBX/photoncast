@@ -1171,13 +1171,14 @@ fn format_kilobytes(size_bytes: u64) -> String {
     format!("{whole}.{decimal} KB")
 }
 
-/// Truncates preview text to max length.
+/// Truncates preview text to max length (character count, not bytes).
 fn truncate_preview(text: &str, max_len: usize) -> String {
     // Normalize whitespace and truncate
     let normalized: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
 
-    if normalized.len() > max_len {
-        format!("{}...", &normalized[..max_len])
+    if normalized.chars().count() > max_len {
+        let truncated: String = normalized.chars().take(max_len).collect();
+        format!("{truncated}...")
     } else {
         normalized
     }
