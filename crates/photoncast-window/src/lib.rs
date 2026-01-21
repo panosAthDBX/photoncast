@@ -140,6 +140,17 @@ impl WindowManager {
         self.accessibility_manager.request_permission()
     }
 
+    /// Gets the bundle ID of the frontmost application.
+    #[cfg(target_os = "macos")]
+    pub fn get_frontmost_bundle_id(&self) -> Result<String> {
+        self.accessibility_manager.get_frontmost_app()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn get_frontmost_bundle_id(&self) -> Result<String> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
     /// Applies a layout to the frontmost window.
     #[cfg(target_os = "macos")]
     pub fn apply_layout(&mut self, layout: WindowLayout) -> Result<()> {

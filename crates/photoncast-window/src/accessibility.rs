@@ -200,10 +200,7 @@ impl AccessibilityManager {
     pub fn get_frontmost_app(&self) -> Result<String> {
         use objc2_app_kit::NSWorkspace;
 
-        if !self.has_permission {
-            return Err(WindowError::PermissionDenied);
-        }
-
+        // NSWorkspace doesn't require accessibility permission
         let workspace = unsafe { NSWorkspace::sharedWorkspace() };
         if let Some(app) = unsafe { workspace.frontmostApplication() } {
             if let Some(bundle_id) = unsafe { app.bundleIdentifier() } {

@@ -39,6 +39,13 @@ impl WindowCommand {
         manager.request_accessibility_permission()
     }
 
+    /// Gets the bundle ID of the frontmost application.
+    #[cfg(target_os = "macos")]
+    pub fn get_frontmost_bundle_id(&self) -> crate::Result<String> {
+        let manager = self.manager.read();
+        manager.get_frontmost_bundle_id()
+    }
+
     /// Applies a window layout.
     #[cfg(target_os = "macos")]
     pub fn apply_layout(&self, layout: WindowLayout) -> crate::Result<()> {

@@ -805,6 +805,15 @@ fn execute_window_command(command_id: &str) {
         }
     }
 
+    // Small delay to let macOS switch focus back to the previous app
+    // after hiding Photoncast's launcher window
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Log which app we're targeting
+    if let Ok(bundle_id) = window_command.get_frontmost_bundle_id() {
+        tracing::info!("Window command targeting app: {}", bundle_id);
+    }
+
     let result = match command_id {
         "window_move_next_display" => {
             window_command.move_to_display(photoncast_window::DisplayDirection::Next)
