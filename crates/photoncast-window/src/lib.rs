@@ -45,6 +45,7 @@ pub mod config;
 pub mod cycling;
 pub mod error;
 pub mod layout;
+pub mod overlay;
 
 #[cfg(target_os = "macos")]
 pub mod accessibility;
@@ -196,6 +197,11 @@ impl WindowManager {
                 .calculate_frame(layout, display.frame, cycle_state)
         };
 
+        // Show visual feedback overlay if enabled
+        if self.config.show_visual_feedback {
+            overlay::show_overlay(target_frame, self.config.visual_feedback_duration_ms);
+        }
+
         // Apply the frame (with or without animation)
         if self.config.animation_enabled && !animation::is_reduce_motion_enabled() {
             // Animated resize
@@ -317,6 +323,8 @@ mod tests {
             respect_dock: false,
             cycle_timeout_ms: 1000,
             almost_maximize_margin: 30,
+            show_visual_feedback: false,
+            visual_feedback_duration_ms: 100,
         };
 
         manager.set_config(new_config);

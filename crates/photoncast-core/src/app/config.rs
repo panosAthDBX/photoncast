@@ -451,6 +451,8 @@ pub struct WindowManagementConfig {
     pub cycling_enabled: bool,
     /// Margin for "almost maximize" layout (pixels).
     pub almost_maximize_margin: u32,
+    /// Whether to show visual feedback overlay when positioning windows.
+    pub show_visual_feedback: bool,
 }
 
 impl Default for WindowManagementConfig {
@@ -461,6 +463,7 @@ impl Default for WindowManagementConfig {
             animation_enabled: true,
             cycling_enabled: true,
             almost_maximize_margin: 20,
+            show_visual_feedback: true,
         }
     }
 }
@@ -553,6 +556,7 @@ mod tests {
         assert!(wm.animation_enabled);
         assert!(wm.cycling_enabled);
         assert_eq!(wm.almost_maximize_margin, 20);
+        assert!(wm.show_visual_feedback);
     }
 
     #[test]

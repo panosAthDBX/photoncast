@@ -2468,6 +2468,8 @@ impl LauncherWindow {
                         respect_dock: true,
                         cycle_timeout_ms: 500,
                         almost_maximize_margin: wm_config.almost_maximize_margin,
+                        show_visual_feedback: wm_config.show_visual_feedback,
+                        visual_feedback_duration_ms: 200,
                     };
                     
                     let window_command =

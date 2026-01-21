@@ -486,6 +486,13 @@ impl PreferencesWindow {
         cx.notify();
     }
 
+    fn toggle_window_visual_feedback(&mut self, cx: &mut ViewContext<Self>) {
+        self.config.window_management.show_visual_feedback = !self.config.window_management.show_visual_feedback;
+        self.has_changes = true;
+        self.save_config();
+        cx.notify();
+    }
+
     // ==================== Sleep Timer Handlers ====================
 
     fn toggle_sleep_timer_enabled(&mut self, cx: &mut ViewContext<Self>) {
@@ -1154,6 +1161,17 @@ impl PreferencesWindow {
                     &colors,
                 )
                 .on_click(cx.listener(|this, _, cx| this.toggle_window_management_animation(cx))),
+            )
+            // Visual Feedback
+            .child(
+                self.render_toggle_row(
+                    "wm_visual_feedback",
+                    "Visual Feedback",
+                    "Show highlight overlay when positioning windows",
+                    self.config.window_management.show_visual_feedback,
+                    &colors,
+                )
+                .on_click(cx.listener(|this, _, cx| this.toggle_window_visual_feedback(cx))),
             )
             // Info about window layouts
             .child(

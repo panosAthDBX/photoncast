@@ -23,6 +23,10 @@ pub struct WindowConfig {
     pub cycle_timeout_ms: u64,
     /// Margin for almost maximize layout.
     pub almost_maximize_margin: u32,
+    /// Whether to show visual feedback overlay when positioning windows.
+    pub show_visual_feedback: bool,
+    /// Duration of visual feedback overlay in milliseconds.
+    pub visual_feedback_duration_ms: u32,
 }
 
 impl Default for WindowConfig {
@@ -37,6 +41,8 @@ impl Default for WindowConfig {
             respect_dock: true,
             cycle_timeout_ms: 500,
             almost_maximize_margin: 20,
+            show_visual_feedback: true,
+            visual_feedback_duration_ms: 200,
         }
     }
 }
