@@ -157,6 +157,15 @@ impl WindowManager {
             return self.accessibility_manager.toggle_fullscreen(&window);
         }
 
+        // If window is in fullscreen mode, exit fullscreen first
+        // (otherwise resize operations will fail with kAXErrorCannotComplete)
+        if self.accessibility_manager.is_fullscreen(&window).unwrap_or(false) {
+            tracing::debug!("Window is in fullscreen mode, exiting fullscreen first");
+            self.accessibility_manager.toggle_fullscreen(&window)?;
+            // Give macOS time to complete the fullscreen exit animation
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+
         // Get current display
         let current_frame = self.accessibility_manager.get_window_frame(&window)?;
         let display = self
@@ -240,6 +249,13 @@ impl WindowManager {
 
         // Get frontmost window
         let window = self.accessibility_manager.get_frontmost_window()?;
+
+        // If window is in fullscreen mode, exit fullscreen first
+        if self.accessibility_manager.is_fullscreen(&window).unwrap_or(false) {
+            tracing::debug!("Window is in fullscreen mode, exiting fullscreen first");
+            self.accessibility_manager.toggle_fullscreen(&window)?;
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
 
         // Get current display
         let current_frame = self.accessibility_manager.get_window_frame(&window)?;
