@@ -2478,6 +2478,16 @@ impl LauncherWindow {
                                 photoncast_window::WindowManager::new(window_config)
                             ))
                         );
+                    
+                    // Check and request accessibility permission if needed
+                    if !window_command.has_permission() {
+                        tracing::info!("Requesting accessibility permission for window management");
+                        if let Err(e) = window_command.request_permission() {
+                            tracing::warn!("Accessibility permission not granted: {}", e);
+                            // Still try the command - the error will be more informative
+                        }
+                    }
+                    
                     let result = match command_id.as_str() {
                         "window_move_next_display" => window_command
                             .move_to_display(photoncast_window::DisplayDirection::Next),
