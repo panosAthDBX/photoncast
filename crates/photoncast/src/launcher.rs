@@ -1085,6 +1085,32 @@ impl LauncherWindow {
                     "folder" | "folder.fill" => "📁".into(),
                     "doc" | "doc.fill" => "📄".into(),
                     "gearshape" | "gearshape.fill" => "⚙️".into(),
+                    // Window layout icons - halves
+                    "arrow-left-to-line" => "⬅️".into(),
+                    "arrow-right-to-line" => "➡️".into(),
+                    "arrow-up-to-line" => "⬆️".into(),
+                    "arrow-down-to-line" => "⬇️".into(),
+                    // Window layout icons - quarters
+                    "arrow-up-left" => "↖️".into(),
+                    "arrow-up-right" => "↗️".into(),
+                    "arrow-down-left" => "↙️".into(),
+                    "arrow-down-right" => "↘️".into(),
+                    // Window layout icons - thirds and panels
+                    "panel-left" | "panel-left-open" => "◧".into(),
+                    "panel-right" | "panel-right-open" => "◨".into(),
+                    "columns-3" => "▥".into(),
+                    // Window layout icons - special
+                    "maximize-2" => "⬜".into(),
+                    "minimize-2" => "🔽".into(),
+                    "align-center" | "align-center-vertical" | "align-center-horizontal" => "⬛".into(),
+                    "square" => "◻️".into(),
+                    "scaling" => "📐".into(),
+                    "undo-2" => "↩️".into(),
+                    "fullscreen" => "⛶".into(),
+                    // Display movement icons
+                    "monitor-arrow-right" => "🖥️➡️".into(),
+                    "monitor-arrow-left" => "⬅️🖥️".into(),
+                    "monitor" => "🖥️".into(),
                     _ => "📋".into(), // Default icon
                 }
             },

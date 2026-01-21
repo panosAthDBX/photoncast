@@ -245,17 +245,13 @@ impl AccessibilityManager {
 
         // NSWorkspace doesn't require accessibility permission
         let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-        let app_opt = unsafe { workspace.frontmostApplication() };
-        
-        if app_opt.is_none() {
+        let app = unsafe { workspace.frontmostApplication() }.ok_or_else(|| {
             tracing::debug!("NSWorkspace.frontmostApplication() returned None");
-            return Err(WindowError::WindowNotFound);
-        }
+            WindowError::WindowNotFound
+        })?;
         
-        let app = app_opt.unwrap();
         let name = unsafe { app.localizedName() }
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "<no name>".to_string());
+            .map_or_else(|| "<no name>".to_string(), |n| n.to_string());
         
         if let Some(bundle_id) = unsafe { app.bundleIdentifier() } {
             return Ok(bundle_id.to_string());
@@ -290,11 +286,10 @@ impl AccessibilityManager {
                     if activated {
                         tracing::debug!("Activated app: {}", bundle_id);
                         return Ok(());
-                    } else {
-                        return Err(WindowError::AccessibilityError {
-                            message: format!("Failed to activate app: {}", bundle_id),
-                        });
                     }
+                    return Err(WindowError::AccessibilityError {
+                        message: format!("Failed to activate app: {}", bundle_id),
+                    });
                 }
             }
         }
@@ -973,7 +968,7 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
             CFDictionaryGetValueIfPresent(dict, layer_key.as_CFTypeRef().cast(), &mut layer_value)
         } != 0 && !layer_value.is_null() {
             let mut val: i32 = 0;
-            if unsafe { CFNumberGetValue(layer_value.cast(), kCFNumberSInt32Type, &mut val as *mut _ as *mut c_void) } {
+            if unsafe { CFNumberGetValue(layer_value.cast(), kCFNumberSInt32Type, std::ptr::addr_of_mut!(val).cast::<c_void>()) } {
                 val
             } else {
                 continue;
@@ -1021,7 +1016,7 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
             CFDictionaryGetValueIfPresent(dict, pid_key.as_CFTypeRef().cast(), &mut pid_value)
         } != 0 && !pid_value.is_null() {
             let mut val: i32 = 0;
-            if unsafe { CFNumberGetValue(pid_value.cast(), kCFNumberSInt32Type, &mut val as *mut _ as *mut c_void) } {
+            if unsafe { CFNumberGetValue(pid_value.cast(), kCFNumberSInt32Type, std::ptr::addr_of_mut!(val).cast::<c_void>()) } {
                 val
             } else {
                 0
