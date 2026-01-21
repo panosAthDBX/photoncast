@@ -26,6 +26,7 @@
 #![allow(clippy::derive_partial_eq_without_eq)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
+use std::cell::RefCell;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -780,6 +781,91 @@ fn main() {
     platform::unregister_global_hotkey();
 }
 
+// Thread-local singleton for window management.
+// This avoids creating a new WindowManager for each command, which improves performance
+// by reusing the cached AXUIElementRef references and avoiding repeated permission checks.
+// Uses thread_local because WindowManager contains raw pointers that are not Send.
+thread_local! {
+    static WINDOW_MANAGER: RefCell<photoncast_window::WindowManager> = RefCell::new(
+        photoncast_window::WindowManager::default()
+    );
+}
+
+/// Polls until the specified app becomes frontmost or timeout expires.
+/// Returns true if the app became frontmost, false on timeout.
+fn poll_until_app_frontmost(
+    target_bundle_id: &str,
+    timeout_ms: u64,
+    poll_interval_ms: u64,
+) -> bool {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+    let interval = std::time::Duration::from_millis(poll_interval_ms);
+    
+    while start.elapsed() < timeout {
+        let is_frontmost = WINDOW_MANAGER.with(|m| {
+            m.borrow().get_frontmost_bundle_id()
+                .map(|f| f == target_bundle_id)
+                .unwrap_or(false)
+        });
+        if is_frontmost {
+            tracing::debug!("App {} became frontmost after {:?}", target_bundle_id, start.elapsed());
+            return true;
+        }
+        std::thread::sleep(interval);
+    }
+    
+    tracing::warn!("Timeout waiting for app {} to become frontmost", target_bundle_id);
+    false
+}
+
+/// Polls until CGWindowList shows the expected window as frontmost or timeout expires.
+/// Returns true if the window became frontmost, false on timeout.
+fn poll_until_window_frontmost(
+    expected_bundle_id: Option<&str>,
+    expected_title: Option<&str>,
+    timeout_ms: u64,
+    poll_interval_ms: u64,
+) -> bool {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+    let interval = std::time::Duration::from_millis(poll_interval_ms);
+    
+    while start.elapsed() < timeout {
+        if let Some(window_info) = photoncast_window::get_frontmost_window_via_cgwindowlist() {
+            let current_bundle = photoncast_window::get_bundle_id_for_pid(window_info.owner_pid);
+            
+            // Check if bundle ID matches (if we have an expected one)
+            let bundle_matches = match (expected_bundle_id, &current_bundle) {
+                (Some(expected), Some(current)) => expected == current,
+                (None, _) => true, // No expectation, always matches
+                (Some(_), None) => false,
+            };
+            
+            // Check if title matches (if we have an expected one)
+            let title_matches = match expected_title {
+                Some(expected) => window_info.title == expected,
+                None => true, // No expectation, always matches
+            };
+            
+            if bundle_matches && title_matches {
+                tracing::debug!(
+                    "Window became frontmost after {:?}: bundle={:?}, title={}",
+                    start.elapsed(), current_bundle, window_info.title
+                );
+                return true;
+            }
+        }
+        std::thread::sleep(interval);
+    }
+    
+    tracing::warn!(
+        "Timeout waiting for window to become frontmost: bundle={:?}, title={:?}",
+        expected_bundle_id, expected_title
+    );
+    false
+}
+
 /// Executes a window management command outside of GPUI window context.
 /// This avoids reentrancy panics when moving windows triggers windowDidMove notifications.
 fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, target_window_title: Option<String>) {
@@ -794,7 +880,7 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         return;
     }
 
-    // Create WindowConfig from user preferences
+    // Create WindowConfig from user preferences and update the singleton
     let window_config = photoncast_window::WindowConfig {
         enabled: wm_config.enabled,
         animation_enabled: wm_config.animation_enabled,
@@ -809,19 +895,19 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         visual_feedback_duration_ms: 200,
     };
 
-    let window_command = photoncast_window::commands::WindowCommand::new(
-        std::rc::Rc::new(parking_lot::RwLock::new(
-            photoncast_window::WindowManager::new(window_config),
-        )),
-    );
+    // Update the singleton's config (this preserves cached AXUIElementRefs)
+    WINDOW_MANAGER.with(|m| m.borrow_mut().set_config(window_config));
 
     // Check and request accessibility permission if needed
-    if !window_command.has_permission() {
-        tracing::info!("Requesting accessibility permission for window management");
-        if let Err(e) = window_command.request_permission() {
-            tracing::warn!("Accessibility permission not granted: {}", e);
+    WINDOW_MANAGER.with(|m| {
+        let mut manager = m.borrow_mut();
+        if !manager.has_accessibility_permission() {
+            tracing::info!("Requesting accessibility permission for window management");
+            if let Err(e) = manager.request_accessibility_permission() {
+                tracing::warn!("Accessibility permission not granted: {}", e);
+            }
         }
-    }
+    });
 
     // Get the ACTUAL frontmost window using CGWindowList (excludes Photoncast)
     // This is more reliable than using the stale previous_frontmost_app value
@@ -846,10 +932,11 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
     // Activate the target app
     let target_app = if let Some(ref bundle_id) = effective_bundle_id {
         // Activate the specific app
-        if let Err(e) = window_command.activate_app(bundle_id) {
+        let activation_result = WINDOW_MANAGER.with(|m| m.borrow().activate_app(bundle_id));
+        if let Err(e) = activation_result {
             tracing::warn!("Failed to activate target app {}: {}", bundle_id, e);
             // Fall back to activating any visible app
-            match window_command.activate_any_app_except("") {
+            match WINDOW_MANAGER.with(|m| m.borrow().activate_any_app_except("")) {
                 Ok(id) => id,
                 Err(e) => {
                     tracing::error!("No target app found: {}", e);
@@ -862,7 +949,7 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         }
     } else {
         // No specific target, find any visible app
-        match window_command.activate_any_app_except("") {
+        match WINDOW_MANAGER.with(|m| m.borrow().activate_any_app_except("")) {
             Ok(bundle_id) => {
                 tracing::info!("Window command targeting app: {}", bundle_id);
                 bundle_id
@@ -874,14 +961,13 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         }
     };
     
-    // Small delay for activation to complete
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    let _ = target_app; // suppress unused warning
+    // Poll until app activation completes (max 150ms, poll every 10ms)
+    poll_until_app_frontmost(&target_app, 150, 10);
 
     // Try to focus the correct window
     // First try by title if we have one, then fall back to finding a non-launcher window
     let focused_by_title = if let Some(ref title) = effective_title {
-        match window_command.focus_window_by_title(title) {
+        match WINDOW_MANAGER.with(|m| m.borrow_mut().focus_window_by_title(title)) {
             Ok(()) => {
                 tracing::info!("Focused window by title: '{}'", title);
                 true
@@ -897,7 +983,7 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
 
     // If we couldn't focus by title, try to find a non-launcher window
     if !focused_by_title {
-        match window_command.focus_first_non_launcher_window() {
+        match WINDOW_MANAGER.with(|m| m.borrow_mut().focus_first_non_launcher_window()) {
             Ok(()) => {
                 tracing::info!("Focused first non-launcher window");
             }
@@ -908,31 +994,39 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         }
     }
     
-    // Small delay for focus to complete
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    // Poll until window focus completes (max 100ms, poll every 10ms)
+    poll_until_window_frontmost(
+        effective_bundle_id.as_deref(),
+        effective_title.as_deref(),
+        100,
+        10,
+    );
 
-    let result = match command_id {
-        "window_move_next_display" => {
-            window_command.move_to_display(photoncast_window::DisplayDirection::Next)
+    let result = WINDOW_MANAGER.with(|m| {
+        let mut manager = m.borrow_mut();
+        match command_id {
+            "window_move_next_display" => {
+                manager.move_to_display(photoncast_window::DisplayDirection::Next)
+            }
+            "window_move_previous_display" => {
+                manager.move_to_display(photoncast_window::DisplayDirection::Previous)
+            }
+            "window_move_display_1" => {
+                manager.move_to_display(photoncast_window::DisplayDirection::Index(0))
+            }
+            "window_move_display_2" => {
+                manager.move_to_display(photoncast_window::DisplayDirection::Index(1))
+            }
+            "window_move_display_3" => {
+                manager.move_to_display(photoncast_window::DisplayDirection::Index(2))
+            }
+            _ => {
+                let layout = photoncast_window::WindowLayout::from_id(command_id)
+                    .unwrap_or(photoncast_window::WindowLayout::LeftHalf);
+                manager.apply_layout(layout)
+            }
         }
-        "window_move_previous_display" => {
-            window_command.move_to_display(photoncast_window::DisplayDirection::Previous)
-        }
-        "window_move_display_1" => {
-            window_command.move_to_display(photoncast_window::DisplayDirection::Index(0))
-        }
-        "window_move_display_2" => {
-            window_command.move_to_display(photoncast_window::DisplayDirection::Index(1))
-        }
-        "window_move_display_3" => {
-            window_command.move_to_display(photoncast_window::DisplayDirection::Index(2))
-        }
-        _ => {
-            let layout = photoncast_window::WindowLayout::from_id(command_id)
-                .unwrap_or(photoncast_window::WindowLayout::LeftHalf);
-            window_command.apply_layout(layout)
-        }
-    };
+    });
 
     if let Err(e) = result {
         tracing::error!("Window command failed: {}", e);
@@ -985,20 +1079,21 @@ fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
 
 #[cfg(target_os = "macos")]
 fn get_frontmost_window_title() -> Option<String> {
-    // Use the window crate's accessibility manager to get the frontmost window
-    let config = photoncast_window::WindowConfig::default();
-    let mut manager = photoncast_window::WindowManager::new(config);
-    
-    // Check permission first
-    if !manager.has_accessibility_permission() {
-        return None;
-    }
-    
-    // Get frontmost window
-    match manager.get_frontmost_window_info() {
-        Ok(info) => Some(info.title),
-        Err(_) => None,
-    }
+    // Use the singleton window manager to get the frontmost window
+    WINDOW_MANAGER.with(|m| {
+        let mut manager = m.borrow_mut();
+        
+        // Check permission first
+        if !manager.has_accessibility_permission() {
+            return None;
+        }
+        
+        // Get frontmost window
+        match manager.get_frontmost_window_info() {
+            Ok(info) => Some(info.title),
+            Err(_) => None,
+        }
+    })
 }
 
 #[cfg(not(target_os = "macos"))]
