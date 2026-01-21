@@ -20,12 +20,15 @@ use crate::error::{ClipboardError, Result};
 const NONCE_SIZE: usize = 12;
 
 /// Salt size for key derivation (256 bits = 32 bytes for strong security).
+#[allow(dead_code)]
 const SALT_SIZE: usize = 32;
 
 /// Keychain service name for storing the salt.
+#[allow(dead_code)]
 const KEYCHAIN_SERVICE: &str = "com.photoncast.clipboard";
 
 /// Keychain account name for the salt.
+#[allow(dead_code)]
 const KEYCHAIN_ACCOUNT: &str = "encryption-salt";
 
 /// Encryption manager for clipboard content.
@@ -184,6 +187,7 @@ fn derive_key(input: &[u8]) -> Result<[u8; 32]> {
 }
 
 /// Gets the encryption salt from Keychain, or generates and stores a new one.
+#[allow(dead_code)]
 fn get_or_create_salt() -> Result<Vec<u8>> {
     // Try to retrieve existing salt from Keychain
     if let Some(salt) = get_salt_from_keychain()? {
@@ -202,6 +206,7 @@ fn get_or_create_salt() -> Result<Vec<u8>> {
 }
 
 /// Retrieves the encryption salt from macOS Keychain.
+#[allow(dead_code)]
 #[cfg(target_os = "macos")]
 fn get_salt_from_keychain() -> Result<Option<Vec<u8>>> {
     use std::process::Command;
@@ -233,6 +238,7 @@ fn get_salt_from_keychain() -> Result<Option<Vec<u8>>> {
 }
 
 /// Stores the encryption salt in macOS Keychain.
+#[allow(dead_code)]
 #[cfg(target_os = "macos")]
 fn store_salt_in_keychain(salt: &[u8]) -> Result<()> {
     use std::process::Command;

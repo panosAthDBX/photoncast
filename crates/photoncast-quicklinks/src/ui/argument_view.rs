@@ -100,6 +100,7 @@ impl ArgumentField {
 
 /// Theme-aware colors for argument input UI.
 #[derive(Clone)]
+#[allow(dead_code)]
 struct ArgumentInputColors {
     background: Hsla,
     surface: Hsla,

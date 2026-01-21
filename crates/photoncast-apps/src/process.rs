@@ -126,7 +126,7 @@ fn get_app_launch_time(app: &NSRunningApplication) -> DateTime<Utc> {
             let timestamp = unsafe { date.timeIntervalSince1970() };
             #[allow(clippy::cast_possible_truncation)]
             let secs = timestamp as i64;
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
             let nanos = ((timestamp - secs as f64) * 1_000_000_000.0) as u32;
             Utc.timestamp_opt(secs, nanos).single().unwrap_or_else(Utc::now)
         }

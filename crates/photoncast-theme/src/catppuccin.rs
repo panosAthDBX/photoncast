@@ -89,25 +89,28 @@ impl AccentColor {
         }
     }
 
-    /// Parses an accent color from a string.
-    #[must_use]
-    pub fn from_str(s: &str) -> Option<Self> {
+}
+
+impl std::str::FromStr for AccentColor {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "rosewater" => Some(Self::Rosewater),
-            "flamingo" => Some(Self::Flamingo),
-            "pink" => Some(Self::Pink),
-            "mauve" => Some(Self::Mauve),
-            "red" => Some(Self::Red),
-            "maroon" => Some(Self::Maroon),
-            "peach" => Some(Self::Peach),
-            "yellow" => Some(Self::Yellow),
-            "green" => Some(Self::Green),
-            "teal" => Some(Self::Teal),
-            "sky" => Some(Self::Sky),
-            "sapphire" => Some(Self::Sapphire),
-            "blue" => Some(Self::Blue),
-            "lavender" => Some(Self::Lavender),
-            _ => None,
+            "rosewater" => Ok(Self::Rosewater),
+            "flamingo" => Ok(Self::Flamingo),
+            "pink" => Ok(Self::Pink),
+            "mauve" => Ok(Self::Mauve),
+            "red" => Ok(Self::Red),
+            "maroon" => Ok(Self::Maroon),
+            "peach" => Ok(Self::Peach),
+            "yellow" => Ok(Self::Yellow),
+            "green" => Ok(Self::Green),
+            "teal" => Ok(Self::Teal),
+            "sky" => Ok(Self::Sky),
+            "sapphire" => Ok(Self::Sapphire),
+            "blue" => Ok(Self::Blue),
+            "lavender" => Ok(Self::Lavender),
+            _ => Err(()),
         }
     }
 }
@@ -437,9 +440,9 @@ mod tests {
 
     #[test]
     fn test_accent_color_from_str() {
-        assert_eq!(AccentColor::from_str("mauve"), Some(AccentColor::Mauve));
-        assert_eq!(AccentColor::from_str("MAUVE"), Some(AccentColor::Mauve));
-        assert_eq!(AccentColor::from_str("invalid"), None);
+        assert_eq!("mauve".parse::<AccentColor>(), Ok(AccentColor::Mauve));
+        assert_eq!("MAUVE".parse::<AccentColor>(), Ok(AccentColor::Mauve));
+        assert!("invalid".parse::<AccentColor>().is_err());
     }
 
     #[test]

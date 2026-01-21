@@ -12,7 +12,8 @@ use tokio::task;
 use crate::error::Result;
 use crate::models::{QuickLink, QuickLinkIcon, QuickLinkId, QuickLinksToml};
 
-/// Current schema version.
+/// Current schema version (reserved for future migration support).
+#[allow(dead_code)]
 const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 /// Quick links storage with SQLite backend.

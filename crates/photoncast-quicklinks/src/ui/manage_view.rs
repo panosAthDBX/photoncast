@@ -66,6 +66,7 @@ pub enum ManageViewEvent {
 
 /// Theme-aware colors for the manage view.
 #[derive(Clone)]
+#[allow(dead_code)]
 struct ManageColors {
     background: Hsla,
     surface: Hsla,

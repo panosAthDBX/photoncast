@@ -275,6 +275,7 @@ impl ClipboardMonitor {
 
     /// Reads plain text content.
     #[cfg(target_os = "macos")]
+    #[allow(clippy::unused_self)]
     fn read_text_content(
         &self,
         pasteboard: &objc2_app_kit::NSPasteboard,

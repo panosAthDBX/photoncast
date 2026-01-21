@@ -19,6 +19,7 @@ struct PrefsColors {
     /// Surface/card background
     surface: Hsla,
     /// Elevated surface background
+    #[allow(dead_code)]
     surface_elevated: Hsla,
     /// Surface on hover
     surface_hover: Hsla,
@@ -323,6 +324,7 @@ impl PreferencesWindow {
         }
     }
 
+    #[allow(dead_code)]
     fn add_excluded_app(&mut self, bundle_id: String, cx: &mut ViewContext<Self>) {
         if !self.config.clipboard.excluded_apps.contains(&bundle_id) {
             self.config.clipboard.excluded_apps.push(bundle_id);

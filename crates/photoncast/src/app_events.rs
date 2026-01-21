@@ -2,6 +2,7 @@ use once_cell::sync::OnceCell;
 use std::sync::mpsc::Sender;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum AppEvent {
     ToggleLauncher,
     OpenPreferences,

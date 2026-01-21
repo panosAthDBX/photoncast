@@ -28,6 +28,7 @@ mod macos {
     use tracing::{debug, error, info, warn};
 
     /// Resize the key window to the specified height, keeping width and position
+    #[allow(dead_code)]
     pub fn resize_window_height(new_height: f64) {
         // SAFETY: This function is called from GPUI which runs on the main thread
         let mtm = unsafe { MainThreadMarker::new_unchecked() };
@@ -136,6 +137,7 @@ mod macos {
     }
 
     /// Gets app path for a bundle ID using NSWorkspace.
+    #[allow(dead_code)]
     pub fn get_app_path_for_bundle_id(bundle_id: &str) -> Option<std::path::PathBuf> {
         use objc2::rc::Retained;
         use objc2_app_kit::NSWorkspace;

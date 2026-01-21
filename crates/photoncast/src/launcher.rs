@@ -58,6 +58,7 @@ use photoncast_core::ui::animations::{
 
 /// Helper struct holding theme colors for launcher UI
 #[derive(Clone)]
+#[allow(dead_code)]
 struct LauncherColors {
     background: Hsla,
     text: Hsla,
@@ -106,6 +107,7 @@ fn get_launcher_colors(cx: &ViewContext<LauncherWindow>) -> LauncherColors {
 /// Search bar height constant
 const SEARCH_BAR_HEIGHT: Pixels = px(48.0);
 /// Search icon size
+#[allow(dead_code)]
 const SEARCH_ICON_SIZE: Pixels = px(20.0);
 /// Result item height
 const RESULT_ITEM_HEIGHT: Pixels = px(56.0);
@@ -1180,6 +1182,7 @@ impl LauncherWindow {
     }
 
     /// Gets icon path for an app by its bundle ID.
+    #[allow(dead_code)]
     fn get_icon_path_for_bundle_id(bundle_id: &str) -> Option<std::path::PathBuf> {
         // Try to find app path from bundle ID using NSWorkspace
         let app_path = crate::platform::get_app_path_for_bundle_id(bundle_id)?;
@@ -4619,6 +4622,7 @@ impl LauncherWindow {
     }
 
     /// Render the suggestions section
+    #[allow(dead_code)]
     fn render_suggestions(&self, colors: &LauncherColors) -> impl IntoElement {
         let surface_hover = colors.surface_hover;
         let text_muted = colors.text_muted;
@@ -6049,6 +6053,7 @@ impl LauncherWindow {
     // ========================================================================
 
     /// Enters the "Manage Auto Quits" mode
+    #[allow(dead_code)]
     pub fn enter_manage_auto_quits_mode(&mut self, cx: &mut ViewContext<Self>) {
         self.manage_auto_quits_mode = true;
         self.manage_auto_quits_index = 0;
@@ -6059,6 +6064,7 @@ impl LauncherWindow {
     }
 
     /// Exits the "Manage Auto Quits" mode
+    #[allow(dead_code)]
     fn exit_manage_auto_quits_mode(&mut self, cx: &mut ViewContext<Self>) {
         self.manage_auto_quits_mode = false;
         self.manage_auto_quits_index = 0;
