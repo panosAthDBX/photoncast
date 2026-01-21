@@ -823,10 +823,29 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         }
     }
 
-    // Activate the target app (the one that was frontmost before Photoncast opened)
-    // If we have a specific target, activate it; otherwise find any visible app
-    let target_app = if let Some(ref bundle_id) = target_bundle_id {
-        // Activate the specific app that was frontmost before
+    // Get the ACTUAL frontmost window using CGWindowList (excludes Photoncast)
+    // This is more reliable than using the stale previous_frontmost_app value
+    // because the user might have switched apps while the launcher was open
+    let (actual_bundle_id, actual_title) = if let Some(window_info) = photoncast_window::get_frontmost_window_via_cgwindowlist() {
+        let bundle_id = photoncast_window::get_bundle_id_for_pid(window_info.owner_pid);
+        let title = if window_info.title.is_empty() { None } else { Some(window_info.title) };
+        tracing::info!(
+            "CGWindowList at execution: bundle_id={:?}, title={:?}, owner={}",
+            bundle_id, title, window_info.owner_name
+        );
+        (bundle_id, title)
+    } else {
+        tracing::warn!("CGWindowList returned no windows at execution time, using passed target");
+        (target_bundle_id.clone(), target_window_title.clone())
+    };
+    
+    // Prefer the CGWindowList result, fall back to passed target if CGWindowList failed
+    let effective_bundle_id = actual_bundle_id.or(target_bundle_id);
+    let effective_title = actual_title.or(target_window_title);
+
+    // Activate the target app
+    let target_app = if let Some(ref bundle_id) = effective_bundle_id {
+        // Activate the specific app
         if let Err(e) = window_command.activate_app(bundle_id) {
             tracing::warn!("Failed to activate target app {}: {}", bundle_id, e);
             // Fall back to activating any visible app
@@ -861,7 +880,7 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
 
     // Try to focus the correct window
     // First try by title if we have one, then fall back to finding a non-launcher window
-    let focused_by_title = if let Some(ref title) = target_window_title {
+    let focused_by_title = if let Some(ref title) = effective_title {
         match window_command.focus_window_by_title(title) {
             Ok(()) => {
                 tracing::info!("Focused window by title: '{}'", title);
