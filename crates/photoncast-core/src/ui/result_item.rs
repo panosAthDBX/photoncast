@@ -330,13 +330,11 @@ fn indices_to_ranges(indices: &[usize]) -> Vec<Range<usize>> {
     let mut end = indices[0];
 
     for &idx in indices.iter().skip(1) {
-        if idx == end + 1 {
-            end = idx;
-        } else {
+        if idx != end + 1 {
             ranges.push(start..end + 1);
             start = idx;
-            end = idx;
         }
+        end = idx;
     }
     ranges.push(start..end + 1);
 

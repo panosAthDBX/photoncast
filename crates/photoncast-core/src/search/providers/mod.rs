@@ -1,14 +1,24 @@
 //! Search providers for different result types.
 
 pub mod apps;
+pub mod apps_manage;
+pub mod calendar;
 pub mod commands;
 pub mod files;
 pub mod optimized_apps;
+pub mod quicklinks;
+pub mod timer;
+pub mod window;
 
 pub use apps::AppProvider;
+pub use apps_manage::AppsProvider;
+pub use calendar::CalendarProvider;
 pub use commands::CommandProvider;
 pub use files::{FileProvider, FileUsageTracker, NoOpFileTracker, DEFAULT_FILE_MAX_RESULTS};
 pub use optimized_apps::OptimizedAppProvider;
+pub use quicklinks::QuickLinksProvider;
+pub use timer::TimerProvider;
+pub use window::WindowProvider;
 
 use crate::search::{ResultType, SearchResult};
 

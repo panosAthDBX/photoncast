@@ -143,7 +143,7 @@ pub fn save_config_to(config: &Config, path: &Path) -> ConfigResult<()> {
 /// Performs an atomic write by writing to a temp file and renaming.
 fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     // Create a temp file in the same directory
-    let parent = path.parent().unwrap_or(Path::new("."));
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let temp_path = parent.join(format!(
         ".{}.tmp.{}",
         path.file_name()

@@ -163,8 +163,8 @@ impl SearchProvider for OptimizedAppProvider {
             let frecency_b = index.entries()[b.0].frecency;
 
             // Combine match score with frecency
-            let combined_a = f64::from(a.1) + frecency_a * 10.0;
-            let combined_b = f64::from(b.1) + frecency_b * 10.0;
+            let combined_a = frecency_a.mul_add(10.0, f64::from(a.1));
+            let combined_b = frecency_b.mul_add(10.0, f64::from(b.1));
 
             combined_b
                 .partial_cmp(&combined_a)
@@ -187,7 +187,7 @@ impl SearchProvider for OptimizedAppProvider {
                         icon_path: app.icon_path.clone(),
                     },
                     result_type: ResultType::Application,
-                    score: f64::from(score) + entry.frecency * 10.0,
+                    score: entry.frecency.mul_add(10.0, f64::from(score)),
                     match_indices,
                     action: SearchAction::LaunchApp {
                         bundle_id: app.bundle_id.as_str().to_string(),
@@ -371,9 +371,6 @@ mod tests {
         ]);
 
         // Initially, both have zero frecency
-        let results = provider.search("app", 10);
-        let first_app = &results[0].title;
-
         // Update B's frecency
         provider.update_frecency("com.test.b", 1000.0);
 

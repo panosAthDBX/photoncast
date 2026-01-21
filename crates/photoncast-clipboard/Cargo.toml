@@ -1,0 +1,85 @@
+[package]
+name = "photoncast-clipboard"
+description = "Clipboard history management for PhotonCast - encrypted storage, monitoring, and search"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ui"]
+ui = ["dep:gpui", "photoncast-theme"]
+
+[lib]
+name = "photoncast_clipboard"
+path = "src/lib.rs"
+
+[dependencies]
+# GPUI for UI components (optional)
+gpui = { workspace = true, optional = true }
+
+# Theme system (optional, requires GPUI)
+photoncast-theme = { path = "../photoncast-theme", optional = true }
+
+# Async Runtime
+tokio.workspace = true
+futures.workspace = true
+
+# Error Handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Serialization & Configuration
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+# Database
+rusqlite = { workspace = true, features = ["bundled"] }
+
+# Encryption
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+hex = "0.4"
+
+# Image processing
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+# HTTP for URL metadata
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# macOS Integration
+plist.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation.workspace = true
+core-foundation-sys.workspace = true
+objc2.workspace = true
+objc2-foundation = { workspace = true, features = ["NSString", "NSData", "NSArray", "NSURL", "NSError"] }
+objc2-app-kit = { workspace = true, features = ["NSPasteboard", "NSImage", "NSBitmapImageRep", "NSRunningApplication", "NSWorkspace", "NSGraphics"] }
+
+# Utilities
+chrono.workspace = true
+uuid.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+directories.workspace = true
+dirs.workspace = true
+hostname.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+criterion.workspace = true
+tokio-test = "0.4"
+
+[[bench]]
+name = "clipboard_bench"
+harness = false

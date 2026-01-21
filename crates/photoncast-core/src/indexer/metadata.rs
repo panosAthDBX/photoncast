@@ -7,6 +7,22 @@ use tracing::debug;
 
 use crate::indexer::{AppBundleId, AppCategory, IndexedApp};
 
+async fn read_file(path: &Path) -> Result<Vec<u8>> {
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return Ok(tokio::fs::read(path).await?);
+    }
+
+    Ok(std::fs::read(path)?)
+}
+
+async fn file_metadata(path: &Path) -> Result<std::fs::Metadata> {
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return Ok(tokio::fs::metadata(path).await?);
+    }
+
+    Ok(std::fs::metadata(path)?)
+}
+
 /// Parses application metadata from an Info.plist file.
 ///
 /// # Arguments
@@ -19,7 +35,7 @@ use crate::indexer::{AppBundleId, AppCategory, IndexedApp};
 pub async fn parse_app_metadata(app_path: &Path) -> Result<IndexedApp> {
     let info_plist_path = app_path.join("Contents/Info.plist");
 
-    let contents = tokio::fs::read(&info_plist_path)
+    let contents = read_file(&info_plist_path)
         .await
         .with_context(|| format!("failed to read Info.plist at {}", info_plist_path.display()))?;
 
@@ -58,7 +74,7 @@ pub async fn parse_app_metadata(app_path: &Path) -> Result<IndexedApp> {
         .map(AppCategory::from_plist_value);
 
     // Get last modified time
-    let metadata = tokio::fs::metadata(app_path).await?;
+    let metadata = file_metadata(app_path).await?;
     let last_modified = metadata
         .modified()
         .map(chrono::DateTime::<chrono::Utc>::from)
@@ -132,9 +148,9 @@ mod tests {
         );
         plist.push_str(name);
         plist.push_str(
-            r#"</string>
+            r"</string>
     <key>CFBundleIdentifier</key>
-    <string>"#,
+    <string>",
         );
         plist.push_str(bundle_id);
         plist.push_str("</string>\n");
@@ -147,8 +163,8 @@ mod tests {
         }
 
         plist.push_str(
-            r#"</dict>
-</plist>"#,
+            r"</dict>
+</plist>",
         );
 
         plist.into_bytes()

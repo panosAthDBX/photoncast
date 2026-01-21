@@ -208,15 +208,13 @@ impl LoginItemManager {
             Ok(output) => {
                 if output.status.success() {
                     info!("Successfully disabled launch at login");
-                    self.status = LoginItemStatus::Disabled;
-                    Ok(())
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     warn!(stderr = %stderr, "Failed to disable launch at login (may not exist)");
                     // Even if it fails, mark as disabled since the item might not exist
-                    self.status = LoginItemStatus::Disabled;
-                    Ok(())
                 }
+                self.status = LoginItemStatus::Disabled;
+                Ok(())
             },
             Err(e) => {
                 error!(error = %e, "Failed to run osascript for login item removal");

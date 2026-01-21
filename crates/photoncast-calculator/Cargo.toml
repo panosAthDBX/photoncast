@@ -1,0 +1,77 @@
+[package]
+name = "photoncast-calculator"
+description = "Calculator module for PhotonCast - math evaluation, currency conversion, unit conversion, and date/time calculations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ui"]
+ui = ["dep:gpui", "photoncast-core/ui"]
+
+[lib]
+name = "photoncast_calculator"
+path = "src/lib.rs"
+
+[dependencies]
+# Local crates
+photoncast-core = { path = "../photoncast-core", default-features = false }
+
+# GPUI for UI components (optional)
+gpui = { workspace = true, optional = true }
+
+# Async Runtime
+tokio.workspace = true
+futures.workspace = true
+
+# Error Handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Database (for caching currency rates)
+rusqlite.workspace = true
+
+# Math Expression Evaluation (using v11 for simpler f64-based API)
+evalexpr = "11"
+
+# High-precision decimals for currency
+rust_decimal = { version = "1", features = ["serde"] }
+
+# Date/time with timezones
+chrono.workspace = true
+chrono-tz = "0.10"
+
+# Natural language date parsing
+dateparser = "0.2"
+
+# HTTP for rate fetching
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Utilities
+once_cell.workspace = true
+parking_lot.workspace = true
+directories.workspace = true
+dirs.workspace = true
+regex = "1"
+lazy_static = "1.4"
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+criterion.workspace = true
+tokio-test = "0.4"
+wiremock = "0.6"
+
+[[bench]]
+name = "calculator_bench"
+harness = false

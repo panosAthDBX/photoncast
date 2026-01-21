@@ -14,7 +14,14 @@ path = "src/main.rs"
 
 [dependencies]
 # Local crates
-photoncast-core = { path = "../photoncast-core" }
+photoncast-core = { path = "../photoncast-core", features = ["ui"] }
+photoncast-clipboard = { path = "../photoncast-clipboard" }
+photoncast-calculator = { path = "../photoncast-calculator" }
+photoncast-quicklinks = { path = "../photoncast-quicklinks" }
+photoncast-timer = { path = "../photoncast-timer" }
+photoncast-window = { path = "../photoncast-window" }
+photoncast-calendar = { path = "../photoncast-calendar" }
+photoncast-apps = { path = "../photoncast-apps" }
 
 # GPUI & UI
 gpui.workspace = true

@@ -4,6 +4,7 @@
 //! across multiple providers and merges results.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::search::providers::SearchProvider;
@@ -45,7 +46,7 @@ impl Default for SearchConfig {
 /// - Sorts results by score within each group
 pub struct SearchEngine {
     /// Registered search providers.
-    providers: Vec<Box<dyn SearchProvider>>,
+    providers: Vec<Arc<dyn SearchProvider>>,
     /// Search configuration.
     config: SearchConfig,
 }
@@ -77,7 +78,7 @@ impl SearchEngine {
 
     /// Adds a search provider to the engine.
     pub fn add_provider(&mut self, provider: impl SearchProvider + 'static) {
-        self.providers.push(Box::new(provider));
+        self.providers.push(Arc::new(provider));
     }
 
     /// Returns a reference to the configuration.
@@ -124,9 +125,8 @@ impl SearchEngine {
 
     /// Performs a search across all providers asynchronously.
     ///
-    /// Note: Currently this delegates to sync search as the providers
-    /// use synchronous search. In the future, this could be updated to
-    /// spawn tasks for truly parallel execution.
+    /// Providers are executed in parallel on the blocking thread pool and the
+    /// results are merged once all tasks complete.
     ///
     /// # Arguments
     ///
@@ -136,9 +136,34 @@ impl SearchEngine {
     ///
     /// Grouped search results sorted by relevance.
     pub async fn search(&self, query: &str) -> SearchResults {
-        // For now, delegate to sync search
-        // In the future, we could use tokio::spawn_blocking or make providers async
-        self.search_sync(query)
+        if query.is_empty() {
+            return SearchResults::empty();
+        }
+
+        let start = std::time::Instant::now();
+        let max_results = self.config.max_results_per_provider;
+
+        let mut handles = Vec::with_capacity(self.providers.len());
+        let query_string = query.to_string();
+        for provider in &self.providers {
+            let provider = Arc::clone(provider);
+            let query = query_string.clone();
+            handles.push(tokio::task::spawn_blocking(move || {
+                provider.search(&query, max_results)
+            }));
+        }
+
+        let mut all_results = Vec::new();
+        for handle in handles {
+            match handle.await {
+                Ok(results) => all_results.extend(results),
+                Err(err) => {
+                    tracing::warn!("Search provider task failed: {}", err);
+                },
+            }
+        }
+
+        self.build_results(&query_string, all_results, start.elapsed())
     }
 
     /// Builds grouped search results from a flat list of results.
@@ -408,8 +433,8 @@ mod tests {
     fn test_search_time_is_recorded() {
         let engine = SearchEngine::new();
         let results = engine.search_sync("test");
-        // Search time should be recorded (might be zero for empty search)
-        assert!(results.search_time.as_nanos() >= 0);
+        // Search time should be recorded (allow fast empty search)
+        assert!(results.search_time < Duration::from_secs(1));
     }
 
     #[tokio::test]

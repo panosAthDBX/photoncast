@@ -650,6 +650,51 @@ impl Database {
             Err(e) => Err(e).context("failed to get app usage"),
         }
     }
+
+    /// Gets the top N apps by frecency score.
+    /// 
+    /// Frecency combines frequency (launch count) and recency (time since last launch).
+    /// Apps launched more recently and more frequently score higher.
+    /// 
+    /// Returns a list of (bundle_id, launch_count, last_launched_at) tuples.
+    pub fn get_top_apps_by_frecency(&self, limit: usize) -> Result<Vec<(String, u32, i64)>> {
+        let conn = self.conn.lock();
+        let now = chrono::Utc::now().timestamp();
+        
+        // Frecency formula: launch_count * recency_weight
+        // recency_weight = 1.0 / (1.0 + days_since_last_launch)
+        // This gives higher weight to recently used apps
+        let mut stmt = conn.prepare(
+            r"
+            SELECT 
+                bundle_id, 
+                launch_count, 
+                last_launched_at,
+                (launch_count * 1.0 / (1.0 + ((?1 - last_launched_at) / 86400.0))) as frecency
+            FROM app_usage 
+            WHERE last_launched_at IS NOT NULL
+            ORDER BY frecency DESC
+            LIMIT ?2
+            ",
+        ).context("failed to prepare frecency query")?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![now, limit as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, u32>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .context("failed to query top apps")?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row.context("failed to read app usage row")?);
+        }
+
+        Ok(results)
+    }
 }
 
 /// Returns the default database path.

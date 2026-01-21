@@ -1,0 +1,53 @@
+[package]
+name = "photoncast-quicklinks"
+description = "Quick links module for PhotonCast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ui"]
+ui = ["dep:gpui", "photoncast-theme"]
+
+[lib]
+name = "photoncast_quicklinks"
+path = "src/lib.rs"
+
+[dependencies]
+gpui = { workspace = true, optional = true }
+photoncast-theme = { path = "../photoncast-theme", optional = true }
+
+tokio.workspace = true
+futures.workspace = true
+
+thiserror.workspace = true
+anyhow.workspace = true
+
+tracing.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+rusqlite.workspace = true
+url.workspace = true
+
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+chrono.workspace = true
+uuid.workspace = true
+once_cell.workspace = true
+regex = "1"
+percent-encoding = "2.3"
+parking_lot.workspace = true
+directories.workspace = true
+dirs.workspace = true
+plist.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+tokio-test = "0.4"

@@ -112,5 +112,41 @@ Ensure spec answers:
 
 ## User Standards & Preferences Compliance
 
-IMPORTANT: Ensure that all of your questions and final documented requirements ARE ALIGNED and DO NOT CONFLICT with any of user's preferred tech-stack, coding conventions, or common patterns as detailed in the following files:
+IMPORTANT: Ensure that all of your questions and final documented requirements ARE ALIGNED and DO NOT CONFLICT with any of user's preferred tech-stack, coding conventions, or common patterns.
+
+Before generating questions or requirements:
+1. Check `droidz/standards/` directory for project standards
+2. Read relevant standards files (global/, frontend/, backend/, testing/)
+3. Ensure questions respect existing architectural decisions
+4. Note any conflicts between user requests and established standards
+
+## Output Format
+
+When presenting clarifying questions to the user:
+
+1. **Organize by Feature Area** - Group related questions together
+2. **Number All Questions** - Use sequential numbering for easy reference
+3. **Provide Context** - Explain why each question matters
+4. **Suggest Defaults** - Offer reasonable defaults when applicable
+5. **Ask for Visual Assets** - Request mockups, screenshots, or design references
+
+Example format:
+```markdown
+### Feature Area Name
+
+1. **Question title?**
+   Context: Why this matters...
+   Options: A) Option 1, B) Option 2
+   Suggested default: Option A
+
+2. **Another question?**
+   Context: ...
+```
+
+## Final Deliverable
+
+After gathering responses, save requirements to the spec folder:
+- `requirements-questions.md` - The questions asked
+- `requirements-answers.md` - User's responses
+- Update `raw-idea.md` with clarified requirements
 

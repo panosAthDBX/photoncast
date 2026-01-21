@@ -8,7 +8,7 @@ mod command_definitions {
     #[test]
     fn test_all_commands_returns_all_variants() {
         let commands = SystemCommand::all();
-        assert_eq!(commands.len(), 11, "expected 11 system commands");
+        assert_eq!(commands.len(), 15, "expected 15 system commands");
 
         // Verify all command types are present
         let command_ids: Vec<&str> = commands.iter().map(|c| c.command.id()).collect();
@@ -23,13 +23,17 @@ mod command_definitions {
         assert!(command_ids.contains(&"screen_saver"));
         assert!(command_ids.contains(&"toggle_appearance"));
         assert!(command_ids.contains(&"toggle_launch_at_login"));
+        assert!(command_ids.contains(&"preferences"));
+        assert!(command_ids.contains(&"create_quicklink"));
+        assert!(command_ids.contains(&"manage_quicklinks"));
+        assert!(command_ids.contains(&"browse_quicklink_library"));
     }
 
     #[test]
     fn test_command_id_is_unique() {
         let commands = SystemCommand::all();
         let mut ids: Vec<&str> = commands.iter().map(|c| c.command.id()).collect();
-        ids.sort();
+        ids.sort_unstable();
         let original_len = ids.len();
         ids.dedup();
         assert_eq!(ids.len(), original_len, "command IDs should be unique");
@@ -127,6 +131,10 @@ mod command_definitions {
         assert!(!SystemCommand::LockScreen.requires_confirmation());
         assert!(!SystemCommand::ScreenSaver.requires_confirmation());
         assert!(!SystemCommand::ToggleAppearance.requires_confirmation());
+        assert!(!SystemCommand::Preferences.requires_confirmation());
+        assert!(!SystemCommand::CreateQuicklink.requires_confirmation());
+        assert!(!SystemCommand::ManageQuicklinks.requires_confirmation());
+        assert!(!SystemCommand::BrowseQuicklinkLibrary.requires_confirmation());
     }
 
     #[test]
@@ -214,6 +222,7 @@ mod confirmation_dialog {
         // Non-destructive commands should not have confirmation dialogs
         assert!(SystemCommand::Sleep.confirmation_dialog().is_none());
         assert!(SystemCommand::LockScreen.confirmation_dialog().is_none());
+        assert!(SystemCommand::Preferences.confirmation_dialog().is_none());
     }
 }
 

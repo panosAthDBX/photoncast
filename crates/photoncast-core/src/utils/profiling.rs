@@ -290,7 +290,7 @@ mod tests {
         let result =
             ProfileResult::new("test", Duration::from_millis(20), Duration::from_millis(30));
         assert!(result.met_target);
-        assert_eq!(result.overshoot_percent(), 0.0);
+        assert!(result.overshoot_percent().abs() < f64::EPSILON);
         assert!(result.margin_percent() > 0.0);
     }
 
@@ -300,7 +300,7 @@ mod tests {
             ProfileResult::new("test", Duration::from_millis(50), Duration::from_millis(30));
         assert!(!result.met_target);
         assert!(result.overshoot_percent() > 0.0);
-        assert_eq!(result.margin_percent(), 0.0);
+        assert!(result.margin_percent().abs() < f64::EPSILON);
     }
 
     #[test]
@@ -359,6 +359,7 @@ mod tests {
         assert!(summary.contains("100%"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_targets_constants() {
         assert!(targets::COLD_START <= Duration::from_millis(100));

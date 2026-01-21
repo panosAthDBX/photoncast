@@ -290,7 +290,7 @@ mod tests {
 
         // All entries should have zero frecency
         for entry in index.iter() {
-            assert_eq!(entry.frecency, 0.0);
+            assert!(entry.frecency.abs() < f64::EPSILON);
         }
     }
 
@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn test_early_termination_config() {
         let config = EarlyTerminationConfig::default();
-        assert_eq!(config.threshold_multiplier, 2.0);
+        assert!((config.threshold_multiplier - 2.0).abs() < f64::EPSILON);
         assert_eq!(config.threshold(10), 20);
         assert_eq!(config.threshold(5), 10);
     }

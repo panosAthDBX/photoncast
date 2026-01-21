@@ -10,7 +10,10 @@ use parking_lot::RwLock;
 use tracing::{debug, info, warn};
 
 use crate::indexer::IndexedApp;
-use crate::search::providers::{AppProvider, CommandProvider, FileProvider};
+use crate::search::providers::{
+    AppProvider, AppsProvider, CalendarProvider, CommandProvider, FileProvider, QuickLinksProvider,
+    TimerProvider, WindowProvider,
+};
 use crate::search::{SearchConfig, SearchEngine, SearchResults};
 
 /// Default search timeout in milliseconds.
@@ -140,7 +143,38 @@ impl PhotonCastApp {
         engine.add_provider(command_provider);
         debug!("Registered CommandProvider");
 
-        // 3. File Provider (lower priority, optional)
+        // 3. Window management provider
+        let window_provider = WindowProvider::new();
+        engine.add_provider(window_provider);
+        debug!("Registered WindowProvider");
+
+        // 4. Quick links provider (optional if storage fails)
+        match QuickLinksProvider::new() {
+            Ok(provider) => {
+                engine.add_provider(provider);
+                debug!("Registered QuickLinksProvider");
+            },
+            Err(e) => {
+                warn!(error = %e, "Quick links provider unavailable");
+            },
+        }
+
+        // 5. Calendar provider
+        let calendar_provider = CalendarProvider::new();
+        engine.add_provider(calendar_provider);
+        debug!("Registered CalendarProvider");
+
+        // 6. Sleep timer provider
+        let timer_provider = TimerProvider::new();
+        engine.add_provider(timer_provider);
+        debug!("Registered TimerProvider");
+
+        // 7. App management provider
+        let app_management_provider = AppsProvider::new();
+        engine.add_provider(app_management_provider);
+        debug!("Registered AppsProvider");
+
+        // 8. File Provider (lower priority, optional)
         if config.include_files {
             let file_provider = FileProvider::new(config.file_result_limit);
             engine.add_provider(file_provider);
@@ -183,7 +217,7 @@ impl PhotonCastApp {
             SearchOutcome::timeout(results)
         } else {
             debug!(
-                query = %query,
+                query = %format!("'{}'", query),
                 elapsed_ms = elapsed.as_millis(),
                 result_count = results.total_count,
                 "Search completed"
@@ -285,6 +319,16 @@ impl PhotonCastApp {
         self.app_index.read().len()
     }
 
+    /// Gets an app by bundle ID from the index.
+    #[must_use]
+    pub fn get_app_by_bundle_id(&self, bundle_id: &str) -> Option<IndexedApp> {
+        self.app_index
+            .read()
+            .iter()
+            .find(|app| app.bundle_id.as_str() == bundle_id)
+            .cloned()
+    }
+
     /// Returns a reference to the search engine.
     #[must_use]
     pub fn search_engine(&self) -> &SearchEngine {
@@ -326,7 +370,7 @@ mod tests {
     #[test]
     fn test_photoncast_app_new() {
         let app = PhotonCastApp::new();
-        assert_eq!(app.search_engine.provider_count(), 3); // apps, commands, files
+        assert!(app.search_engine.provider_count() >= 7); // apps, commands, window, quicklinks?, calendar, timer, apps, files
         assert_eq!(app.app_count(), 0);
     }
 
@@ -337,7 +381,7 @@ mod tests {
             ..Default::default()
         };
         let app = PhotonCastApp::with_config(config);
-        assert_eq!(app.search_engine.provider_count(), 2); // apps, commands only
+        assert!(app.search_engine.provider_count() >= 6); // apps, commands, window, quicklinks?, calendar, timer, apps
     }
 
     #[test]
@@ -500,10 +544,7 @@ mod tests {
         let outcome = app.search("Updated");
         // The search should find the updated name
         assert!(
-            outcome
-                .results
-                .iter()
-                .any(|r| r.title.contains("Updated")),
+            outcome.results.iter().any(|r| r.title.contains("Updated")),
             "Should find updated app name"
         );
     }

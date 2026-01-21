@@ -1,16 +1,7 @@
 //! Catppuccin theming system.
 //!
-//! This module implements the Catppuccin color palette with all 4 flavors
-//! and semantic color mapping for the UI.
-//!
-//! # Flavors
-//!
-//! | Flavor | Mode | Description |
-//! |--------|------|-------------|
-//! | Latte | Light | Warm, creamy light theme |
-//! | Frappé | Dark | Muted, low-contrast dark |
-//! | Macchiato | Dark | Medium contrast dark |
-//! | Mocha | Dark | High contrast, deep dark |
+//! Re-exports types from the `photoncast-theme` crate with additional
+//! platform-specific utilities like system appearance detection.
 //!
 //! # Example
 //!
@@ -20,20 +11,18 @@
 //! // Create default theme (Mocha with Mauve accent)
 //! let theme = PhotonTheme::default();
 //!
-//! // Create custom theme
-//! let theme = PhotonTheme::new(CatppuccinFlavor::Latte, AccentColor::Blue);
-//!
-//! // Use builder pattern
-//! let theme = PhotonTheme::default()
-//!     .with_flavor(CatppuccinFlavor::Macchiato)
-//!     .with_accent(AccentColor::Teal)
-//!     .with_auto_sync(true);
+//! // Create theme based on system appearance
+//! let theme = photoncast_core::theme::from_system_appearance();
 //! ```
 
-pub mod catppuccin;
-pub mod colors;
-pub mod provider;
+// Re-export everything from photoncast-theme
+pub use photoncast_theme::*;
 
-pub use catppuccin::{AccentColor, CatppuccinFlavor, CatppuccinPalette, Hsla};
-pub use colors::ThemeColors;
-pub use provider::PhotonTheme;
+/// Creates a theme based on system appearance.
+///
+/// Uses system dark mode detection to select the appropriate flavor.
+#[must_use]
+pub fn from_system_appearance() -> PhotonTheme {
+    let flavor = crate::platform::appearance::detect_system_appearance();
+    PhotonTheme::new(flavor, AccentColor::default())
+}

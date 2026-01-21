@@ -18,8 +18,11 @@
 //! reveal_in_finder(Path::new("/Applications/Safari.app")).ok();
 //! ```
 
+use std::net::IpAddr;
 use std::path::Path;
 use std::process::Command;
+
+use anyhow::Context;
 
 use thiserror::Error;
 use tracing::{debug, warn};
@@ -49,6 +52,13 @@ pub enum LaunchError {
         /// The application name or path.
         app: String,
     },
+
+    /// URL is not permitted for opening.
+    #[error("URL is not allowed: {url}")]
+    UrlNotAllowed {
+        /// The URL that was blocked.
+        url: String,
+    },
 }
 
 impl LaunchError {
@@ -64,6 +74,9 @@ impl LaunchError {
             },
             Self::Damaged { app } => {
                 format!("{} is damaged and can't be opened. Try reinstalling.", app)
+            },
+            Self::UrlNotAllowed { url } => {
+                format!("Blocked unsafe URL: {}", url)
             },
         }
     }
@@ -81,6 +94,7 @@ impl LaunchError {
             Self::NotFound { .. } => Some("Remove from index"),
             Self::Damaged { .. } => Some("Reveal in Finder"),
             Self::LaunchFailed { .. } => Some("Retry"),
+            Self::UrlNotAllowed { .. } => None,
         }
     }
 
@@ -309,6 +323,81 @@ pub fn reveal_in_finder(path: &Path) -> Result<(), LaunchError> {
     })
 }
 
+/// Opens a URL using the default system handler.
+///
+/// # Errors
+///
+/// Returns an error if the URL cannot be opened.
+pub fn open_url(url: &str) -> Result<(), LaunchError> {
+    debug!(url = %url, "opening URL");
+
+    let parsed = url::Url::parse(url).map_err(|e| LaunchError::LaunchFailed {
+        app: url.to_string(),
+        reason: format!("invalid URL: {e}"),
+    })?;
+
+    if !is_allowed_url(&parsed) {
+        warn!(url = %url, "blocked URL with disallowed scheme or host");
+        return Err(LaunchError::UrlNotAllowed {
+            url: url.to_string(),
+        });
+    }
+
+    let status = Command::new("open")
+        .arg(parsed.as_str())
+        .status()
+        .with_context(|| format!("failed to execute open for URL: {url}"))
+        .map_err(|e| LaunchError::LaunchFailed {
+            app: url.to_string(),
+            reason: e.to_string(),
+        })?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(LaunchError::LaunchFailed {
+            app: url.to_string(),
+            reason: format!("exit code {}", status.code().unwrap_or(-1)),
+        })
+    }
+}
+
+fn is_allowed_url(url: &url::Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https" | "mailto" | "tel") {
+        return false;
+    }
+
+    if url.scheme() == "mailto" || url.scheme() == "tel" {
+        return true;
+    }
+
+    let host = match url.host_str() {
+        Some(host) => host,
+        None => return false,
+    };
+
+    if host.eq_ignore_ascii_case("localhost") {
+        return false;
+    }
+
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return !is_private_ip(&ip);
+    }
+
+    true
+}
+
+fn is_private_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(addr) => addr.is_private() || addr.is_loopback() || addr.is_link_local(),
+        IpAddr::V6(addr) => addr.is_loopback() || is_unique_local_v6(addr),
+    }
+}
+
+const fn is_unique_local_v6(addr: &std::net::Ipv6Addr) -> bool {
+    (addr.segments()[0] & 0xfe00) == 0xfc00
+}
+
 // =============================================================================
 // AppLauncher - High-level launcher with usage tracking
 // =============================================================================
@@ -482,6 +571,21 @@ impl AppLauncher {
                 debug!(path = %path.display(), "ignoring QuickLookFile action in AppLauncher");
                 Ok(())
             },
+            SearchAction::CopyToClipboard { text } => {
+                debug!(text = %text, "ignoring CopyToClipboard action in AppLauncher");
+                Ok(())
+            },
+            SearchAction::OpenUrl { url } => open_url(url),
+            SearchAction::ExecuteQuickLink { .. }
+            | SearchAction::OpenQuickLinks
+            | SearchAction::OpenSleepTimer { expression: _ }
+            | SearchAction::OpenCalendar { command_id: _ }
+            | SearchAction::ExecuteWindowCommand { command_id: _ }
+            | SearchAction::OpenAppManagement { command_id: _ }
+            | SearchAction::ForceQuitApp { pid: _ } => {
+                debug!("ignoring non-launch action in AppLauncher");
+                Ok(())
+            },
         }
     }
 
@@ -537,7 +641,35 @@ impl AppLauncher {
                 debug!(path = %path.display(), "ignoring QuickLookFile action in AppLauncher");
                 Ok(())
             },
+            SearchAction::CopyToClipboard { text } => {
+                debug!(text = %text, "ignoring CopyToClipboard action in AppLauncher");
+                Ok(())
+            },
+            SearchAction::OpenUrl { url } => open_url(&url),
+            SearchAction::ExecuteQuickLink { .. }
+            | SearchAction::OpenQuickLinks
+            | SearchAction::OpenSleepTimer { expression: _ }
+            | SearchAction::OpenCalendar { command_id: _ }
+            | SearchAction::ExecuteWindowCommand { command_id: _ }
+            | SearchAction::OpenAppManagement { command_id: _ }
+            | SearchAction::ForceQuitApp { pid: _ } => {
+                debug!("ignoring non-launch action in AppLauncher");
+                Ok(())
+            },
         }
+    }
+
+    /// Gets the top N apps by frecency score (frequently + recently used).
+    ///
+    /// Returns bundle IDs of the most frequently and recently used apps,
+    /// which can be used to show suggestions in the launcher.
+    pub fn get_top_apps_by_frecency(&self, limit: usize) -> Vec<String> {
+        self.usage_tracker
+            .get_top_apps_by_frecency(limit)
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "failed to get top apps by frecency");
+                Vec::new()
+            })
     }
 }
 
@@ -640,6 +772,19 @@ mod tests {
             .action_hint(),
             Some("Retry")
         );
+        assert_eq!(
+            LaunchError::UrlNotAllowed {
+                url: "http://localhost".to_string()
+            }
+            .action_hint(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_open_url_blocks_localhost() {
+        let result = open_url("http://localhost:8080");
+        assert!(matches!(result, Err(LaunchError::UrlNotAllowed { .. })));
     }
 
     #[test]

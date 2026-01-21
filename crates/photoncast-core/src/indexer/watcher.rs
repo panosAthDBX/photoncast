@@ -459,7 +459,7 @@ mod tests {
         let event = Event {
             kind: EventKind::Create(notify::event::CreateKind::Any),
             paths: vec![PathBuf::from("/Applications/file.txt")],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
         assert!(process_raw_event(&event).is_none());
     }
@@ -470,7 +470,7 @@ mod tests {
         let event = Event {
             kind: EventKind::Create(notify::event::CreateKind::Any),
             paths: vec![path.clone()],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
 
         let result = process_raw_event(&event);
@@ -484,7 +484,7 @@ mod tests {
         let event = Event {
             kind: EventKind::Modify(notify::event::ModifyKind::Any),
             paths: vec![path.clone()],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
 
         let result = process_raw_event(&event);
@@ -498,7 +498,7 @@ mod tests {
         let event = Event {
             kind: EventKind::Remove(notify::event::RemoveKind::Any),
             paths: vec![path.clone()],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
 
         let result = process_raw_event(&event);
@@ -512,7 +512,7 @@ mod tests {
         let event = Event {
             kind: EventKind::Access(notify::event::AccessKind::Any),
             paths: vec![path],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
 
         assert!(process_raw_event(&event).is_none());
@@ -529,7 +529,7 @@ mod tests {
 
         assert_ne!(
             WatchEvent::AppAdded(path.clone()),
-            WatchEvent::AppModified(path.clone())
+            WatchEvent::AppModified(path)
         );
     }
 }

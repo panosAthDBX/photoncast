@@ -1,0 +1,44 @@
+[package]
+name = "photoncast-window"
+description = "Window management module for PhotonCast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ui"]
+ui = ["dep:gpui"]
+
+[lib]
+name = "photoncast_window"
+path = "src/lib.rs"
+
+[dependencies]
+
+gpui = { workspace = true, optional = true }
+
+tokio.workspace = true
+futures.workspace = true
+
+thiserror.workspace = true
+anyhow.workspace = true
+
+tracing.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+
+parking_lot.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+accessibility.workspace = true
+accessibility-sys = "0.1"
+core-graphics.workspace = true
+core-foundation.workspace = true
+core-foundation-sys.workspace = true
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true

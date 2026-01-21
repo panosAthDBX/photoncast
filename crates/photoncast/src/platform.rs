@@ -2,6 +2,7 @@
 
 #[cfg(target_os = "macos")]
 mod macos {
+    use std::cell::RefCell;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -12,14 +13,17 @@ mod macos {
         CGEventTapPlacement, CGEventType,
     };
 
+    use objc2::msg_send_id;
     use objc2::rc::Retained;
     use objc2::sel;
-    use objc2::ClassType;
+    use objc2::{declare_class, mutability, ClassType, DeclaredClass};
     use objc2_app_kit::{
-        NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSImage, NSMenu, NSMenuItem,
-        NSStatusBar, NSStatusItem, NSWorkspace,
+        NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu,
+        NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
     };
-    use objc2_foundation::{MainThreadMarker, NSDictionary, NSRect, NSSize, NSString};
+    use objc2_foundation::{
+        MainThreadMarker, NSDictionary, NSObject, NSObjectProtocol, NSRect, NSSize, NSString,
+    };
 
     use tracing::{debug, error, info, warn};
 
@@ -75,45 +79,36 @@ mod macos {
         let icon: Retained<NSImage> = unsafe { workspace.iconForFile(&ns_path) };
 
         // Set the icon size for rendering
-        let target_size = NSSize::new(size as f64, size as f64);
+        let target_size = NSSize::new(f64::from(size), f64::from(size));
         unsafe { icon.setSize(target_size) };
 
         // Get TIFF representation from NSImage
-        let tiff_data = match unsafe { icon.TIFFRepresentation() } {
-            Some(data) => data,
-            None => {
-                tracing::warn!(
-                    "Failed to get TIFF representation for {}",
-                    app_path.display()
-                );
-                return None;
-            },
+        let Some(tiff_data) = (unsafe { icon.TIFFRepresentation() }) else {
+            tracing::warn!(
+                "Failed to get TIFF representation for {}",
+                app_path.display()
+            );
+            return None;
         };
 
         // Create bitmap image rep from the TIFF data
         let bitmap: Option<Retained<NSBitmapImageRep>> =
             unsafe { NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff_data) };
 
-        let bitmap = match bitmap {
-            Some(b) => b,
-            None => {
-                tracing::warn!("Failed to create bitmap rep for {}", app_path.display());
-                return None;
-            },
+        let Some(bitmap) = bitmap else {
+            tracing::warn!("Failed to create bitmap rep for {}", app_path.display());
+            return None;
         };
 
         // Create empty dictionary for PNG properties
         let empty_dict: Retained<NSDictionary<NSString>> = unsafe { NSDictionary::dictionary() };
 
         // Convert to PNG data
-        let png_data = match unsafe {
+        let Some(png_data) = (unsafe {
             bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &empty_dict)
-        } {
-            Some(data) => data,
-            None => {
-                tracing::warn!("Failed to convert to PNG for {}", app_path.display());
-                return None;
-            },
+        }) else {
+            tracing::warn!("Failed to convert to PNG for {}", app_path.display());
+            return None;
         };
 
         // Convert NSData to Vec<u8>
@@ -140,12 +135,30 @@ mod macos {
         }
     }
 
+    /// Gets app path for a bundle ID using NSWorkspace.
+    pub fn get_app_path_for_bundle_id(bundle_id: &str) -> Option<std::path::PathBuf> {
+        use objc2::rc::Retained;
+        use objc2_app_kit::NSWorkspace;
+        use objc2_foundation::NSString;
+
+        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+        let bundle_id_ns = NSString::from_str(bundle_id);
+
+        let url: Option<Retained<objc2_foundation::NSURL>> =
+            unsafe { workspace.URLForApplicationWithBundleIdentifier(&bundle_id_ns) };
+
+        url.and_then(|u| unsafe { u.path() })
+            .map(|p| std::path::PathBuf::from(p.to_string()))
+    }
+
     // =========================================================================
     // Global Hotkey Registration via CGEventTap
     // =========================================================================
 
     /// Virtual key code for Space
     const KEY_SPACE: i64 = 49;
+    /// Virtual key code for V
+    const KEY_V: i64 = 9;
 
     /// Callback type for hotkey activation
     pub type HotkeyCallback = Box<dyn Fn() + Send + Sync>;
@@ -153,6 +166,8 @@ mod macos {
     /// Global state for the hotkey system
     static HOTKEY_ACTIVE: AtomicBool = AtomicBool::new(false);
     static HOTKEY_CALLBACK: Mutex<Option<Arc<HotkeyCallback>>> = Mutex::new(None);
+    /// Callback for clipboard hotkey (Cmd+Shift+V)
+    static CLIPBOARD_HOTKEY_CALLBACK: Mutex<Option<Arc<HotkeyCallback>>> = Mutex::new(None);
 
     /// Registers a global hotkey (Cmd+Space by default).
     ///
@@ -195,6 +210,23 @@ mod macos {
         if let Ok(mut cb) = HOTKEY_CALLBACK.lock() {
             *cb = None;
         }
+        if let Ok(mut cb) = CLIPBOARD_HOTKEY_CALLBACK.lock() {
+            *cb = None;
+        }
+    }
+
+    /// Registers the clipboard hotkey (Cmd+Shift+V).
+    /// Must be called after `register_global_hotkey` as it uses the same event tap.
+    pub fn register_clipboard_hotkey<F>(callback: F) -> Result<(), String>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        info!("Registering clipboard hotkey (Cmd+Shift+V)");
+        let mut cb = CLIPBOARD_HOTKEY_CALLBACK
+            .lock()
+            .map_err(|e| e.to_string())?;
+        *cb = Some(Arc::new(Box::new(callback)));
+        Ok(())
     }
 
     /// Returns whether a global hotkey is currently registered.
@@ -226,6 +258,13 @@ mod macos {
             && !flags.contains(CGEventFlags::CGEventFlagControl)
             && !flags.contains(CGEventFlags::CGEventFlagAlternate);
 
+        // Check for Cmd+Shift+V (keycode 9 = V, command + shift flags set)
+        let is_cmd_shift_v = keycode == KEY_V
+            && flags.contains(CGEventFlags::CGEventFlagCommand)
+            && flags.contains(CGEventFlags::CGEventFlagShift)
+            && !flags.contains(CGEventFlags::CGEventFlagControl)
+            && !flags.contains(CGEventFlags::CGEventFlagAlternate);
+
         if is_cmd_space {
             debug!("Hotkey detected: Cmd+Space");
 
@@ -244,11 +283,29 @@ mod macos {
             return None;
         }
 
+        if is_cmd_shift_v {
+            debug!("Hotkey detected: Cmd+Shift+V");
+
+            // Invoke the clipboard callback
+            if let Ok(cb_guard) = CLIPBOARD_HOTKEY_CALLBACK.lock() {
+                if let Some(callback) = cb_guard.as_ref() {
+                    let callback = Arc::clone(callback);
+                    // Invoke callback (don't block the event tap)
+                    std::thread::spawn(move || {
+                        callback();
+                    });
+                }
+            }
+
+            // Consume the event (don't pass to other apps)
+            return None;
+        }
+
         // Pass through other events
         Some(event.clone())
     }
 
-    /// Runs the CGEventTap on the current thread.
+    /// Runs the `CGEventTap` on the current thread.
     fn run_event_tap() -> Result<(), String> {
         // Create event tap
         let event_tap = CGEventTap::new(
@@ -258,7 +315,7 @@ mod macos {
             vec![CGEventType::KeyDown],
             event_tap_callback,
         )
-        .map_err(|_| "Failed to create event tap. Is accessibility permission granted?")?;
+        .map_err(|()| "Failed to create event tap. Is accessibility permission granted?")?;
 
         // Enable the tap
         event_tap.enable();
@@ -267,7 +324,7 @@ mod macos {
         let source = event_tap
             .mach_port
             .create_runloop_source(0)
-            .map_err(|_| "Failed to create run loop source")?;
+            .map_err(|()| "Failed to create run loop source")?;
 
         let run_loop = CFRunLoop::get_current();
         run_loop.add_source(&source, unsafe { kCFRunLoopCommonModes });
@@ -294,8 +351,6 @@ mod macos {
     // Menu Bar (Status Item) Integration
     // =========================================================================
 
-    use std::cell::RefCell;
-
     // Thread-local storage for the status item (NSStatusItem is MainThreadOnly)
     thread_local! {
         static MENU_BAR_STATUS_ITEM: RefCell<Option<Retained<NSStatusItem>>> = const { RefCell::new(None) };
@@ -305,7 +360,7 @@ mod macos {
     pub type MenuBarCallback = Box<dyn Fn(MenuBarActionKind) + Send + Sync>;
 
     /// Menu bar action kinds.
-    /// 
+    ///
     /// Note: Variants are constructed in main.rs, not in this module.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     #[allow(dead_code)]
@@ -320,6 +375,47 @@ mod macos {
 
     /// Global callback for menu bar actions
     static MENU_BAR_CALLBACK: Mutex<Option<Arc<MenuBarCallback>>> = Mutex::new(None);
+
+    declare_class!(
+        struct MenuBarTarget;
+
+        unsafe impl ClassType for MenuBarTarget {
+            type Super = NSObject;
+            type Mutability = mutability::MainThreadOnly;
+            const NAME: &'static str = "PhotonCastMenuBarTarget";
+        }
+
+        impl DeclaredClass for MenuBarTarget {
+            type Ivars = ();
+        }
+
+        unsafe impl MenuBarTarget {
+            #[method(menuBarItemSelected:)]
+            fn menu_bar_item_selected(&self, item: &NSMenuItem) {
+                let tag = unsafe { item.tag() };
+                let action = match tag {
+                    1 => Some(MenuBarActionKind::ToggleLauncher),
+                    2 => Some(MenuBarActionKind::OpenPreferences),
+                    3 => Some(MenuBarActionKind::Quit),
+                    _ => None,
+                };
+
+                if let Some(action) = action {
+                    if let Ok(cb_guard) = MENU_BAR_CALLBACK.lock() {
+                        if let Some(callback) = cb_guard.as_ref() {
+                            callback(action);
+                        }
+                    }
+                }
+            }
+        }
+
+        unsafe impl NSObjectProtocol for MenuBarTarget {}
+    );
+
+    thread_local! {
+        static MENU_BAR_TARGET: RefCell<Option<Retained<MenuBarTarget>>> = const { RefCell::new(None) };
+    }
 
     /// Creates and shows the menu bar status item with a menu.
     ///
@@ -353,13 +449,8 @@ mod macos {
 
         // Set the button title to show an icon in the menu bar
         // Use objc2 msg_send! since button() isn't exposed in objc2-app-kit 0.2
-        use objc2::msg_send_id;
-        use objc2_app_kit::NSButton;
-        
-        let button: Option<Retained<NSButton>> = unsafe {
-            msg_send_id![&status_item, button]
-        };
-        
+        let button: Option<Retained<NSButton>> = unsafe { msg_send_id![&status_item, button] };
+
         if let Some(button) = button {
             let title = NSString::from_str("⚡");
             unsafe { button.setTitle(&title) };
@@ -369,6 +460,22 @@ mod macos {
 
         // Create the menu
         let menu = create_status_menu(mtm);
+
+        let target = mtm.alloc::<MenuBarTarget>().set_ivars(());
+        let target: Retained<MenuBarTarget> = unsafe { msg_send_id![super(target), init] };
+        for tag in [1, 2, 3] {
+            if let Some(item) = unsafe { menu.itemWithTag(tag) } {
+                unsafe {
+                    item.setTarget(Some(target.as_ref()));
+                    item.setAction(Some(sel!(menuBarItemSelected:)));
+                }
+            }
+        }
+
+        MENU_BAR_TARGET.with(|cell| {
+            *cell.borrow_mut() = Some(target);
+        });
+
         unsafe { status_item.setMenu(Some(&menu)) };
 
         // Store the status item in thread-local storage to keep it alive
@@ -395,6 +502,7 @@ mod macos {
                 &open_key,
             )
         };
+        unsafe { open_item.setTag(1) };
         // Disable the item since it doesn't have an action (shows greyed out with shortcut hint)
         unsafe { open_item.setEnabled(false) };
         menu.addItem(&open_item);
@@ -403,18 +511,18 @@ mod macos {
         let separator = NSMenuItem::separatorItem(mtm);
         menu.addItem(&separator);
 
-        // "Preferences..." item (disabled for now)
+        // "Preferences..." item
         let prefs_title = NSString::from_str("Preferences...");
         let prefs_key = NSString::from_str(",");
         let prefs_item = unsafe {
             NSMenuItem::initWithTitle_action_keyEquivalent(
                 mtm.alloc::<NSMenuItem>(),
                 &prefs_title,
-                None, // TODO: Add preferences action
+                None,
                 &prefs_key,
             )
         };
-        unsafe { prefs_item.setEnabled(false) };
+        unsafe { prefs_item.setTag(2) };
         menu.addItem(&prefs_item);
 
         // Separator
@@ -428,17 +536,18 @@ mod macos {
             NSMenuItem::initWithTitle_action_keyEquivalent(
                 mtm.alloc::<NSMenuItem>(),
                 &quit_title,
-                Some(sel!(terminate:)),
+                None,
                 &quit_key,
             )
         };
+        unsafe { quit_item.setTag(3) };
         menu.addItem(&quit_item);
 
         menu
     }
 
     /// Removes the menu bar status item.
-    /// 
+    ///
     /// Note: Currently unused but kept as part of the public API for future use
     /// (e.g., cleanup on shutdown, dynamic menu bar toggling).
     #[allow(dead_code)]
@@ -459,7 +568,7 @@ mod macos {
     }
 
     /// Returns true if the menu bar item is active.
-    /// 
+    ///
     /// Note: Currently unused but kept as part of the public API for future use.
     #[allow(dead_code)]
     pub fn is_menu_bar_active() -> bool {
@@ -468,7 +577,7 @@ mod macos {
 
     /// Triggers the menu bar callback with the specified action.
     /// This is called when a menu item is selected.
-    /// 
+    ///
     /// Note: Currently unused but kept as part of the public API for future use
     /// (e.g., programmatic menu actions, testing).
     #[allow(dead_code)]
@@ -508,6 +617,11 @@ pub fn save_app_icon_as_png(
     _size: u32,
 ) -> bool {
     false
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_app_path_for_bundle_id(_bundle_id: &str) -> Option<std::path::PathBuf> {
+    None
 }
 
 #[cfg(not(target_os = "macos"))]

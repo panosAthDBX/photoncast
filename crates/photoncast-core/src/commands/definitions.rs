@@ -27,6 +27,14 @@ pub enum SystemCommand {
     ToggleAppearance,
     /// Toggle launch at login.
     ToggleLaunchAtLogin,
+    /// Open Preferences.
+    Preferences,
+    /// Create a new quicklink.
+    CreateQuicklink,
+    /// Manage quicklinks.
+    ManageQuicklinks,
+    /// Browse the bundled quicklinks library.
+    BrowseQuicklinkLibrary,
 }
 
 /// Information about a system command.
@@ -140,6 +148,38 @@ impl SystemCommand {
                 icon: "power",
                 requires_confirmation: false,
             },
+            CommandInfo {
+                command: Self::Preferences,
+                name: "Preferences",
+                aliases: &["preferences", "settings", "config", "configure"],
+                description: "Open PhotonCast preferences",
+                icon: "gear",
+                requires_confirmation: false,
+            },
+            CommandInfo {
+                command: Self::CreateQuicklink,
+                name: "Create Quicklink",
+                aliases: &["create quicklink", "new quicklink", "add quicklink", "quicklink"],
+                description: "Create a new quicklink",
+                icon: "link",
+                requires_confirmation: false,
+            },
+            CommandInfo {
+                command: Self::ManageQuicklinks,
+                name: "Manage Quicklinks",
+                aliases: &["manage quicklinks", "edit quicklinks", "quicklinks"],
+                description: "Manage your quicklinks",
+                icon: "list",
+                requires_confirmation: false,
+            },
+            CommandInfo {
+                command: Self::BrowseQuicklinkLibrary,
+                name: "Browse Quicklink Library",
+                aliases: &["quicklink library", "browse quicklinks", "quicklinks library"],
+                description: "Browse and add quicklinks from the library",
+                icon: "book",
+                requires_confirmation: false,
+            },
         ]
     }
 
@@ -158,6 +198,10 @@ impl SystemCommand {
             Self::ScreenSaver => "screen_saver",
             Self::ToggleAppearance => "toggle_appearance",
             Self::ToggleLaunchAtLogin => "toggle_launch_at_login",
+            Self::Preferences => "preferences",
+            Self::CreateQuicklink => "create_quicklink",
+            Self::ManageQuicklinks => "manage_quicklinks",
+            Self::BrowseQuicklinkLibrary => "browse_quicklink_library",
         }
     }
 
@@ -176,6 +220,10 @@ impl SystemCommand {
             Self::ScreenSaver => "Screen Saver",
             Self::ToggleAppearance => "Toggle Appearance",
             Self::ToggleLaunchAtLogin => "Toggle Launch at Login",
+            Self::Preferences => "Preferences",
+            Self::CreateQuicklink => "Create Quicklink",
+            Self::ManageQuicklinks => "Manage Quicklinks",
+            Self::BrowseQuicklinkLibrary => "Browse Quicklink Library",
         }
     }
 
@@ -193,7 +241,15 @@ impl SystemCommand {
             Self::EmptyTrash => &["empty trash", "clear trash"],
             Self::ScreenSaver => &["screensaver"],
             Self::ToggleAppearance => &["dark mode", "light mode", "toggle dark"],
-            Self::ToggleLaunchAtLogin => &["launch at login", "startup", "auto start", "login item"],
+            Self::ToggleLaunchAtLogin => {
+                &["launch at login", "startup", "auto start", "login item"]
+            },
+            Self::Preferences => &["preferences", "settings", "config", "configure"],
+            Self::CreateQuicklink => &["create quicklink", "new quicklink", "add quicklink", "quicklink"],
+            Self::ManageQuicklinks => &["manage quicklinks", "edit quicklinks", "quicklinks"],
+            Self::BrowseQuicklinkLibrary => {
+                &["quicklink library", "browse quicklinks", "quicklinks library"]
+            },
         }
     }
 
@@ -212,6 +268,10 @@ impl SystemCommand {
             Self::ScreenSaver => "Start screen saver",
             Self::ToggleAppearance => "Switch between light and dark mode",
             Self::ToggleLaunchAtLogin => "Enable or disable launching PhotonCast at login",
+            Self::Preferences => "Open PhotonCast preferences",
+            Self::CreateQuicklink => "Create a new quicklink",
+            Self::ManageQuicklinks => "Manage your quicklinks",
+            Self::BrowseQuicklinkLibrary => "Browse and add quicklinks from the library",
         }
     }
 
@@ -229,6 +289,10 @@ impl SystemCommand {
             Self::EmptyTrash => "trash",
             Self::ToggleAppearance => "sun-moon",
             Self::ToggleLaunchAtLogin => "power",
+            Self::Preferences => "gear",
+            Self::CreateQuicklink => "link",
+            Self::ManageQuicklinks => "list",
+            Self::BrowseQuicklinkLibrary => "book",
         }
     }
 
@@ -244,7 +308,7 @@ impl SystemCommand {
 
     /// Returns whether this command is a mode-switching command (doesn't execute directly).
     ///
-    /// Mode-switching commands like `SearchFiles` don't execute an action themselves;
+    /// Mode-switching commands like `SearchFiles` or `Preferences` don't execute an action themselves;
     /// instead, they trigger a UI mode change in the launcher.
     #[must_use]
     pub const fn is_mode_command(&self) -> bool {

@@ -1,0 +1,16 @@
+[package]
+name = "photoncast-theme"
+description = "Catppuccin theming system for PhotonCast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "photoncast_theme"
+path = "src/lib.rs"
+
+[dependencies]
+gpui.workspace = true

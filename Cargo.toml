@@ -43,9 +43,11 @@ plist = "1.6"
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
 core-graphics = "0.24"
+accessibility = "0.1"
 objc2 = "0.5"
 objc2-foundation = { version = "0.2", features = ["NSGeometry", "NSData", "NSString", "NSArray"] }
 objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSApplication", "NSRunningApplication", "NSResponder", "NSView", "NSWorkspace", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphicsContext", "NSGraphics", "bitflags", "NSStatusBar", "NSStatusItem", "NSMenu", "NSMenuItem", "NSEvent", "NSButton", "NSControl"] }
+objc2-event-kit = { version = "0.2", features = ["EKEventStore", "EKEvent", "EKCalendar", "EKCalendarItem", "EKTypes", "EKObject", "block2", "alloc"] }
 
 # File System Watching
 notify = "6.1"
@@ -57,6 +59,8 @@ once_cell = "1"
 parking_lot = "0.12"
 directories = "5.0"
 dirs = "5.0"
+hostname = "0.4"
+url = "2.5"
 
 # Dev Dependencies
 proptest = "1"

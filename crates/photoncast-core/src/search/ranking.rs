@@ -338,7 +338,9 @@ impl ResultRanker {
         path: Option<&Path>,
     ) -> f64 {
         // Base formula: match_score + (frecency * 10.0)
-        let base_score = match_score + (frecency.score() * Self::FRECENCY_MULTIPLIER);
+        let base_score = frecency
+            .score()
+            .mul_add(Self::FRECENCY_MULTIPLIER, match_score);
 
         // Apply boosts
         self.apply_boosts(base_score, query, title, path)
@@ -358,7 +360,9 @@ impl ResultRanker {
     {
         for result in results.iter_mut() {
             let frecency = get_frecency(result.id.as_str());
-            result.score += frecency.score() * Self::FRECENCY_MULTIPLIER;
+            result.score = frecency
+                .score()
+                .mul_add(Self::FRECENCY_MULTIPLIER, result.score);
         }
 
         self.rank_by_match_quality(results);
@@ -487,6 +491,11 @@ mod tests {
         }
     }
 
+    fn assert_float_eq(actual: f64, expected: f64) {
+        let diff = (actual - expected).abs();
+        assert!(diff < 1e-6, "expected {expected}, got {actual}");
+    }
+
     // =========================================================================
     // Task 2.5.6: Frecency unit tests
     // =========================================================================
@@ -495,16 +504,16 @@ mod tests {
     fn test_frecency_zero() {
         let score = FrecencyScore::zero();
         assert_eq!(score.frequency, 0);
-        assert_eq!(score.recency, 0.0);
-        assert_eq!(score.score(), 0.0);
+        assert_float_eq(score.recency, 0.0);
+        assert_float_eq(score.score(), 0.0);
     }
 
     #[test]
     fn test_frecency_none_last_used() {
         let score = FrecencyScore::calculate(10, None);
         assert_eq!(score.frequency, 10);
-        assert_eq!(score.recency, 0.0);
-        assert_eq!(score.score(), 0.0);
+        assert_float_eq(score.recency, 0.0);
+        assert_float_eq(score.score(), 0.0);
     }
 
     #[test]
@@ -545,8 +554,8 @@ mod tests {
     fn test_frecency_new() {
         let score = FrecencyScore::new(5, 0.8);
         assert_eq!(score.frequency, 5);
-        assert_eq!(score.recency, 0.8);
-        assert_eq!(score.score(), 4.0);
+        assert_float_eq(score.recency, 0.8);
+        assert_float_eq(score.score(), 4.0);
     }
 
     // =========================================================================
@@ -556,19 +565,19 @@ mod tests {
     #[test]
     fn test_boost_config_default() {
         let config = BoostConfig::default();
-        assert_eq!(config.system_app_boost, 1.2);
-        assert_eq!(config.applications_boost, 1.1);
-        assert_eq!(config.exact_match_boost, 2.0);
-        assert_eq!(config.prefix_match_boost, 1.5);
+        assert_float_eq(config.system_app_boost, 1.2);
+        assert_float_eq(config.applications_boost, 1.1);
+        assert_float_eq(config.exact_match_boost, 2.0);
+        assert_float_eq(config.prefix_match_boost, 1.5);
     }
 
     #[test]
     fn test_boost_config_no_boosts() {
         let config = BoostConfig::no_boosts();
-        assert_eq!(config.system_app_boost, 1.0);
-        assert_eq!(config.applications_boost, 1.0);
-        assert_eq!(config.exact_match_boost, 1.0);
-        assert_eq!(config.prefix_match_boost, 1.0);
+        assert_float_eq(config.system_app_boost, 1.0);
+        assert_float_eq(config.applications_boost, 1.0);
+        assert_float_eq(config.exact_match_boost, 1.0);
+        assert_float_eq(config.prefix_match_boost, 1.0);
     }
 
     #[test]
@@ -576,7 +585,7 @@ mod tests {
         let ranker = ResultRanker::new();
         let path = Path::new("/System/Applications/Safari.app");
         let boost = ranker.calculate_path_boost(Some(path));
-        assert_eq!(boost, 1.2);
+        assert_float_eq(boost, 1.2);
     }
 
     #[test]
@@ -584,7 +593,7 @@ mod tests {
         let ranker = ResultRanker::new();
         let path = Path::new("/Applications/Visual Studio Code.app");
         let boost = ranker.calculate_path_boost(Some(path));
-        assert_eq!(boost, 1.1);
+        assert_float_eq(boost, 1.1);
     }
 
     #[test]
@@ -592,49 +601,49 @@ mod tests {
         let ranker = ResultRanker::new();
         let path = Path::new("/Users/test/Downloads/app.app");
         let boost = ranker.calculate_path_boost(Some(path));
-        assert_eq!(boost, 1.0);
+        assert_float_eq(boost, 1.0);
     }
 
     #[test]
     fn test_path_boost_none() {
         let ranker = ResultRanker::new();
         let boost = ranker.calculate_path_boost(None);
-        assert_eq!(boost, 1.0);
+        assert_float_eq(boost, 1.0);
     }
 
     #[test]
     fn test_match_boost_exact() {
         let ranker = ResultRanker::new();
         let boost = ranker.calculate_match_boost("Safari", "Safari");
-        assert_eq!(boost, 2.0);
+        assert_float_eq(boost, 2.0);
     }
 
     #[test]
     fn test_match_boost_exact_case_insensitive() {
         let ranker = ResultRanker::new();
         let boost = ranker.calculate_match_boost("safari", "Safari");
-        assert_eq!(boost, 2.0);
+        assert_float_eq(boost, 2.0);
     }
 
     #[test]
     fn test_match_boost_prefix() {
         let ranker = ResultRanker::new();
         let boost = ranker.calculate_match_boost("Saf", "Safari");
-        assert_eq!(boost, 1.5);
+        assert_float_eq(boost, 1.5);
     }
 
     #[test]
     fn test_match_boost_prefix_case_insensitive() {
         let ranker = ResultRanker::new();
         let boost = ranker.calculate_match_boost("saf", "Safari");
-        assert_eq!(boost, 1.5);
+        assert_float_eq(boost, 1.5);
     }
 
     #[test]
     fn test_match_boost_fuzzy() {
         let ranker = ResultRanker::new();
         let boost = ranker.calculate_match_boost("sfr", "Safari");
-        assert_eq!(boost, 1.0);
+        assert_float_eq(boost, 1.0);
     }
 
     #[test]
@@ -644,7 +653,7 @@ mod tests {
 
         // System app (1.2) + exact match (2.0) = 2.4x
         let boosted = ranker.apply_boosts(100.0, "Safari", "Safari", Some(path));
-        assert_eq!(boosted, 240.0);
+        assert_float_eq(boosted, 240.0);
     }
 
     // =========================================================================

@@ -7,6 +7,7 @@ pub mod actions;
 pub mod config;
 pub mod config_file;
 pub mod integration;
+pub mod keybindings;
 pub mod state;
 
 pub use actions::*;
@@ -16,4 +17,7 @@ pub use config_file::{
     load_config_from, save_config, save_config_to, ConfigFileError, ConfigManager, ConfigResult,
 };
 pub use integration::{IntegrationConfig, PhotonCastApp, SearchOutcome, SEARCH_TIMEOUT_MESSAGE};
+pub use keybindings::{
+    default_keybindings_path, Keybindings, KeybindingsError, KeybindingsResult, Shortcut,
+};
 pub use state::AppState;

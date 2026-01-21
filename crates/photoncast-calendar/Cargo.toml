@@ -1,0 +1,45 @@
+[package]
+name = "photoncast-calendar"
+description = "Calendar integration module for PhotonCast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ui"]
+ui = ["dep:gpui"]
+
+[lib]
+name = "photoncast_calendar"
+path = "src/lib.rs"
+
+[dependencies]
+gpui = { workspace = true, optional = true }
+
+tokio.workspace = true
+futures.workspace = true
+
+thiserror.workspace = true
+anyhow.workspace = true
+
+tracing.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+
+chrono.workspace = true
+regex = "1"
+once_cell.workspace = true
+parking_lot.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+block2 = "0.5"
+objc2-event-kit.workspace = true
+objc2-foundation = { workspace = true, features = ["NSRunLoop", "NSDate", "NSError"] }
+
+[dev-dependencies]
+tokio-test = "0.4"

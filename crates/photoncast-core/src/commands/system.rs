@@ -119,7 +119,11 @@ impl ConfirmationDialog {
             | SystemCommand::LockScreen
             | SystemCommand::ScreenSaver
             | SystemCommand::ToggleAppearance
-            | SystemCommand::ToggleLaunchAtLogin => None,
+            | SystemCommand::ToggleLaunchAtLogin
+            | SystemCommand::Preferences
+            | SystemCommand::CreateQuicklink
+            | SystemCommand::ManageQuicklinks
+            | SystemCommand::BrowseQuicklinkLibrary => None,
         }
     }
 }
@@ -144,6 +148,12 @@ impl SystemCommand {
                 // No-op: SearchFiles is a mode-switching command.
                 // The launcher handles entering File Search Mode directly.
                 debug!("SearchFiles: no-op, launcher handles mode switch");
+            },
+
+            Self::Preferences => {
+                // No-op: Preferences is a mode-switching command.
+                // The launcher handles entering Preferences Mode directly.
+                debug!("Preferences: no-op, launcher handles mode switch");
             },
 
             Self::Sleep => {
@@ -181,7 +191,39 @@ impl SystemCommand {
             },
 
             Self::EmptyTrash => {
-                run_applescript(r#"tell application "Finder" to empty trash"#)?;
+                // Try AppleScript first (handles all volumes, like Raycast)
+                // Using try/end try to suppress error -128 (user cancelled/no permission)
+                let applescript_result = run_applescript(
+                    r#"
+                    try
+                        tell application "Finder" to empty trash
+                    end try
+                    "#,
+                );
+
+                // If AppleScript fails entirely, fall back to direct file deletion
+                if applescript_result.is_err() {
+                    debug!("AppleScript failed, falling back to direct file deletion");
+                    let home = std::env::var("HOME").context("HOME not set")?;
+                    let trash_path = std::path::PathBuf::from(home).join(".Trash");
+
+                    // Delete all contents of .Trash directory
+                    if trash_path.exists() {
+                        for entry in std::fs::read_dir(&trash_path)
+                            .context("failed to read .Trash directory")?
+                        {
+                            let entry = entry.context("failed to read trash entry")?;
+                            let path = entry.path();
+                            if path.is_dir() {
+                                std::fs::remove_dir_all(&path)
+                                    .with_context(|| format!("failed to remove {:?}", path))?;
+                            } else {
+                                std::fs::remove_file(&path)
+                                    .with_context(|| format!("failed to remove {:?}", path))?;
+                            }
+                        }
+                    }
+                }
             },
 
             Self::ScreenSaver => {
@@ -219,6 +261,24 @@ impl SystemCommand {
                         // Don't fail the command - this is a best-effort operation
                     },
                 }
+            },
+
+            Self::CreateQuicklink => {
+                // No-op: CreateQuicklink is a mode-switching command.
+                // The launcher handles showing the create quicklink UI.
+                debug!("CreateQuicklink: no-op, launcher handles mode switch");
+            },
+
+            Self::ManageQuicklinks => {
+                // No-op: ManageQuicklinks is a mode-switching command.
+                // The launcher handles showing the quicklinks management UI.
+                debug!("ManageQuicklinks: no-op, launcher handles mode switch");
+            },
+
+            Self::BrowseQuicklinkLibrary => {
+                // No-op: BrowseQuicklinkLibrary is a mode-switching command.
+                // The launcher handles showing the quicklinks library browser.
+                debug!("BrowseQuicklinkLibrary: no-op, launcher handles mode switch");
             },
         }
 

@@ -69,14 +69,9 @@ impl SearchProvider for CommandProvider {
 
         for cmd_info in &commands {
             let command = cmd_info.command;
-            let mut best_score: Option<(u32, Vec<usize>, bool)> = None; // (score, indices, is_name_match)
-
-            // Match against command name (higher priority)
-            if let Some((score, indices)) = matcher.score(query, cmd_info.name) {
-                // Name matches get a priority boost
-                let boosted_score = score.saturating_add(100);
-                best_score = Some((boosted_score, indices, true));
-            }
+            let mut best_score = matcher
+                .score(query, cmd_info.name)
+                .map(|(score, indices)| (score.saturating_add(100), indices, true));
 
             // Match against aliases
             for alias in cmd_info.aliases {
@@ -95,21 +90,17 @@ impl SearchProvider for CommandProvider {
             // If we found a match, create a search result
             if let Some((score, indices, is_name_match)) = best_score {
                 // For alias matches, we show the matched alias in parentheses as part of subtitle
-                let subtitle = if is_name_match {
-                    cmd_info.description.to_string()
-                } else {
-                    cmd_info.description.to_string()
-                };
+                let subtitle = cmd_info.description.to_string();
 
                 // Determine the action based on command type
-                let action = if command.is_mode_command() {
-                    // Mode-switching commands like SearchFiles
-                    SearchAction::EnterFileSearchMode
-                } else {
-                    // Regular commands that execute
-                    SearchAction::ExecuteCommand {
+                let action = match command {
+                    SystemCommand::SearchFiles => SearchAction::EnterFileSearchMode,
+                    SystemCommand::Preferences => SearchAction::ExecuteCommand {
                         command_id: command.id().to_string(),
-                    }
+                    },
+                    _ => SearchAction::ExecuteCommand {
+                        command_id: command.id().to_string(),
+                    },
                 };
 
                 results.push(SearchResult {

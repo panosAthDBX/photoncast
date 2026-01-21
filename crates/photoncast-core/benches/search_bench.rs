@@ -8,6 +8,7 @@
 //! Target: <30ms end-to-end search latency
 
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
@@ -21,12 +22,17 @@ use photoncast_core::search::providers::{AppProvider, OptimizedAppProvider, Sear
 use photoncast_core::search::ranking::{FrecencyScore, ResultRanker};
 use photoncast_core::search::{SearchConfig, SearchEngine, SearchResult};
 
+fn datetime_to_system_time(dt: chrono::DateTime<Utc>) -> Option<SystemTime> {
+    let timestamp = u64::try_from(dt.timestamp()).ok()?;
+    UNIX_EPOCH.checked_add(std::time::Duration::from_secs(timestamp))
+}
+
 /// Creates a realistic test app with the given name and bundle ID.
 fn create_test_app(name: &str, bundle_id: &str) -> IndexedApp {
     IndexedApp {
         name: name.to_string(),
         bundle_id: AppBundleId::new(bundle_id),
-        path: PathBuf::from(format!("/Applications/{}.app", name)),
+        path: PathBuf::from(format!("/Applications/{name}.app")),
         icon_path: None,
         category: None,
         keywords: Vec::new(),
@@ -35,6 +41,7 @@ fn create_test_app(name: &str, bundle_id: &str) -> IndexedApp {
 }
 
 /// Creates a set of realistic app names for benchmarking.
+#[allow(clippy::too_many_lines)]
 fn create_realistic_apps(count: usize) -> Vec<IndexedApp> {
     // Real macOS app names for realistic benchmarks
     let app_names = [
@@ -243,12 +250,13 @@ fn create_realistic_apps(count: usize) -> Vec<IndexedApp> {
         let name = app_names[i % app_names.len()];
         // Add a suffix if we need more apps than unique names
         let suffix = if i >= app_names.len() {
-            format!(" {}", i / app_names.len() + 1)
+            let suffix_index = i / app_names.len() + 1;
+            format!(" {suffix_index}")
         } else {
             String::new()
         };
-        let full_name = format!("{}{}", name, suffix);
-        let bundle_id = format!("com.test.app{}", i);
+        let full_name = format!("{name}{suffix}");
+        let bundle_id = format!("com.test.app{i}");
         apps.push(create_test_app(&full_name, &bundle_id));
     }
     apps
@@ -268,8 +276,8 @@ impl BenchUsageData {
             .iter()
             .enumerate()
             .map(|(i, app)| {
-                let launch_count = (i % 100) as u32 + 1;
-                let hours_ago = (i % 72) as i64;
+                let launch_count = u32::try_from(i % 100).unwrap_or_default() + 1;
+                let hours_ago = i64::try_from(i % 72).unwrap_or_default();
                 let last_launched = now
                     - chrono::Duration::try_hours(hours_ago).unwrap_or(chrono::Duration::zero());
                 (
@@ -298,10 +306,12 @@ impl UsageDataProvider for BenchUsageData {
 fn bench_fuzzy_matching(c: &mut Criterion) {
     let mut group = c.benchmark_group("fuzzy_matching");
 
-    for app_count in [50, 100, 200, 500].iter() {
-        let apps = create_realistic_apps(*app_count);
+    for app_count in [50_usize, 100, 200, 500] {
+        let apps = create_realistic_apps(app_count);
 
-        group.throughput(Throughput::Elements(*app_count as u64));
+        group.throughput(Throughput::Elements(
+            u64::try_from(app_count).unwrap_or_default(),
+        ));
         group.bench_with_input(
             BenchmarkId::new("score_all_apps", app_count),
             &apps,
@@ -312,7 +322,7 @@ fn bench_fuzzy_matching(c: &mut Criterion) {
                     for app in apps {
                         black_box(matcher.score(query, &app.name));
                     }
-                })
+                });
             },
         );
     }
@@ -331,7 +341,7 @@ fn bench_search_index(c: &mut Criterion) {
     group.bench_function("build_index_200_apps", |b| {
         b.iter(|| {
             black_box(SearchIndex::build(&apps, &usage));
-        })
+        });
     });
 
     // Benchmark pre-lowercased access
@@ -341,13 +351,13 @@ fn bench_search_index(c: &mut Criterion) {
             for entry in index.iter() {
                 black_box(&entry.name_lower);
             }
-        })
+        });
     });
 
     group.finish();
 }
 
-/// Benchmarks the standard AppProvider vs OptimizedAppProvider.
+/// Benchmarks the standard `AppProvider` vs `OptimizedAppProvider`.
 fn bench_app_provider_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("app_provider");
 
@@ -372,17 +382,17 @@ fn bench_app_provider_comparison(c: &mut Criterion) {
         "system preferences",
     ];
 
-    for query in queries.iter() {
+    for query in queries {
         group.bench_with_input(BenchmarkId::new("standard", query), query, |b, query| {
             b.iter(|| {
                 black_box(standard_provider.search(query, 10));
-            })
+            });
         });
 
         group.bench_with_input(BenchmarkId::new("optimized", query), query, |b, query| {
             b.iter(|| {
                 black_box(optimized_provider.search(query, 10));
-            })
+            });
         });
     }
 
@@ -416,13 +426,13 @@ fn bench_early_termination(c: &mut Criterion) {
     group.bench_function("without_early_termination", |b| {
         b.iter(|| {
             black_box(no_termination.search(query, 10));
-        })
+        });
     });
 
     group.bench_function("with_early_termination", |b| {
         b.iter(|| {
             black_box(with_termination.search(query, 10));
-        })
+        });
     });
 
     group.finish();
@@ -437,21 +447,25 @@ fn bench_ranking(c: &mut Criterion) {
     let results: Vec<SearchResult> = apps
         .iter()
         .enumerate()
-        .map(|(i, app)| SearchResult {
-            id: photoncast_core::search::SearchResultId::new(format!("app:{}", app.bundle_id)),
-            title: app.name.clone(),
-            subtitle: app.path.display().to_string(),
-            icon: photoncast_core::search::IconSource::AppIcon {
-                bundle_id: app.bundle_id.as_str().to_string(),
-                icon_path: app.icon_path.clone(),
-            },
-            result_type: photoncast_core::search::ResultType::Application,
-            score: (100 - i) as f64,
-            match_indices: vec![0, 1, 2],
-            action: photoncast_core::search::SearchAction::LaunchApp {
-                bundle_id: app.bundle_id.as_str().to_string(),
-                path: app.path.clone(),
-            },
+        .map(|(i, app)| {
+            let bundle_id = &app.bundle_id;
+            let score = f64::from(100_u32.saturating_sub(u32::try_from(i).unwrap_or_default()));
+            SearchResult {
+                id: photoncast_core::search::SearchResultId::new(format!("app:{bundle_id}")),
+                title: app.name.clone(),
+                subtitle: app.path.display().to_string(),
+                icon: photoncast_core::search::IconSource::AppIcon {
+                    bundle_id: app.bundle_id.as_str().to_string(),
+                    icon_path: app.icon_path.clone(),
+                },
+                result_type: photoncast_core::search::ResultType::Application,
+                score,
+                match_indices: vec![0, 1, 2],
+                action: photoncast_core::search::SearchAction::LaunchApp {
+                    bundle_id: app.bundle_id.as_str().to_string(),
+                    path: app.path.clone(),
+                },
+            }
         })
         .collect();
 
@@ -462,7 +476,7 @@ fn bench_ranking(c: &mut Criterion) {
             let mut results_copy = results.clone();
             ranker.rank_by_match_quality(&mut results_copy);
             black_box(results_copy);
-        })
+        });
     });
 
     group.bench_function("rank_with_frecency_100_results", |b| {
@@ -473,11 +487,15 @@ fn bench_ranking(c: &mut Criterion) {
                 let bundle_id = id.strip_prefix("app:").unwrap_or(id);
                 usage
                     .get_usage(bundle_id)
-                    .map(|r| FrecencyScore::calculate(r.launch_count, r.last_launched))
-                    .unwrap_or_else(FrecencyScore::zero)
+                    .map_or_else(FrecencyScore::zero, |r| {
+                        FrecencyScore::calculate(
+                            r.launch_count,
+                            datetime_to_system_time(r.last_launched),
+                        )
+                    })
             });
             black_box(results_copy);
-        })
+        });
     });
 
     group.finish();
@@ -512,11 +530,11 @@ fn bench_end_to_end_search(c: &mut Criterion) {
         ("no_match", "zzzzz"),
     ];
 
-    for (name, query) in queries.iter() {
+    for (name, query) in queries {
         group.bench_with_input(BenchmarkId::new("search", name), query, |b, query| {
             b.iter(|| {
                 black_box(engine.search_sync(query));
-            })
+            });
         });
     }
 
@@ -547,7 +565,7 @@ fn bench_target_30ms(c: &mut Criterion) {
             // Simulate a realistic search workflow
             let results = engine.search_sync("saf");
             black_box(results);
-        })
+        });
     });
 
     group.finish();

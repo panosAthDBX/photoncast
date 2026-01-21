@@ -132,6 +132,8 @@ pub enum ResultType {
     Application,
     /// System command.
     SystemCommand,
+    /// Quick link result.
+    QuickLink,
     /// File result.
     File,
     /// Folder result.
@@ -145,6 +147,7 @@ impl ResultType {
         match self {
             Self::Application => "Apps",
             Self::SystemCommand => "Commands",
+            Self::QuickLink => "Quick Links",
             Self::File => "Files",
             Self::Folder => "Folders",
         }
@@ -156,8 +159,9 @@ impl ResultType {
         match self {
             Self::Application => 0,
             Self::SystemCommand => 1,
-            Self::File => 2,
-            Self::Folder => 3,
+            Self::QuickLink => 2,
+            Self::File => 3,
+            Self::Folder => 4,
         }
     }
 }
@@ -193,6 +197,52 @@ pub enum SearchAction {
     QuickLookFile {
         /// Path to the file to preview.
         path: PathBuf,
+    },
+    /// Copy text to clipboard.
+    CopyToClipboard {
+        /// Text to copy.
+        text: String,
+    },
+    /// Open a URL in the default browser.
+    OpenUrl {
+        /// URL to open.
+        url: String,
+    },
+    /// Execute a quick link with URL template and arguments.
+    ExecuteQuickLink {
+        /// Quick link ID.
+        id: String,
+        /// URL template with placeholders.
+        url_template: String,
+        /// Arguments extracted from the query (space-separated after alias).
+        arguments: String,
+    },
+    /// Open the quick links management UI.
+    OpenQuickLinks,
+    /// Open the sleep timer UI with an optional expression.
+    OpenSleepTimer {
+        /// Parsed or raw expression to schedule.
+        expression: String,
+    },
+    /// Open the calendar view for a specific command.
+    OpenCalendar {
+        /// Calendar command ID.
+        command_id: String,
+    },
+    /// Execute a window management command by ID.
+    ExecuteWindowCommand {
+        /// Window command ID.
+        command_id: String,
+    },
+    /// Open app management UI for a specific command.
+    OpenAppManagement {
+        /// App management command ID.
+        command_id: String,
+    },
+    /// Force quit an application by PID.
+    ForceQuitApp {
+        /// Process ID to force quit.
+        pid: u32,
     },
 }
 

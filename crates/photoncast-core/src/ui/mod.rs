@@ -25,6 +25,7 @@ pub mod animations;
 pub mod empty_state;
 pub mod launcher;
 pub mod permission_dialog;
+pub mod preferences;
 pub mod result_group;
 pub mod result_item;
 pub mod results_list;
@@ -33,6 +34,10 @@ pub mod search_bar;
 // Core components
 pub use launcher::LauncherWindow;
 pub use permission_dialog::PermissionDialog;
+pub use preferences::{
+    AppearanceSection, ClipboardSection, GeneralSection, PreferencesSection, PreferencesView,
+    ShortcutsSection,
+};
 pub use result_group::{
     ResultGroup, ResultGroupWithItems, GROUP_HEADER_HEIGHT, GROUP_HEADER_PADDING_X,
 };

@@ -24,6 +24,9 @@ use std::process::Command;
 #[cfg(feature = "ui")]
 use crate::theme::CatppuccinFlavor;
 
+#[cfg(feature = "ui")]
+use gpui::WindowAppearance;
+
 /// Detects the current system appearance (light/dark).
 ///
 /// Uses macOS `defaults` command to read the `AppleInterfaceStyle` preference.
@@ -52,6 +55,18 @@ pub fn detect_system_appearance() -> CatppuccinFlavor {
         CatppuccinFlavor::Mocha
     } else {
         CatppuccinFlavor::Latte
+    }
+}
+
+/// Converts a GPUI `WindowAppearance` to a Catppuccin flavor.
+///
+/// Maps light appearances to Latte and dark appearances to Mocha.
+#[cfg(feature = "ui")]
+#[must_use]
+pub fn flavor_from_window_appearance(appearance: WindowAppearance) -> CatppuccinFlavor {
+    match appearance {
+        WindowAppearance::Light | WindowAppearance::VibrantLight => CatppuccinFlavor::Latte,
+        WindowAppearance::Dark | WindowAppearance::VibrantDark => CatppuccinFlavor::Mocha,
     }
 }
 

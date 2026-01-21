@@ -71,10 +71,84 @@ pub mod storage;
 pub mod utils;
 
 // UI and theme modules require GPUI (disabled during tests due to macro expansion depth)
-#[cfg(feature = "ui")]
+#[cfg(all(feature = "ui", not(test)))]
 pub mod theme;
-#[cfg(feature = "ui")]
+#[cfg(all(feature = "ui", not(test)))]
 pub mod ui;
+
+#[cfg(all(feature = "ui", test))]
+pub mod theme {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum CatppuccinFlavor {
+        Latte,
+        Frappe,
+        Macchiato,
+        #[default]
+        Mocha,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum AccentColor {
+        Rosewater,
+        Flamingo,
+        Pink,
+        Mauve,
+        Red,
+        Maroon,
+        Peach,
+        Yellow,
+        Green,
+        Teal,
+        Sky,
+        Sapphire,
+        #[default]
+        Blue,
+        Lavender,
+    }
+
+    #[derive(Debug, Default, Clone)]
+    pub struct ThemeColors;
+}
+
+#[cfg(all(feature = "ui", test))]
+pub mod ui {
+    pub mod permission_dialog {
+        use crate::platform::accessibility::PermissionStatus;
+
+        #[derive(Debug, Clone)]
+        pub struct PermissionDialog {
+            pub status: PermissionStatus,
+            pub is_polling: bool,
+            pub is_visible: bool,
+        }
+
+        impl PermissionDialog {
+            #[must_use]
+            pub const fn new() -> Self {
+                Self {
+                    status: PermissionStatus::Unknown,
+                    is_polling: false,
+                    is_visible: false,
+                }
+            }
+
+            pub fn show(&mut self) {
+                self.is_visible = true;
+            }
+
+            pub fn hide(&mut self) {
+                self.is_visible = false;
+                self.is_polling = false;
+            }
+        }
+
+        impl Default for PermissionDialog {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+    }
+}
 
 /// Re-export commonly used types at the crate root.
 pub mod prelude {

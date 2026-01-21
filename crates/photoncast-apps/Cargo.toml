@@ -1,0 +1,43 @@
+[package]
+name = "photoncast-apps"
+description = "App management module for PhotonCast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ui"]
+ui = ["dep:gpui"]
+
+[lib]
+name = "photoncast_apps"
+path = "src/lib.rs"
+
+[dependencies]
+gpui = { workspace = true, optional = true }
+
+tokio = { workspace = true, features = ["sync", "time"] }
+futures.workspace = true
+
+thiserror.workspace = true
+anyhow.workspace = true
+
+tracing.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+
+dirs.workspace = true
+
+# Unix signal handling for force quit
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit = { workspace = true, features = ["NSRunningApplication", "NSWorkspace", "libc"] }
+plist.workspace = true

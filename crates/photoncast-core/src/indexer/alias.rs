@@ -65,16 +65,18 @@ pub fn resolve_path(path: &Path) -> Result<ResolvedPath> {
 
         // Handle relative symlinks
         let resolved = if target.is_relative() {
-            path.parent()
-                .map(|p| p.join(&target))
-                .unwrap_or(target)
+            path.parent().map(|p| p.join(&target)).unwrap_or(target)
         } else {
             target
         };
 
         // Canonicalize to get the absolute path
-        let canonical = std::fs::canonicalize(&resolved)
-            .with_context(|| format!("failed to canonicalize symlink target: {}", resolved.display()))?;
+        let canonical = std::fs::canonicalize(&resolved).with_context(|| {
+            format!(
+                "failed to canonicalize symlink target: {}",
+                resolved.display()
+            )
+        })?;
 
         debug!(
             "Resolved symlink: {} -> {}",
@@ -154,7 +156,7 @@ pub fn is_macos_alias(_path: &Path) -> bool {
 /// `None` if the file is not an alias or resolution failed.
 #[cfg(target_os = "macos")]
 fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
-    use objc2_foundation::{NSString, NSURL, NSURLBookmarkResolutionOptions};
+    use objc2_foundation::{NSString, NSURLBookmarkResolutionOptions, NSURL};
 
     // Convert path to NSURL
     let path_str = path.to_string_lossy();
@@ -170,9 +172,7 @@ fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
             | NSURLBookmarkResolutionOptions::NSURLBookmarkResolutionWithoutMounting.0,
     );
 
-    let resolved = unsafe {
-        NSURL::URLByResolvingAliasFileAtURL_options_error(&url, options)
-    };
+    let resolved = unsafe { NSURL::URLByResolvingAliasFileAtURL_options_error(&url, options) };
 
     match resolved {
         Ok(resolved_url) => {
@@ -185,13 +185,13 @@ fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
                 // returning the same path (or its canonical form).
                 let original_canonical = std::fs::canonicalize(path).ok();
                 let resolved_canonical = std::fs::canonicalize(&resolved).ok();
-                
+
                 match (original_canonical, resolved_canonical) {
                     (Some(orig), Some(res)) if orig != res => Some(resolved),
                     _ => None,
                 }
             })
-        }
+        },
         Err(_) => {
             // This is expected for non-alias files, so only log at trace level
             trace!(
@@ -199,7 +199,7 @@ fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
                 path.display()
             );
             None
-        }
+        },
     }
 }
 

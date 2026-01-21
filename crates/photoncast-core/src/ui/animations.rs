@@ -199,7 +199,8 @@ pub fn hover_transition_duration() -> Duration {
 /// Formula: 1 - (1 - t)^2
 #[must_use]
 pub fn ease_out(t: f32) -> f32 {
-    1.0 - (1.0 - t).powi(2)
+    let inv = 1.0 - t;
+    inv.mul_add(-inv, 1.0)
 }
 
 /// Easing function for ease-in (acceleration).
@@ -220,7 +221,8 @@ pub fn ease_in_out(t: f32) -> f32 {
     if t < 0.5 {
         2.0 * t * t
     } else {
-        1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
+        let inner = (-2.0f32).mul_add(t, 2.0);
+        1.0 - inner.powi(2) / 2.0
     }
 }
 
@@ -250,7 +252,7 @@ pub fn linear(t: f32) -> f32 {
 /// ```
 #[must_use]
 pub fn lerp(start: f32, end: f32, t: f32) -> f32 {
-    start + (end - start) * t
+    (end - start).mul_add(t, start)
 }
 
 /// Interpolates between two colors based on animation progress.
@@ -277,7 +279,7 @@ pub fn lerp_color(
 }
 
 /// Animation state for window transitions.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowAnimationState {
     /// Window is appearing (animating in).
     Appearing,
@@ -296,7 +298,7 @@ impl Default for WindowAnimationState {
 }
 
 /// Animation state for item selection/hover.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemAnimationState {
     /// Item is in normal state.
     Normal,

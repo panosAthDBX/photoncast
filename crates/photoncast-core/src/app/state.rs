@@ -137,15 +137,22 @@ mod tests {
 
     #[test]
     fn test_has_accessibility_permission() {
-        let mut state = AppState::default();
-
-        state.accessibility_status = PermissionStatus::Unknown;
+        let state = AppState {
+            accessibility_status: PermissionStatus::Unknown,
+            ..Default::default()
+        };
         assert!(!state.has_accessibility_permission());
 
-        state.accessibility_status = PermissionStatus::Denied;
+        let state = AppState {
+            accessibility_status: PermissionStatus::Denied,
+            ..Default::default()
+        };
         assert!(!state.has_accessibility_permission());
 
-        state.accessibility_status = PermissionStatus::Granted;
+        let state = AppState {
+            accessibility_status: PermissionStatus::Granted,
+            ..Default::default()
+        };
         assert!(state.has_accessibility_permission());
     }
 

@@ -107,6 +107,18 @@ impl UsageTracker {
         .await?
     }
 
+    /// Gets the top N apps by frecency score.
+    ///
+    /// Returns bundle IDs of the most frequently and recently used apps.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub fn get_top_apps_by_frecency(&self, limit: usize) -> Result<Vec<String>> {
+        let results = self.db.get_top_apps_by_frecency(limit)?;
+        Ok(results.into_iter().map(|(bundle_id, _, _)| bundle_id).collect())
+    }
+
     // -------------------------------------------------------------------------
     // Command Usage
     // -------------------------------------------------------------------------
@@ -276,7 +288,7 @@ mod tests {
             .get_app_frecency("com.apple.Safari")
             .expect("should get frecency");
         assert_eq!(frecency.frequency, 0);
-        assert_eq!(frecency.score(), 0.0);
+        assert!(frecency.score().abs() < f64::EPSILON);
 
         // Record launches
         tracker
@@ -418,6 +430,7 @@ mod tests {
         // Recent usage should have high recency (close to 1.0)
         assert!(frecency.recency > 0.99);
         // Combined score should be approximately frequency * recency
-        assert!((frecency.score() - (frecency.frequency as f64) * frecency.recency).abs() < 0.1);
+        let diff = f64::from(frecency.frequency).mul_add(-frecency.recency, frecency.score());
+        assert!(diff.abs() < 0.1);
     }
 }

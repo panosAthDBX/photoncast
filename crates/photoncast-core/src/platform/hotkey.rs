@@ -664,7 +664,7 @@ mod tests {
     #[test]
     fn test_conflict_info_spotlight() {
         let binding = HotkeyBinding::default();
-        let conflict = ConflictInfo::spotlight(binding.clone());
+        let conflict = ConflictInfo::spotlight(binding);
 
         assert_eq!(conflict.app_name, "Spotlight");
         assert!(conflict.suggestion.contains("System Settings"));
@@ -994,16 +994,20 @@ mod tests {
 
     #[test]
     fn test_modifiers_constants() {
-        assert!(Modifiers::COMMAND.command);
-        assert!(!Modifiers::COMMAND.option);
+        let command = Modifiers::COMMAND;
+        assert!(command.command);
+        assert!(!command.option);
 
-        assert!(Modifiers::OPTION.option);
-        assert!(!Modifiers::OPTION.command);
+        let option = Modifiers::OPTION;
+        assert!(option.option);
+        assert!(!option.command);
 
-        assert!(Modifiers::CONTROL.control);
-        assert!(!Modifiers::CONTROL.command);
+        let control = Modifiers::CONTROL;
+        assert!(control.control);
+        assert!(!control.command);
 
-        assert!(Modifiers::SHIFT.shift);
-        assert!(!Modifiers::SHIFT.command);
+        let shift = Modifiers::SHIFT;
+        assert!(shift.shift);
+        assert!(!shift.command);
     }
 }
