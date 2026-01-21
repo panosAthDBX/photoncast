@@ -264,6 +264,90 @@ impl LayoutCalculator {
         self.dock_bounds = bounds;
     }
 
+    // Helper: Create frame aligned to the left edge
+    fn frame_left(x: f64, y: f64, w: f64, h: f64) -> CGRect {
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { x, y },
+            &core_graphics::geometry::CGSize { width: w, height: h },
+        )
+    }
+
+    // Helper: Create frame aligned to the right edge  
+    fn frame_right(x: f64, y: f64, total_width: f64, w: f64, h: f64) -> CGRect {
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { x: x + total_width - w, y },
+            &core_graphics::geometry::CGSize { width: w, height: h },
+        )
+    }
+
+    // Helper: Create frame aligned to the bottom edge
+    fn frame_bottom(x: f64, y: f64, total_height: f64, w: f64, h: f64) -> CGRect {
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { x, y: y + total_height - h },
+            &core_graphics::geometry::CGSize { width: w, height: h },
+        )
+    }
+
+    // Helper: Create frame at bottom-right corner
+    fn frame_bottom_right(x: f64, y: f64, total_width: f64, total_height: f64, w: f64, h: f64) -> CGRect {
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { 
+                x: x + total_width - w, 
+                y: y + total_height - h 
+            },
+            &core_graphics::geometry::CGSize { width: w, height: h },
+        )
+    }
+
+    // Helper: Create centered frame
+    fn frame_centered(x: f64, y: f64, total_width: f64, total_height: f64, w: f64, h: f64) -> CGRect {
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { 
+                x: x + (total_width - w) / 2.0, 
+                y: y + (total_height - h) / 2.0 
+            },
+            &core_graphics::geometry::CGSize { width: w, height: h },
+        )
+    }
+
+    // Helper: Create horizontally centered frame (full height)
+    fn frame_centered_horizontal(x: f64, y: f64, total_width: f64, w: f64, h: f64) -> CGRect {
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { 
+                x: x + (total_width - w) / 2.0, 
+                y 
+            },
+            &core_graphics::geometry::CGSize { width: w, height: h },
+        )
+    }
+
+    // Helper: Get width based on cycle state (half -> third -> two-thirds)
+    fn cycle_width(total_width: f64, cycle_state: CycleState) -> f64 {
+        match cycle_state {
+            CycleState::Initial => total_width / 2.0,
+            CycleState::FirstCycle => total_width / 3.0,
+            CycleState::SecondCycle => total_width * 2.0 / 3.0,
+        }
+    }
+
+    // Helper: Get height based on cycle state (half -> third -> two-thirds)
+    fn cycle_height(total_height: f64, cycle_state: CycleState) -> f64 {
+        match cycle_state {
+            CycleState::Initial => total_height / 2.0,
+            CycleState::FirstCycle => total_height / 3.0,
+            CycleState::SecondCycle => total_height * 2.0 / 3.0,
+        }
+    }
+
+    // Helper: Get center layout width based on cycle state (80% -> 50% -> 66%)
+    fn center_cycle_width(total_width: f64, cycle_state: CycleState) -> f64 {
+        match cycle_state {
+            CycleState::Initial => total_width * 0.8,
+            CycleState::FirstCycle => total_width * 0.5,
+            CycleState::SecondCycle => total_width * 2.0 / 3.0,
+        }
+    }
+
     /// Calculates the target frame for a given layout.
     ///
     /// # Arguments
@@ -291,167 +375,60 @@ impl LayoutCalculator {
         match layout {
             // Halves with cycling
             WindowLayout::LeftHalf => {
-                let w = match cycle_state {
-                    CycleState::Initial => width / 2.0,
-                    CycleState::FirstCycle => width / 3.0,
-                    CycleState::SecondCycle => width * 2.0 / 3.0,
-                };
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                let w = Self::cycle_width(width, cycle_state);
+                Self::frame_left(x, y, w, height)
             },
             WindowLayout::RightHalf => {
-                let w = match cycle_state {
-                    CycleState::Initial => width / 2.0,
-                    CycleState::FirstCycle => width / 3.0,
-                    CycleState::SecondCycle => width * 2.0 / 3.0,
-                };
-                let offset_x = width - w;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                let w = Self::cycle_width(width, cycle_state);
+                Self::frame_right(x, y, width, w, height)
             },
             WindowLayout::TopHalf => {
-                let h = match cycle_state {
-                    CycleState::Initial => height / 2.0,
-                    CycleState::FirstCycle => height / 3.0,
-                    CycleState::SecondCycle => height * 2.0 / 3.0,
-                };
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x, y },
-                    &core_graphics::geometry::CGSize { width, height: h },
-                )
+                let h = Self::cycle_height(height, cycle_state);
+                Self::frame_left(x, y, width, h)
             },
             WindowLayout::BottomHalf => {
-                let h = match cycle_state {
-                    CycleState::Initial => height / 2.0,
-                    CycleState::FirstCycle => height / 3.0,
-                    CycleState::SecondCycle => height * 2.0 / 3.0,
-                };
-                let offset_y = height - h;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x, y: y + offset_y },
-                    &core_graphics::geometry::CGSize { width, height: h },
-                )
+                let h = Self::cycle_height(height, cycle_state);
+                Self::frame_bottom(x, y, height, width, h)
             },
 
             // Quarters
             WindowLayout::TopLeft => {
-                let w = width / 2.0;
-                let h = height / 2.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x, y },
-                    &core_graphics::geometry::CGSize {
-                        width: w,
-                        height: h,
-                    },
-                )
+                Self::frame_left(x, y, width / 2.0, height / 2.0)
             },
             WindowLayout::TopRight => {
-                let w = width / 2.0;
-                let h = height / 2.0;
-                let offset_x = width - w;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
-                    &core_graphics::geometry::CGSize {
-                        width: w,
-                        height: h,
-                    },
-                )
+                Self::frame_right(x, y, width, width / 2.0, height / 2.0)
             },
             WindowLayout::BottomLeft => {
-                let w = width / 2.0;
-                let h = height / 2.0;
-                let offset_y = height - h;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x, y: y + offset_y },
-                    &core_graphics::geometry::CGSize {
-                        width: w,
-                        height: h,
-                    },
-                )
+                Self::frame_bottom(x, y, height, width / 2.0, height / 2.0)
             },
             WindowLayout::BottomRight => {
-                let w = width / 2.0;
-                let h = height / 2.0;
-                let offset_x = width - w;
-                let offset_y = height - h;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint {
-                        x: x + offset_x,
-                        y: y + offset_y,
-                    },
-                    &core_graphics::geometry::CGSize {
-                        width: w,
-                        height: h,
-                    },
-                )
+                Self::frame_bottom_right(x, y, width, height, width / 2.0, height / 2.0)
             },
 
             // Thirds
             WindowLayout::FirstThird => {
-                let w = width / 3.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                Self::frame_left(x, y, width / 3.0, height)
             },
             WindowLayout::CenterThird => {
-                let w = width / 3.0;
-                let offset_x = width / 3.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                Self::frame_centered_horizontal(x, y, width, width / 3.0, height)
             },
             WindowLayout::LastThird => {
-                let w = width / 3.0;
-                let offset_x = width * 2.0 / 3.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                Self::frame_right(x, y, width, width / 3.0, height)
             },
             WindowLayout::FirstTwoThirds => {
-                let w = width * 2.0 / 3.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                Self::frame_left(x, y, width * 2.0 / 3.0, height)
             },
             WindowLayout::LastTwoThirds => {
-                let w = width * 2.0 / 3.0;
-                let offset_x = width / 3.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                Self::frame_right(x, y, width, width * 2.0 / 3.0, height)
             },
 
             // Special
             WindowLayout::Maximize => usable_frame,
             WindowLayout::Center => {
                 // Center with cycling width (80% -> 50% -> 66%), always 80% height
-                let w = match cycle_state {
-                    CycleState::Initial => width * 0.8,
-                    CycleState::FirstCycle => width * 0.5,
-                    CycleState::SecondCycle => width * 2.0 / 3.0,
-                };
+                let w = Self::center_cycle_width(width, cycle_state);
                 let h = height * 0.8;
-                let offset_x = (width - w) / 2.0;
-                let offset_y = (height - h) / 2.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint {
-                        x: x + offset_x,
-                        y: y + offset_y,
-                    },
-                    &core_graphics::geometry::CGSize {
-                        width: w,
-                        height: h,
-                    },
-                )
+                Self::frame_centered(x, y, width, height, w, h)
             },
             WindowLayout::Restore => {
                 // Restore is handled separately by restoring the saved frame
@@ -462,51 +439,24 @@ impl LayoutCalculator {
             WindowLayout::AlmostMaximize => {
                 // Fill screen with configurable margin
                 let margin = self.almost_maximize_margin;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint {
-                        x: x + margin,
-                        y: y + margin,
-                    },
-                    &core_graphics::geometry::CGSize {
-                        width: width - 2.0 * margin,
-                        height: height - 2.0 * margin,
-                    },
+                Self::frame_left(
+                    x + margin, y + margin,
+                    width - 2.0 * margin, height - 2.0 * margin
                 )
             },
             WindowLayout::CenterHalf => {
                 // Center window at 50% screen width, full height
-                let w = width * 0.5;
-                let offset_x = (width - w) / 2.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                Self::frame_centered_horizontal(x, y, width, width * 0.5, height)
             },
             WindowLayout::CenterTwoThirds => {
                 // Center window at 66% screen width, full height
-                let w = width * 2.0 / 3.0;
-                let offset_x = (width - w) / 2.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
-                    &core_graphics::geometry::CGSize { width: w, height },
-                )
+                Self::frame_centered_horizontal(x, y, width, width * 2.0 / 3.0, height)
             },
             WindowLayout::ReasonableSize => {
-                // 75% width, 80% height, centered
+                // 75% width, 80% height, centered, with min 800x600
                 let w = (width * 0.75).max(800.0).min(width);
                 let h = (height * 0.8).max(600.0).min(height);
-                let offset_x = (width - w) / 2.0;
-                let offset_y = (height - h) / 2.0;
-                CGRect::new(
-                    &core_graphics::geometry::CGPoint {
-                        x: x + offset_x,
-                        y: y + offset_y,
-                    },
-                    &core_graphics::geometry::CGSize {
-                        width: w,
-                        height: h,
-                    },
-                )
+                Self::frame_centered(x, y, width, height, w, h)
             },
             WindowLayout::MakeSmaller | WindowLayout::MakeLarger => {
                 // These require current window frame - return usable_frame as placeholder
