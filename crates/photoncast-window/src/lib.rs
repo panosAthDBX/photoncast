@@ -59,7 +59,10 @@ pub use error::{Result, WindowError};
 pub use layout::{CycleState, LayoutCalculator, WindowLayout};
 
 #[cfg(target_os = "macos")]
-pub use accessibility::{AccessibilityManager, WindowInfo};
+pub use accessibility::{
+    AccessibilityManager, CGWindowInfo, WindowInfo,
+    get_bundle_id_for_pid, get_frontmost_window_via_cgwindowlist,
+};
 #[cfg(target_os = "macos")]
 pub use display::{DisplayDirection, DisplayInfo, DisplayManager};
 

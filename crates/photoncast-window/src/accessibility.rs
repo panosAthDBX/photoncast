@@ -23,6 +23,14 @@ use core_foundation_sys::string::{
     kCFStringEncodingUTF8, CFStringCreateWithCString, CFStringGetCString, CFStringRef,
 };
 #[cfg(target_os = "macos")]
+use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetValueAtIndex};
+#[cfg(target_os = "macos")]
+use core_foundation_sys::dictionary::CFDictionaryGetValueIfPresent;
+#[cfg(target_os = "macos")]
+use core_foundation_sys::number::CFNumberGetValue;
+#[cfg(target_os = "macos")]
+use core_foundation_sys::dictionary::CFDictionaryRef;
+#[cfg(target_os = "macos")]
 use core_graphics::geometry::{CGPoint, CGSize};
 #[cfg(target_os = "macos")]
 use std::ffi::{c_void, CStr, CString};
@@ -46,6 +54,41 @@ const AX_WINDOWS: &str = "AXWindows";
 const AX_MINIMIZED: &str = "AXMinimized";
 #[cfg(target_os = "macos")]
 const AX_FULLSCREEN: &str = "AXFullScreen";
+
+// CGWindowList FFI bindings (not exposed by core-graphics crate)
+#[cfg(target_os = "macos")]
+type CGWindowID = u32;
+#[cfg(target_os = "macos")]
+type CGWindowListOption = u32;
+#[cfg(target_os = "macos")]
+const K_CG_NULL_WINDOW_ID: CGWindowID = 0;
+#[cfg(target_os = "macos")]
+const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: CGWindowListOption = 1 << 0;
+#[cfg(target_os = "macos")]
+const K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS: CGWindowListOption = 1 << 4;
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGWindowListCopyWindowInfo(
+        option: CGWindowListOption,
+        relativeToWindow: CGWindowID,
+    ) -> core_foundation_sys::array::CFArrayRef;
+}
+
+/// Information about a window obtained via CGWindowList API.
+/// This is a lightweight struct that doesn't require accessibility permissions.
+#[derive(Debug, Clone)]
+pub struct CGWindowInfo {
+    /// The window's title (may be empty for some windows).
+    pub title: String,
+    /// The owner application name.
+    pub owner_name: String,
+    /// The owner application PID.
+    pub owner_pid: i32,
+    /// Window layer (0 = normal windows).
+    pub layer: i32,
+}
 
 /// Window information retrieved from Accessibility API.
 #[derive(Debug, Clone)]
@@ -853,6 +896,134 @@ impl AccessibilityManager {
 
     #[cfg(not(target_os = "macos"))]
     pub fn clear_cache(&mut self) {}
+}
+
+/// Gets the frontmost window using CGWindowList API.
+/// This does NOT require accessibility permissions and works even when another app is active.
+/// Returns (owner_name, title, pid) of the first normal window (layer 0) on screen.
+#[cfg(target_os = "macos")]
+pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
+    use core_foundation::string::CFString;
+    
+    let options = K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
+    let window_list = unsafe { CGWindowListCopyWindowInfo(options, K_CG_NULL_WINDOW_ID) };
+    
+    if window_list.is_null() {
+        tracing::debug!("CGWindowListCopyWindowInfo returned null");
+        return None;
+    }
+    
+    let count = unsafe { CFArrayGetCount(window_list) };
+    tracing::debug!("CGWindowList returned {} windows", count);
+    
+    // Window list is in front-to-back order, so first normal window is frontmost
+    for i in 0..count {
+        let dict = unsafe { CFArrayGetValueAtIndex(window_list, i) as CFDictionaryRef };
+        if dict.is_null() {
+            continue;
+        }
+        
+        // Get window layer - we only want normal windows (layer 0)
+        let layer_key = CFString::new("kCGWindowLayer");
+        let mut layer_value: *const c_void = std::ptr::null();
+        let layer = if unsafe {
+            CFDictionaryGetValueIfPresent(dict, layer_key.as_CFTypeRef().cast(), &mut layer_value)
+        } != 0 && !layer_value.is_null() {
+            let mut val: i32 = 0;
+            if unsafe { CFNumberGetValue(layer_value.cast(), 3 /* kCFNumberSInt32Type */, &mut val as *mut _ as *mut c_void) } {
+                val
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+        
+        // Skip non-normal windows (menu bar, dock, etc have layer != 0)
+        if layer != 0 {
+            continue;
+        }
+        
+        // Get owner name
+        let owner_key = CFString::new("kCGWindowOwnerName");
+        let mut owner_value: *const c_void = std::ptr::null();
+        let owner_name = if unsafe {
+            CFDictionaryGetValueIfPresent(dict, owner_key.as_CFTypeRef().cast(), &mut owner_value)
+        } != 0 && !owner_value.is_null() {
+            cfstring_to_string(owner_value as CFStringRef).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        
+        // Skip windows from Photoncast itself
+        if owner_name.to_lowercase().contains("photoncast") {
+            continue;
+        }
+        
+        // Get window title
+        let title_key = CFString::new("kCGWindowName");
+        let mut title_value: *const c_void = std::ptr::null();
+        let title = if unsafe {
+            CFDictionaryGetValueIfPresent(dict, title_key.as_CFTypeRef().cast(), &mut title_value)
+        } != 0 && !title_value.is_null() {
+            cfstring_to_string(title_value as CFStringRef).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        
+        // Get owner PID
+        let pid_key = CFString::new("kCGWindowOwnerPID");
+        let mut pid_value: *const c_void = std::ptr::null();
+        let owner_pid = if unsafe {
+            CFDictionaryGetValueIfPresent(dict, pid_key.as_CFTypeRef().cast(), &mut pid_value)
+        } != 0 && !pid_value.is_null() {
+            let mut val: i32 = 0;
+            if unsafe { CFNumberGetValue(pid_value.cast(), 3 /* kCFNumberSInt32Type */, &mut val as *mut _ as *mut c_void) } {
+                val
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        
+        unsafe { CFRelease(window_list.cast()) };
+        
+        tracing::debug!(
+            "CGWindowList frontmost: owner='{}', title='{}', pid={}, layer={}",
+            owner_name, title, owner_pid, layer
+        );
+        
+        return Some(CGWindowInfo {
+            title,
+            owner_name,
+            owner_pid,
+            layer,
+        });
+    }
+    
+    unsafe { CFRelease(window_list.cast()) };
+    None
+}
+
+/// Gets the bundle ID for a PID using NSRunningApplication.
+#[cfg(target_os = "macos")]
+pub fn get_bundle_id_for_pid(pid: i32) -> Option<String> {
+    use objc2_app_kit::NSRunningApplication;
+    
+    let app = unsafe { NSRunningApplication::runningApplicationWithProcessIdentifier(pid) };
+    
+    app.and_then(|a| unsafe { a.bundleIdentifier() }.map(|s| s.to_string()))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_bundle_id_for_pid(_pid: i32) -> Option<String> {
+    None
 }
 
 impl Default for AccessibilityManager {

@@ -915,8 +915,33 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
 
 /// Gets the bundle ID and window title of the frontmost application.
 /// This is called before Photoncast activates to remember which window was active.
+/// 
+/// Uses CGWindowListCopyWindowInfo which doesn't require Accessibility permissions
+/// and returns windows in front-to-back z-order, so we get the actual frontmost
+/// window even if another app is about to become active.
 #[cfg(target_os = "macos")]
 fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
+    // Use CGWindowList API - works without accessibility permissions and
+    // returns the actual frontmost window in z-order, not the "focused" app
+    if let Some(window_info) = photoncast_window::get_frontmost_window_via_cgwindowlist() {
+        // Get bundle ID from the PID
+        let bundle_id = photoncast_window::get_bundle_id_for_pid(window_info.owner_pid);
+        let title = if window_info.title.is_empty() {
+            None
+        } else {
+            Some(window_info.title)
+        };
+        
+        tracing::info!(
+            "CGWindowList: bundle_id={:?}, title={:?}, owner={}",
+            bundle_id, title, window_info.owner_name
+        );
+        
+        return (bundle_id, title);
+    }
+    
+    // Fallback to NSWorkspace if CGWindowList fails
+    tracing::warn!("CGWindowList returned no windows, falling back to NSWorkspace");
     use objc2_app_kit::NSWorkspace;
     
     let workspace = unsafe { NSWorkspace::sharedWorkspace() };
