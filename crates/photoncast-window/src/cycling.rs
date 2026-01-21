@@ -62,7 +62,14 @@ impl CyclingManager {
     /// Checks if a layout supports cycling.
     #[must_use]
     const fn supports_cycling(layout: WindowLayout) -> bool {
-        matches!(layout, WindowLayout::LeftHalf | WindowLayout::RightHalf)
+        matches!(
+            layout,
+            WindowLayout::LeftHalf
+                | WindowLayout::RightHalf
+                | WindowLayout::TopHalf
+                | WindowLayout::BottomHalf
+                | WindowLayout::Center
+        )
     }
 }
 

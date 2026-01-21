@@ -212,6 +212,13 @@ impl WindowCommandInfo {
             WindowLayout::Maximize => ("maximize", "Maximize window to fill the screen"),
             WindowLayout::Center => ("layout-center", "Center window on the screen"),
             WindowLayout::Restore => ("restore", "Restore window to previous position"),
+            WindowLayout::AlmostMaximize => ("maximize", "Almost maximize window with small margins"),
+            WindowLayout::CenterHalf => ("layout-center", "Center window at 50% width, full height"),
+            WindowLayout::CenterTwoThirds => ("layout-center", "Center window at 66% width, full height"),
+            WindowLayout::ReasonableSize => ("layout-center", "Set window to reasonable size"),
+            WindowLayout::MakeSmaller => ("minimize", "Make window smaller"),
+            WindowLayout::MakeLarger => ("maximize", "Make window larger"),
+            WindowLayout::ToggleFullscreen => ("fullscreen", "Toggle fullscreen mode"),
         };
 
         Self {

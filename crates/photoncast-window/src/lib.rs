@@ -90,9 +90,15 @@ impl WindowManager {
     /// Creates a new window manager with the given configuration.
     #[must_use]
     pub fn new(config: WindowConfig) -> Self {
+        let layout_calculator = LayoutCalculator::with_config(
+            config.window_gap,
+            config.respect_menu_bar,
+            config.respect_dock,
+            config.almost_maximize_margin,
+        );
         Self {
             config,
-            layout_calculator: LayoutCalculator::new(),
+            layout_calculator,
             cycling_manager: CyclingManager::new(),
 
             #[cfg(target_os = "macos")]
@@ -111,6 +117,13 @@ impl WindowManager {
 
     /// Updates the configuration.
     pub fn set_config(&mut self, config: WindowConfig) {
+        // Update layout calculator with new config values
+        self.layout_calculator.update_config(
+            config.window_gap,
+            config.respect_menu_bar,
+            config.respect_dock,
+            config.almost_maximize_margin,
+        );
         self.config = config;
     }
 
@@ -138,6 +151,11 @@ impl WindowManager {
         // Get frontmost window
         let window = self.accessibility_manager.get_frontmost_window()?;
 
+        // Handle ToggleFullscreen specially
+        if layout == WindowLayout::ToggleFullscreen {
+            return self.accessibility_manager.toggle_fullscreen(&window);
+        }
+
         // Get current display
         let current_frame = self.accessibility_manager.get_window_frame(&window)?;
         let display = self
@@ -156,6 +174,14 @@ impl WindowManager {
         let target_frame = if layout == WindowLayout::Restore {
             // Restore saved frame
             self.accessibility_manager.restore_frame(&window)?
+        } else if layout == WindowLayout::MakeSmaller {
+            // Shrink window by 10% from center
+            self.layout_calculator
+                .resize_frame(current_frame, display.frame, 0.1, false)
+        } else if layout == WindowLayout::MakeLarger {
+            // Grow window by 10% from center
+            self.layout_calculator
+                .resize_frame(current_frame, display.frame, 0.1, true)
         } else {
             // Get cycle state
             let cycle_state = if self.config.cycling_enabled {
@@ -286,11 +312,18 @@ mod tests {
             animation_enabled: false,
             animation_duration_ms: 100,
             cycling_enabled: false,
+            window_gap: 10,
+            respect_menu_bar: false,
+            respect_dock: false,
+            cycle_timeout_ms: 1000,
+            almost_maximize_margin: 30,
         };
 
         manager.set_config(new_config);
         assert!(!manager.config().enabled);
         assert!(!manager.config().animation_enabled);
         assert_eq!(manager.config().animation_duration_ms, 100);
+        assert_eq!(manager.config().window_gap, 10);
+        assert!(!manager.config().respect_menu_bar);
     }
 }

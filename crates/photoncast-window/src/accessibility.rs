@@ -44,6 +44,8 @@ const AX_SIZE: &str = "AXSize";
 const AX_WINDOWS: &str = "AXWindows";
 #[cfg(target_os = "macos")]
 const AX_MINIMIZED: &str = "AXMinimized";
+#[cfg(target_os = "macos")]
+const AX_FULLSCREEN: &str = "AXFullScreen";
 
 /// Window information retrieved from Accessibility API.
 #[derive(Debug, Clone)]
@@ -586,6 +588,77 @@ impl AccessibilityManager {
 
     #[cfg(not(target_os = "macos"))]
     pub fn is_minimized(&self, _window: &WindowInfo) -> Result<bool> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
+    /// Checks if a window is in fullscreen mode.
+    #[cfg(target_os = "macos")]
+    pub fn is_fullscreen(&self, window: &WindowInfo) -> Result<bool> {
+        use core_foundation_sys::number::CFBooleanGetValue;
+
+        if !self.has_permission {
+            return Err(WindowError::PermissionDenied);
+        }
+
+        let element = self
+            .element_cache
+            .get(&window.element_ref)
+            .copied()
+            .ok_or(WindowError::WindowNotFound)?;
+
+        let value = unsafe {
+            get_ax_attribute(element, AX_FULLSCREEN).map_err(|e| {
+                WindowError::AccessibilityError {
+                    message: format!("Failed to get fullscreen state: {e}"),
+                }
+            })?
+        };
+
+        let fullscreen = unsafe { CFBooleanGetValue(value.cast()) };
+        unsafe { CFRelease(value) };
+
+        Ok(fullscreen)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn is_fullscreen(&self, _window: &WindowInfo) -> Result<bool> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
+    /// Toggles fullscreen mode for a window.
+    #[cfg(target_os = "macos")]
+    pub fn toggle_fullscreen(&self, window: &WindowInfo) -> Result<()> {
+        if !self.has_permission {
+            return Err(WindowError::PermissionDenied);
+        }
+
+        let element = self
+            .element_cache
+            .get(&window.element_ref)
+            .copied()
+            .ok_or(WindowError::WindowNotFound)?;
+
+        // Get current fullscreen state
+        let is_fullscreen = self.is_fullscreen(window)?;
+
+        // Toggle fullscreen state
+        let new_value = if is_fullscreen {
+            CFBoolean::false_value()
+        } else {
+            CFBoolean::true_value()
+        };
+
+        unsafe {
+            set_ax_attribute(element, AX_FULLSCREEN, new_value.as_CFTypeRef()).map_err(|e| {
+                WindowError::AccessibilityError {
+                    message: format!("Failed to toggle fullscreen: {e}"),
+                }
+            })
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn toggle_fullscreen(&self, _window: &WindowInfo) -> Result<()> {
         Err(WindowError::PlatformNotSupported)
     }
 

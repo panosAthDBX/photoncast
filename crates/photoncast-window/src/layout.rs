@@ -29,6 +29,22 @@ pub enum WindowLayout {
     Maximize,
     Center,
     Restore,
+
+    // New layouts
+    /// Fill screen with configurable margin on all sides.
+    AlmostMaximize,
+    /// Center window at 50% screen width, full height.
+    CenterHalf,
+    /// Center window at 66% screen width, full height.
+    CenterTwoThirds,
+    /// Reasonable size: 75% width, 80% height, min 800x600.
+    ReasonableSize,
+    /// Shrink window by 10% from center.
+    MakeSmaller,
+    /// Grow window by 10% from center.
+    MakeLarger,
+    /// Toggle fullscreen mode.
+    ToggleFullscreen,
 }
 
 impl WindowLayout {
@@ -52,6 +68,13 @@ impl WindowLayout {
             Self::Maximize => "Maximize",
             Self::Center => "Center",
             Self::Restore => "Restore",
+            Self::AlmostMaximize => "Almost Maximize",
+            Self::CenterHalf => "Center Half",
+            Self::CenterTwoThirds => "Center Two Thirds",
+            Self::ReasonableSize => "Reasonable Size",
+            Self::MakeSmaller => "Make Smaller",
+            Self::MakeLarger => "Make Larger",
+            Self::ToggleFullscreen => "Toggle Fullscreen",
         }
     }
 
@@ -75,6 +98,13 @@ impl WindowLayout {
             Self::Maximize => "window_maximize",
             Self::Center => "window_center",
             Self::Restore => "window_restore",
+            Self::AlmostMaximize => "window_almost_maximize",
+            Self::CenterHalf => "window_center_half",
+            Self::CenterTwoThirds => "window_center_two_thirds",
+            Self::ReasonableSize => "window_reasonable_size",
+            Self::MakeSmaller => "window_make_smaller",
+            Self::MakeLarger => "window_make_larger",
+            Self::ToggleFullscreen => "window_toggle_fullscreen",
         }
     }
 
@@ -98,6 +128,13 @@ impl WindowLayout {
             Self::Maximize,
             Self::Center,
             Self::Restore,
+            Self::AlmostMaximize,
+            Self::CenterHalf,
+            Self::CenterTwoThirds,
+            Self::ReasonableSize,
+            Self::MakeSmaller,
+            Self::MakeLarger,
+            Self::ToggleFullscreen,
         ]
     }
 
@@ -121,6 +158,13 @@ impl WindowLayout {
             "window_maximize" => Some(Self::Maximize),
             "window_center" => Some(Self::Center),
             "window_restore" => Some(Self::Restore),
+            "window_almost_maximize" => Some(Self::AlmostMaximize),
+            "window_center_half" => Some(Self::CenterHalf),
+            "window_center_two_thirds" => Some(Self::CenterTwoThirds),
+            "window_reasonable_size" => Some(Self::ReasonableSize),
+            "window_make_smaller" => Some(Self::MakeSmaller),
+            "window_make_larger" => Some(Self::MakeLarger),
+            "window_toggle_fullscreen" => Some(Self::ToggleFullscreen),
             _ => None,
         }
     }
@@ -159,16 +203,60 @@ pub struct LayoutCalculator {
     menu_bar_height: f64,
     /// Dock size and position (cached).
     dock_bounds: Option<CGRect>,
+    /// Gap between windows and screen edges.
+    window_gap: f64,
+    /// Whether to account for menu bar.
+    respect_menu_bar: bool,
+    /// Whether to account for dock.
+    respect_dock: bool,
+    /// Margin for almost maximize layout.
+    almost_maximize_margin: f64,
 }
 
 impl LayoutCalculator {
-    /// Creates a new layout calculator.
+    /// Creates a new layout calculator with default values.
     #[must_use]
     pub const fn new() -> Self {
         Self {
             menu_bar_height: 24.0, // Standard macOS menu bar
             dock_bounds: None,
+            window_gap: 0.0,
+            respect_menu_bar: true,
+            respect_dock: true,
+            almost_maximize_margin: 20.0,
         }
+    }
+
+    /// Creates a new layout calculator with the given configuration.
+    #[must_use]
+    pub fn with_config(
+        window_gap: u32,
+        respect_menu_bar: bool,
+        respect_dock: bool,
+        almost_maximize_margin: u32,
+    ) -> Self {
+        Self {
+            menu_bar_height: 24.0,
+            dock_bounds: None,
+            window_gap: f64::from(window_gap),
+            respect_menu_bar,
+            respect_dock,
+            almost_maximize_margin: f64::from(almost_maximize_margin),
+        }
+    }
+
+    /// Updates configuration values.
+    pub fn update_config(
+        &mut self,
+        window_gap: u32,
+        respect_menu_bar: bool,
+        respect_dock: bool,
+        almost_maximize_margin: u32,
+    ) {
+        self.window_gap = f64::from(window_gap);
+        self.respect_menu_bar = respect_menu_bar;
+        self.respect_dock = respect_dock;
+        self.almost_maximize_margin = f64::from(almost_maximize_margin);
     }
 
     /// Updates the dock bounds cache.
@@ -226,14 +314,22 @@ impl LayoutCalculator {
                 )
             },
             WindowLayout::TopHalf => {
-                let h = height / 2.0;
+                let h = match cycle_state {
+                    CycleState::Initial => height / 2.0,
+                    CycleState::FirstCycle => height / 3.0,
+                    CycleState::SecondCycle => height * 2.0 / 3.0,
+                };
                 CGRect::new(
                     &core_graphics::geometry::CGPoint { x, y },
                     &core_graphics::geometry::CGSize { width, height: h },
                 )
             },
             WindowLayout::BottomHalf => {
-                let h = height / 2.0;
+                let h = match cycle_state {
+                    CycleState::Initial => height / 2.0,
+                    CycleState::FirstCycle => height / 3.0,
+                    CycleState::SecondCycle => height * 2.0 / 3.0,
+                };
                 let offset_y = height - h;
                 CGRect::new(
                     &core_graphics::geometry::CGPoint { x, y: y + offset_y },
@@ -337,8 +433,12 @@ impl LayoutCalculator {
             // Special
             WindowLayout::Maximize => usable_frame,
             WindowLayout::Center => {
-                // Center with 80% width and height
-                let w = width * 0.8;
+                // Center with cycling width (80% -> 50% -> 66%), always 80% height
+                let w = match cycle_state {
+                    CycleState::Initial => width * 0.8,
+                    CycleState::FirstCycle => width * 0.5,
+                    CycleState::SecondCycle => width * 2.0 / 3.0,
+                };
                 let h = height * 0.8;
                 let offset_x = (width - w) / 2.0;
                 let offset_y = (height - h) / 2.0;
@@ -357,26 +457,162 @@ impl LayoutCalculator {
                 // Restore is handled separately by restoring the saved frame
                 usable_frame
             },
+
+            // New layouts
+            WindowLayout::AlmostMaximize => {
+                // Fill screen with configurable margin
+                let margin = self.almost_maximize_margin;
+                CGRect::new(
+                    &core_graphics::geometry::CGPoint {
+                        x: x + margin,
+                        y: y + margin,
+                    },
+                    &core_graphics::geometry::CGSize {
+                        width: width - 2.0 * margin,
+                        height: height - 2.0 * margin,
+                    },
+                )
+            },
+            WindowLayout::CenterHalf => {
+                // Center window at 50% screen width, full height
+                let w = width * 0.5;
+                let offset_x = (width - w) / 2.0;
+                CGRect::new(
+                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
+                    &core_graphics::geometry::CGSize { width: w, height },
+                )
+            },
+            WindowLayout::CenterTwoThirds => {
+                // Center window at 66% screen width, full height
+                let w = width * 2.0 / 3.0;
+                let offset_x = (width - w) / 2.0;
+                CGRect::new(
+                    &core_graphics::geometry::CGPoint { x: x + offset_x, y },
+                    &core_graphics::geometry::CGSize { width: w, height },
+                )
+            },
+            WindowLayout::ReasonableSize => {
+                // 75% width, 80% height, centered
+                let w = (width * 0.75).max(800.0).min(width);
+                let h = (height * 0.8).max(600.0).min(height);
+                let offset_x = (width - w) / 2.0;
+                let offset_y = (height - h) / 2.0;
+                CGRect::new(
+                    &core_graphics::geometry::CGPoint {
+                        x: x + offset_x,
+                        y: y + offset_y,
+                    },
+                    &core_graphics::geometry::CGSize {
+                        width: w,
+                        height: h,
+                    },
+                )
+            },
+            WindowLayout::MakeSmaller | WindowLayout::MakeLarger => {
+                // These require current window frame - return usable_frame as placeholder
+                // Actual implementation should be handled in WindowManager
+                usable_frame
+            },
+            WindowLayout::ToggleFullscreen => {
+                // Handled specially in WindowManager - return usable_frame as placeholder
+                usable_frame
+            },
         }
     }
 
-    /// Gets the usable screen frame (excluding menu bar and dock).
+    /// Gets the usable screen frame (excluding menu bar and dock based on config).
     fn get_usable_frame(&self, screen_frame: CGRect) -> CGRect {
         let mut usable = screen_frame;
 
-        // Account for menu bar at the top
-        usable.origin.y += self.menu_bar_height;
-        usable.size.height -= self.menu_bar_height;
+        // Account for menu bar at the top if configured
+        if self.respect_menu_bar {
+            usable.origin.y += self.menu_bar_height;
+            usable.size.height -= self.menu_bar_height;
+        }
 
-        // Account for dock if present
-        if let Some(dock) = self.dock_bounds {
-            // Determine dock position and adjust usable frame
-            // This is simplified - in reality, dock position detection is complex
-            // For now, assume dock is at bottom (most common)
-            usable.size.height -= dock.size.height;
+        // Account for dock if present and configured
+        if self.respect_dock {
+            if let Some(dock) = self.dock_bounds {
+                // Determine dock position and adjust usable frame
+                // This is simplified - in reality, dock position detection is complex
+                // For now, assume dock is at bottom (most common)
+                usable.size.height -= dock.size.height;
+            }
+        }
+
+        // Apply window gap to all edges
+        if self.window_gap > 0.0 {
+            usable.origin.x += self.window_gap;
+            usable.origin.y += self.window_gap;
+            usable.size.width -= 2.0 * self.window_gap;
+            usable.size.height -= 2.0 * self.window_gap;
         }
 
         usable
+    }
+
+    /// Resizes a frame by a percentage from its center.
+    ///
+    /// # Arguments
+    /// * `current_frame` - The current window frame
+    /// * `screen_frame` - The screen's full frame (for bounds checking)
+    /// * `percent` - The percentage to resize by (e.g., 0.1 for 10%)
+    /// * `grow` - True to grow, false to shrink
+    ///
+    /// # Returns
+    /// The resized frame, respecting min 400x300 and max screen bounds
+    #[must_use]
+    pub fn resize_frame(
+        &self,
+        current_frame: CGRect,
+        screen_frame: CGRect,
+        percent: f64,
+        grow: bool,
+    ) -> CGRect {
+        let usable_frame = self.get_usable_frame(screen_frame);
+
+        // Calculate new dimensions
+        let factor = if grow { 1.0 + percent } else { 1.0 - percent };
+        let new_width = current_frame.size.width * factor;
+        let new_height = current_frame.size.height * factor;
+
+        // Apply min/max constraints
+        let min_width = 400.0;
+        let min_height = 300.0;
+        let max_width = usable_frame.size.width;
+        let max_height = usable_frame.size.height;
+
+        let final_width = new_width.max(min_width).min(max_width);
+        let final_height = new_height.max(min_height).min(max_height);
+
+        // Calculate new position to keep window centered
+        let center_x = current_frame.origin.x + current_frame.size.width / 2.0;
+        let center_y = current_frame.origin.y + current_frame.size.height / 2.0;
+
+        let mut new_x = center_x - final_width / 2.0;
+        let mut new_y = center_y - final_height / 2.0;
+
+        // Ensure window stays within usable bounds
+        if new_x < usable_frame.origin.x {
+            new_x = usable_frame.origin.x;
+        }
+        if new_y < usable_frame.origin.y {
+            new_y = usable_frame.origin.y;
+        }
+        if new_x + final_width > usable_frame.origin.x + usable_frame.size.width {
+            new_x = usable_frame.origin.x + usable_frame.size.width - final_width;
+        }
+        if new_y + final_height > usable_frame.origin.y + usable_frame.size.height {
+            new_y = usable_frame.origin.y + usable_frame.size.height - final_height;
+        }
+
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { x: new_x, y: new_y },
+            &core_graphics::geometry::CGSize {
+                width: final_width,
+                height: final_height,
+            },
+        )
     }
 }
 
