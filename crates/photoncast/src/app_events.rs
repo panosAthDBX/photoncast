@@ -27,6 +27,8 @@ pub enum AppEvent {
         command_id: String,
         /// The bundle ID of the app that was frontmost before Photoncast opened
         target_bundle_id: Option<String>,
+        /// The title of the window that was frontmost before Photoncast opened
+        target_window_title: Option<String>,
     },
 }
 

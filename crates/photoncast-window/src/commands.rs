@@ -60,6 +60,13 @@ impl WindowCommand {
         manager.activate_any_app_except(except_bundle_id)
     }
 
+    /// Focuses (raises) a specific window by its title.
+    #[cfg(target_os = "macos")]
+    pub fn focus_window_by_title(&self, title: &str) -> crate::Result<()> {
+        let mut manager = self.manager.write();
+        manager.focus_window_by_title(title)
+    }
+
     /// Applies a window layout.
     #[cfg(target_os = "macos")]
     pub fn apply_layout(&self, layout: WindowLayout) -> crate::Result<()> {

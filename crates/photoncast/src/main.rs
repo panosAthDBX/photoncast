@@ -369,11 +369,14 @@ fn main() {
                     Ok(AppEvent::ToggleLauncher) => {
                         info!("Toggle launcher requested");
                         
-                        // Capture frontmost app BEFORE Photoncast becomes active
-                        // This is used for window management commands to target the correct app
-                        let previous_app = get_frontmost_bundle_id();
+                        // Capture frontmost app AND window BEFORE Photoncast becomes active
+                        // This is used for window management commands to target the correct window
+                        let (previous_app, previous_window_title) = get_frontmost_window_info();
                         if let Some(ref bundle_id) = previous_app {
                             tracing::debug!("Previous frontmost app: {}", bundle_id);
+                        }
+                        if let Some(ref title) = previous_window_title {
+                            tracing::debug!("Previous frontmost window: {}", title);
                         }
                         
                         // Try to activate existing window or create new one
@@ -381,7 +384,7 @@ fn main() {
                             // Try to update existing window
                             let window_exists = current_handle.as_ref().is_some_and(|h| {
                                 h.update(cx, |view, cx| {
-                                    view.set_previous_frontmost_app(previous_app.clone());
+                                    view.set_previous_frontmost_window(previous_app.clone(), previous_window_title.clone());
                                     view.toggle(cx);
                                     cx.activate(true);
                                     cx.activate_window();
@@ -745,11 +748,11 @@ fn main() {
                         // Timer action already executed in background thread
                         // This event is just for logging/UI notification if needed
                     },
-                    Ok(AppEvent::ExecuteWindowCommand { command_id, target_bundle_id }) => {
+                    Ok(AppEvent::ExecuteWindowCommand { command_id, target_bundle_id, target_window_title }) => {
                         info!("Window command requested: {}", command_id);
                         // Execute window command outside of any GPUI window context
                         // to avoid reentrancy panics when macOS sends windowDidMove notifications
-                        execute_window_command(&command_id, target_bundle_id);
+                        execute_window_command(&command_id, target_bundle_id, target_window_title);
                     },
                     Err(mpsc::TryRecvError::Empty) => {
                         // No event, continue
@@ -773,7 +776,7 @@ fn main() {
 
 /// Executes a window management command outside of GPUI window context.
 /// This avoids reentrancy panics when moving windows triggers windowDidMove notifications.
-fn execute_window_command(command_id: &str, target_bundle_id: Option<String>) {
+fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, target_window_title: Option<String>) {
     // Load user config for window management
     let wm_config = photoncast_core::app::config_file::load_config()
         .map(|c| c.window_management)
@@ -850,6 +853,19 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>) {
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = target_app; // suppress unused warning
 
+    // If we have a specific window title, focus that window
+    // This is needed when the app has multiple windows open
+    if let Some(ref title) = target_window_title {
+        if let Err(e) = window_command.focus_window_by_title(title) {
+            tracing::warn!("Could not focus window '{}': {}", title, e);
+            // Continue anyway - we'll operate on whatever window is frontmost
+        } else {
+            tracing::info!("Focused window: '{}'", title);
+            // Small delay for focus to complete
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
     let result = match command_id {
         "window_move_next_display" => {
             window_command.move_to_display(photoncast_window::DisplayDirection::Next)
@@ -878,21 +894,46 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>) {
     }
 }
 
-/// Gets the bundle ID of the frontmost application using NSWorkspace.
-/// This is called before Photoncast activates to remember which app was active.
+/// Gets the bundle ID and window title of the frontmost application.
+/// This is called before Photoncast activates to remember which window was active.
 #[cfg(target_os = "macos")]
-fn get_frontmost_bundle_id() -> Option<String> {
+fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
     use objc2_app_kit::NSWorkspace;
     
     let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let app = unsafe { workspace.frontmostApplication() }?;
-    let bundle_id = unsafe { app.bundleIdentifier() }?;
-    Some(bundle_id.to_string())
+    let app = match unsafe { workspace.frontmostApplication() } {
+        Some(a) => a,
+        None => return (None, None),
+    };
+    let bundle_id = unsafe { app.bundleIdentifier() }.map(|s| s.to_string());
+    
+    // Try to get the frontmost window title using Accessibility API
+    let window_title = get_frontmost_window_title();
+    
+    (bundle_id, window_title)
+}
+
+#[cfg(target_os = "macos")]
+fn get_frontmost_window_title() -> Option<String> {
+    // Use the window crate's accessibility manager to get the frontmost window
+    let config = photoncast_window::WindowConfig::default();
+    let mut manager = photoncast_window::WindowManager::new(config);
+    
+    // Check permission first
+    if !manager.has_accessibility_permission() {
+        return None;
+    }
+    
+    // Get frontmost window
+    match manager.get_frontmost_window_info() {
+        Ok(info) => Some(info.title),
+        Err(_) => None,
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn get_frontmost_bundle_id() -> Option<String> {
-    None
+fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
+    (None, None)
 }
 
 /// Sets up system appearance observation to automatically update the theme

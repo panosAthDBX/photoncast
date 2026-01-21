@@ -223,6 +223,9 @@ pub struct LauncherWindow {
     /// Bundle ID of the app that was frontmost before Photoncast opened
     /// (used for window management commands to target the correct app)
     previous_frontmost_app: Option<String>,
+    /// Title of the window that was frontmost before Photoncast opened
+    /// (used for window management commands to target the correct window)
+    previous_frontmost_window_title: Option<String>,
     // ========================================================================
     // Toast Notification State (Task 7.8)
     // ========================================================================
@@ -458,6 +461,7 @@ impl LauncherWindow {
             manage_auto_quits_index: 0,
             // Window Management
             previous_frontmost_app: None,
+            previous_frontmost_window_title: None,
             // Task 7.8: Toast Notifications
             toast_message: None,
             toast_shown_at: None,
@@ -1634,10 +1638,11 @@ impl LauncherWindow {
         self.start_dismiss_animation(cx);
     }
 
-    /// Sets the bundle ID of the app that was frontmost before Photoncast opened.
-    /// Used for window management commands to target the correct app.
-    pub fn set_previous_frontmost_app(&mut self, bundle_id: Option<String>) {
+    /// Sets the bundle ID and window title that was frontmost before Photoncast opened.
+    /// Used for window management commands to target the correct window.
+    pub fn set_previous_frontmost_window(&mut self, bundle_id: Option<String>, window_title: Option<String>) {
         self.previous_frontmost_app = bundle_id;
+        self.previous_frontmost_window_title = window_title;
     }
 
     /// Handle query change from search input
@@ -2464,10 +2469,11 @@ impl LauncherWindow {
                     
                     // Send event to main event loop which processes it outside GPUI window context
                     // This avoids reentrancy panics when macOS sends windowDidMove notifications
-                    // Include the previous frontmost app so we target the correct window
+                    // Include the previous frontmost app and window title so we target the correct window
                     if let Err(e) = app_events::send_event(AppEvent::ExecuteWindowCommand {
                         command_id: command_id.clone(),
                         target_bundle_id: self.previous_frontmost_app.clone(),
+                        target_window_title: self.previous_frontmost_window_title.clone(),
                     }) {
                         tracing::error!("Failed to send window command event: {}", e);
                     }

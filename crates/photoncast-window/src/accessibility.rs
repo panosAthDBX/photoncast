@@ -646,6 +646,48 @@ impl AccessibilityManager {
         Err(WindowError::PlatformNotSupported)
     }
 
+    /// Focuses (raises) a window by its title.
+    /// This is used to activate a specific window when an app has multiple windows.
+    #[cfg(target_os = "macos")]
+    pub fn focus_window_by_title(&mut self, title: &str) -> Result<WindowInfo> {
+        if !self.has_permission {
+            return Err(WindowError::PermissionDenied);
+        }
+
+        // Get all windows and find the one with matching title
+        let windows = self.list_windows()?;
+        let window = windows
+            .into_iter()
+            .find(|w| w.title == title)
+            .ok_or_else(|| WindowError::AccessibilityError {
+                message: format!("No window found with title: {}", title),
+            })?;
+
+        // Raise the window using AXRaise action
+        let element = self
+            .element_cache
+            .get(&window.element_ref)
+            .copied()
+            .ok_or(WindowError::WindowNotFound)?;
+
+        let result = unsafe {
+            let action = core_foundation::string::CFString::new("AXRaise");
+            accessibility_sys::AXUIElementPerformAction(element, action.as_concrete_TypeRef())
+        };
+
+        if result != 0 {
+            tracing::warn!("AXRaise failed with error {}, window may not be raised", result);
+        }
+
+        tracing::debug!("Focused window: '{}'", window.title);
+        Ok(window)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn focus_window_by_title(&mut self, _title: &str) -> Result<WindowInfo> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
     /// Checks if a window is minimized.
     #[cfg(target_os = "macos")]
     pub fn is_minimized(&self, window: &WindowInfo) -> Result<bool> {

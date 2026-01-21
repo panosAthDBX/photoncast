@@ -173,6 +173,29 @@ impl WindowManager {
         Err(WindowError::PlatformNotSupported)
     }
 
+    /// Focuses (raises) a specific window by its title.
+    #[cfg(target_os = "macos")]
+    pub fn focus_window_by_title(&mut self, title: &str) -> Result<()> {
+        self.accessibility_manager.focus_window_by_title(title)?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn focus_window_by_title(&mut self, _title: &str) -> Result<()> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
+    /// Gets info about the frontmost window.
+    #[cfg(target_os = "macos")]
+    pub fn get_frontmost_window_info(&mut self) -> Result<crate::accessibility::WindowInfo> {
+        self.accessibility_manager.get_frontmost_window()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn get_frontmost_window_info(&mut self) -> Result<crate::accessibility::WindowInfo> {
+        Err(WindowError::PlatformNotSupported)
+    }
+
     /// Applies a layout to the frontmost window.
     #[cfg(target_os = "macos")]
     pub fn apply_layout(&mut self, layout: WindowLayout) -> Result<()> {
@@ -184,6 +207,15 @@ impl WindowManager {
 
         // Get frontmost window
         let window = self.accessibility_manager.get_frontmost_window()?;
+        tracing::info!(
+            "Applying layout to window: '{}' from app '{}' at ({}, {}) size {}x{}",
+            window.title,
+            window.bundle_id,
+            window.frame.origin.x,
+            window.frame.origin.y,
+            window.frame.size.width,
+            window.frame.size.height
+        );
 
         // Handle ToggleFullscreen specially
         if layout == WindowLayout::ToggleFullscreen {
