@@ -218,6 +218,12 @@ pub struct LauncherWindow {
     /// Selected index in the manage auto quits list
     manage_auto_quits_index: usize,
     // ========================================================================
+    // Window Management State
+    // ========================================================================
+    /// Bundle ID of the app that was frontmost before Photoncast opened
+    /// (used for window management commands to target the correct app)
+    previous_frontmost_app: Option<String>,
+    // ========================================================================
     // Toast Notification State (Task 7.8)
     // ========================================================================
     /// Current toast message to display
@@ -450,6 +456,8 @@ impl LauncherWindow {
             // Task 7.7: Manage Auto Quits
             manage_auto_quits_mode: false,
             manage_auto_quits_index: 0,
+            // Window Management
+            previous_frontmost_app: None,
             // Task 7.8: Toast Notifications
             toast_message: None,
             toast_shown_at: None,
@@ -1626,6 +1634,12 @@ impl LauncherWindow {
         self.start_dismiss_animation(cx);
     }
 
+    /// Sets the bundle ID of the app that was frontmost before Photoncast opened.
+    /// Used for window management commands to target the correct app.
+    pub fn set_previous_frontmost_app(&mut self, bundle_id: Option<String>) {
+        self.previous_frontmost_app = bundle_id;
+    }
+
     /// Handle query change from search input
     fn on_query_change(&mut self, _query: SharedString, cx: &mut ViewContext<Self>) {
         self.selected_index = 0;
@@ -2450,8 +2464,10 @@ impl LauncherWindow {
                     
                     // Send event to main event loop which processes it outside GPUI window context
                     // This avoids reentrancy panics when macOS sends windowDidMove notifications
+                    // Include the previous frontmost app so we target the correct window
                     if let Err(e) = app_events::send_event(AppEvent::ExecuteWindowCommand {
                         command_id: command_id.clone(),
+                        target_bundle_id: self.previous_frontmost_app.clone(),
                     }) {
                         tracing::error!("Failed to send window command event: {}", e);
                     }

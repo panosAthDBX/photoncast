@@ -23,7 +23,11 @@ pub enum AppEvent {
     // Timer events (from background polling thread)
     TimerExpired { action: String },
     // Window management events (executed outside GPUI context to avoid reentrancy)
-    ExecuteWindowCommand { command_id: String },
+    ExecuteWindowCommand { 
+        command_id: String,
+        /// The bundle ID of the app that was frontmost before Photoncast opened
+        target_bundle_id: Option<String>,
+    },
 }
 
 static EVENT_SENDER: OnceCell<Sender<AppEvent>> = OnceCell::new();

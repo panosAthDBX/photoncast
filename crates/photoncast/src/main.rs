@@ -368,11 +368,20 @@ fn main() {
                 match event_rx.try_recv() {
                     Ok(AppEvent::ToggleLauncher) => {
                         info!("Toggle launcher requested");
+                        
+                        // Capture frontmost app BEFORE Photoncast becomes active
+                        // This is used for window management commands to target the correct app
+                        let previous_app = get_frontmost_bundle_id();
+                        if let Some(ref bundle_id) = previous_app {
+                            tracing::debug!("Previous frontmost app: {}", bundle_id);
+                        }
+                        
                         // Try to activate existing window or create new one
                         let _ = cx.update(|cx| {
                             // Try to update existing window
                             let window_exists = current_handle.as_ref().is_some_and(|h| {
                                 h.update(cx, |view, cx| {
+                                    view.set_previous_frontmost_app(previous_app.clone());
                                     view.toggle(cx);
                                     cx.activate(true);
                                     cx.activate_window();
@@ -736,11 +745,11 @@ fn main() {
                         // Timer action already executed in background thread
                         // This event is just for logging/UI notification if needed
                     },
-                    Ok(AppEvent::ExecuteWindowCommand { command_id }) => {
+                    Ok(AppEvent::ExecuteWindowCommand { command_id, target_bundle_id }) => {
                         info!("Window command requested: {}", command_id);
                         // Execute window command outside of any GPUI window context
                         // to avoid reentrancy panics when macOS sends windowDidMove notifications
-                        execute_window_command(&command_id);
+                        execute_window_command(&command_id, target_bundle_id);
                     },
                     Err(mpsc::TryRecvError::Empty) => {
                         // No event, continue
@@ -764,7 +773,7 @@ fn main() {
 
 /// Executes a window management command outside of GPUI window context.
 /// This avoids reentrancy panics when moving windows triggers windowDidMove notifications.
-fn execute_window_command(command_id: &str) {
+fn execute_window_command(command_id: &str, target_bundle_id: Option<String>) {
     // Load user config for window management
     let wm_config = photoncast_core::app::config_file::load_config()
         .map(|c| c.window_management)
@@ -805,20 +814,40 @@ fn execute_window_command(command_id: &str) {
         }
     }
 
-    // Explicitly activate another app since hiding Photoncast doesn't automatically
-    // make another app frontmost. We find and activate the first visible regular app.
-    let target_app = match window_command.activate_any_app_except("") {
-        Ok(bundle_id) => {
+    // Activate the target app (the one that was frontmost before Photoncast opened)
+    // If we have a specific target, activate it; otherwise find any visible app
+    let target_app = if let Some(ref bundle_id) = target_bundle_id {
+        // Activate the specific app that was frontmost before
+        if let Err(e) = window_command.activate_app(bundle_id) {
+            tracing::warn!("Failed to activate target app {}: {}", bundle_id, e);
+            // Fall back to activating any visible app
+            match window_command.activate_any_app_except("") {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::error!("No target app found: {}", e);
+                    return;
+                }
+            }
+        } else {
             tracing::info!("Window command targeting app: {}", bundle_id);
-            // Small delay for activation to complete
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            bundle_id
+            bundle_id.clone()
         }
-        Err(e) => {
-            tracing::error!("No target app found for window command: {} - aborting", e);
-            return;
+    } else {
+        // No specific target, find any visible app
+        match window_command.activate_any_app_except("") {
+            Ok(bundle_id) => {
+                tracing::info!("Window command targeting app: {}", bundle_id);
+                bundle_id
+            }
+            Err(e) => {
+                tracing::error!("No target app found for window command: {} - aborting", e);
+                return;
+            }
         }
     };
+    
+    // Small delay for activation to complete
+    std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = target_app; // suppress unused warning
 
     let result = match command_id {
@@ -847,6 +876,23 @@ fn execute_window_command(command_id: &str) {
     if let Err(e) = result {
         tracing::error!("Window command failed: {}", e);
     }
+}
+
+/// Gets the bundle ID of the frontmost application using NSWorkspace.
+/// This is called before Photoncast activates to remember which app was active.
+#[cfg(target_os = "macos")]
+fn get_frontmost_bundle_id() -> Option<String> {
+    use objc2_app_kit::NSWorkspace;
+    
+    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+    let app = unsafe { workspace.frontmostApplication() }?;
+    let bundle_id = unsafe { app.bundleIdentifier() }?;
+    Some(bundle_id.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_frontmost_bundle_id() -> Option<String> {
+    None
 }
 
 /// Sets up system appearance observation to automatically update the theme
