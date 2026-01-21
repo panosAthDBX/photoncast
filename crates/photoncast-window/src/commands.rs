@@ -195,64 +195,68 @@ impl WindowCommandInfo {
     #[must_use]
     pub const fn for_layout(layout: WindowLayout) -> Self {
         let (icon, description) = match layout {
+            // Halves - use arrow directions
             WindowLayout::LeftHalf => (
-                "layout-sidebar-left",
+                "arrow-left-to-line",
                 "Position window on the left half of the screen",
             ),
             WindowLayout::RightHalf => (
-                "layout-sidebar-right",
+                "arrow-right-to-line",
                 "Position window on the right half of the screen",
             ),
             WindowLayout::TopHalf => (
-                "layout-top",
+                "arrow-up-to-line",
                 "Position window on the top half of the screen",
             ),
             WindowLayout::BottomHalf => (
-                "layout-bottom",
+                "arrow-down-to-line",
                 "Position window on the bottom half of the screen",
             ),
-            WindowLayout::TopLeft => ("layout-top-left", "Position window in the top left quarter"),
+            // Quarters - use corner arrows
+            WindowLayout::TopLeft => ("arrow-up-left", "Position window in the top left quarter"),
             WindowLayout::TopRight => (
-                "layout-top-right",
+                "arrow-up-right",
                 "Position window in the top right quarter",
             ),
             WindowLayout::BottomLeft => (
-                "layout-bottom-left",
+                "arrow-down-left",
                 "Position window in the bottom left quarter",
             ),
             WindowLayout::BottomRight => (
-                "layout-bottom-right",
+                "arrow-down-right",
                 "Position window in the bottom right quarter",
             ),
+            // Thirds - use panel/column icons
             WindowLayout::FirstThird => (
-                "layout-left",
+                "panel-left",
                 "Position window in the first third of the screen",
             ),
             WindowLayout::CenterThird => (
-                "layout-center",
+                "columns-3",
                 "Position window in the center third of the screen",
             ),
             WindowLayout::LastThird => (
-                "layout-right",
+                "panel-right",
                 "Position window in the last third of the screen",
             ),
             WindowLayout::FirstTwoThirds => (
-                "layout-left-wide",
+                "panel-left-open",
                 "Position window in the first two thirds",
             ),
             WindowLayout::LastTwoThirds => (
-                "layout-right-wide",
+                "panel-right-open",
                 "Position window in the last two thirds",
             ),
-            WindowLayout::Maximize => ("maximize", "Maximize window to fill the screen"),
-            WindowLayout::Center => ("layout-center", "Center window on the screen"),
-            WindowLayout::Restore => ("restore", "Restore window to previous position"),
-            WindowLayout::AlmostMaximize => ("maximize", "Almost maximize window with small margins"),
-            WindowLayout::CenterHalf => ("layout-center", "Center window at 50% width, full height"),
-            WindowLayout::CenterTwoThirds => ("layout-center", "Center window at 66% width, full height"),
-            WindowLayout::ReasonableSize => ("layout-center", "Set window to reasonable size"),
-            WindowLayout::MakeSmaller => ("minimize", "Make window smaller"),
-            WindowLayout::MakeLarger => ("maximize", "Make window larger"),
+            // Special layouts
+            WindowLayout::Maximize => ("maximize-2", "Maximize window to fill the screen"),
+            WindowLayout::Center => ("align-center", "Center window on the screen"),
+            WindowLayout::Restore => ("undo-2", "Restore window to previous position"),
+            WindowLayout::AlmostMaximize => ("square", "Almost maximize window with small margins"),
+            WindowLayout::CenterHalf => ("align-center-vertical", "Center window at 50% width, full height"),
+            WindowLayout::CenterTwoThirds => ("align-center-horizontal", "Center window at 66% width, full height"),
+            WindowLayout::ReasonableSize => ("scaling", "Set window to reasonable size"),
+            WindowLayout::MakeSmaller => ("minimize-2", "Make window smaller"),
+            WindowLayout::MakeLarger => ("maximize-2", "Make window larger"),
             WindowLayout::ToggleFullscreen => ("fullscreen", "Toggle fullscreen mode"),
         };
 
