@@ -1,7 +1,7 @@
 # File Search - Raycast Parity Tasks
 
 **Status:** Draft  
-**Estimated Duration:** 10 weeks  
+**Estimated Duration:** 12 weeks  
 **Dependencies:** Phase 1 MVP (Complete)
 
 ---
@@ -9,8 +9,16 @@
 ## Task Dependency Graph
 
 ```
-Phase 1: Core Enhancements
-├── 1.1 Missing File Actions ────────────────────┐
+Phase 0: UI Foundation (CRITICAL - Must be first)
+├── 0.1 Split-View Layout ───────────────────────┐
+├── 0.2 List Item Component                      │
+├── 0.3 Detail Panel Component                   │
+├── 0.4 Search Bar with Dropdown                 │
+└── 0.5 Sections & Empty State                   │
+         │                                       │
+         ▼                                       │
+Phase 1: Core Enhancements                       │
+├── 1.1 Missing File Actions ────────────────────┤
 ├── 1.2 File Type Filtering ─────────────────────┼──► Phase 2: Query Syntax
 ├── 1.3 Quick Look Enhancement                   │    ├── 2.1 Natural Language
 └── 1.4 External Drive Support                   │    ├── 2.2 Folder Priority
@@ -44,7 +52,132 @@ Phase 6: Preferences & Polish
 
 ---
 
-## Phase 1: Core Enhancements (Week 1-2)
+## Phase 0: UI Foundation (Week 1-2) ⭐ CRITICAL
+
+> This phase implements the core Raycast-style UI layout that all other features depend on.
+
+### 0.1 Split-View Layout (Priority: Critical)
+
+- [ ] **0.1.1 Create FileSearchView component** (3h)
+  - Two-panel horizontal split layout
+  - Left: scrollable list (60% width)
+  - Right: detail panel (40% width)
+  - Resizable divider (optional)
+  - Dependencies: None
+
+- [ ] **0.1.2 Implement panel state management** (2h)
+  - Track selected file
+  - Update detail panel on selection change
+  - Handle keyboard navigation between panels
+  - Dependencies: 0.1.1
+
+- [ ] **0.1.3 Add responsive behavior** (1h)
+  - Minimum widths for each panel
+  - Handle window resize
+  - Dependencies: 0.1.1
+
+### 0.2 List Item Component (Priority: Critical)
+
+- [ ] **0.2.1 Create FileListItem component** (3h)
+  - Icon (left) - file type or actual file icon
+  - Title (file name)
+  - Subtitle (parent folder path, e.g., `~/Documents`)
+  - Accessories (right) - relative date
+  - Dependencies: 0.1.1
+
+- [ ] **0.2.2 Implement file type icons** (2h)
+  - Map extensions to icons (📁📄📕📊🖼️🎬🎵💻⚙️)
+  - Use NSWorkspace.icon(forFile:) when available
+  - Fallback to generic icons
+  - Dependencies: 0.2.1
+
+- [ ] **0.2.3 Implement date formatting** (1h)
+  - Relative dates: "Just now", "5m", "3h", "Yesterday", "3d", "Jan 15"
+  - Handle edge cases (future dates, very old files)
+  - Dependencies: 0.2.1
+
+- [ ] **0.2.4 Implement size formatting** (1h)
+  - Human-readable: "500 bytes", "2.4 KB", "1.5 MB", "3.2 GB"
+  - Dependencies: 0.2.1
+
+- [ ] **0.2.5 Add selection highlighting** (1h)
+  - Visual indicator for selected item (▸ or background color)
+  - Keyboard focus ring
+  - Dependencies: 0.2.1
+
+### 0.3 Detail Panel Component (Priority: Critical)
+
+- [ ] **0.3.1 Create FileDetailPanel component** (3h)
+  - Preview area (top 60%)
+  - Metadata section (bottom 40%)
+  - Scrollable if content overflows
+  - Dependencies: 0.1.1
+
+- [ ] **0.3.2 Implement preview area** (4h)
+  - Quick Look preview for supported files
+  - Thumbnail for images
+  - File type icon for unsupported files
+  - Loading state while preview loads
+  - Dependencies: 0.3.1
+
+- [ ] **0.3.3 Implement metadata section** (3h)
+  - Label-value pairs in two columns
+  - Fields: Name, Kind, Size, Created, Modified, Where
+  - For folders: add "Items" field
+  - Dependencies: 0.3.1
+
+- [ ] **0.3.4 Implement Kind detection** (2h)
+  - Use UTType to get localized description
+  - "PDF Document", "PNG Image", "Folder", etc.
+  - Dependencies: 0.3.3
+
+### 0.4 Search Bar with Dropdown (Priority: Critical)
+
+- [ ] **0.4.1 Create FileSearchBar component** (2h)
+  - Search icon (🔍)
+  - Text input with placeholder "Search files by name..."
+  - Dropdown accessory on right
+  - Dependencies: 0.1.1
+
+- [ ] **0.4.2 Implement dropdown filter** (3h)
+  - Trigger with click or `⌘P`
+  - Options: All Files, Documents, Images, Videos, Audio, Archives, Code, Folders
+  - Radio button selection
+  - Persist selection (`storeValue: true`)
+  - Dependencies: 0.4.1
+
+- [ ] **0.4.3 Add filter badge** (1h)
+  - Show active filter name in dropdown button
+  - "All Files ▾" → "Images ▾"
+  - Dependencies: 0.4.2
+
+### 0.5 Sections & Empty State (Priority: High)
+
+- [ ] **0.5.1 Implement List.Section component** (2h)
+  - Section header with title
+  - Collapsible (optional)
+  - Dependencies: 0.1.1
+
+- [ ] **0.5.2 Add "Recent Files" section** (2h)
+  - Show when query is empty
+  - Load from LSSharedFileList + custom tracking
+  - Limit to 10 items
+  - Dependencies: 0.5.1
+
+- [ ] **0.5.3 Add "Search Results" section** (1h)
+  - Show when query has results
+  - Dependencies: 0.5.1
+
+- [ ] **0.5.4 Implement empty state** (2h)
+  - Icon (📁)
+  - Title: "No files found"
+  - Description: "Try a different search term..."
+  - Show when no results match query
+  - Dependencies: 0.1.1
+
+---
+
+## Phase 1: File Actions & Enhancements (Week 3-4)
 
 ### 1.1 Missing File Actions (Priority: Critical)
 
@@ -102,28 +235,25 @@ Phase 6: Preferences & Polish
   - Show progress for large files
   - Dependencies: None
 
-### 1.2 File Type Filtering (Priority: High)
+### 1.2 File Type Filtering Integration (Priority: High)
 
-- [ ] **1.2.1 Define file type categories** (1h)
-  - Documents, Images, Videos, Audio, Archives, Code, Folders
-  - Map extensions to categories
-  - Dependencies: None
+> Note: UI for filtering is in Phase 0. This phase integrates with search.
 
-- [ ] **1.2.2 Implement filter dropdown UI** (3h)
-  - Trigger with `Cmd+P`
-  - Radio button selection
-  - Remember last selection
+- [ ] **1.2.1 Define file type UTI mappings** (1h)
+  - Map categories to UTType identifiers
+  - Documents: public.document, public.pdf, etc.
+  - Images: public.image
+  - Videos: public.movie
+  - Dependencies: 0.4.2
+
+- [ ] **1.2.2 Integrate filter with Spotlight** (2h)
+  - Build NSPredicate with UTI filter
+  - Combine with name search predicate
   - Dependencies: 1.2.1
 
-- [ ] **1.2.3 Integrate filter with search** (2h)
-  - Filter Spotlight results by UTI
-  - Filter custom index by extension
-  - Dependencies: 1.2.1, 1.2.2
-
-- [ ] **1.2.4 Add filter indicator in search bar** (1h)
-  - Show active filter badge
-  - Click to clear filter
-  - Dependencies: 1.2.2
+- [ ] **1.2.3 Integrate filter with custom index** (2h)
+  - Filter by extension in SQLite query
+  - Dependencies: 1.2.1
 
 ### 1.3 Quick Look Enhancement (Priority: Medium)
 
@@ -163,7 +293,7 @@ Phase 6: Preferences & Polish
 
 ---
 
-## Phase 2: Query Syntax (Week 3-4)
+## Phase 2: Query Syntax (Week 5-6)
 
 ### 2.1 Natural Language Queries (Priority: High)
 
@@ -208,7 +338,7 @@ Phase 6: Preferences & Polish
 
 ---
 
-## Phase 3: Browsing Mode (Week 5-6)
+## Phase 3: Browsing Mode (Week 7-8)
 
 ### 3.1 Path Detection (Priority: Critical)
 
@@ -271,7 +401,7 @@ Phase 6: Preferences & Polish
 
 ---
 
-## Phase 4: Custom Index (Week 7-8)
+## Phase 4: Custom Index (Week 9-10)
 
 ### 4.1 Tokenization Engine (Priority: Critical)
 
@@ -365,7 +495,7 @@ Phase 6: Preferences & Polish
 
 ---
 
-## Phase 5: Ignore Patterns (Week 9)
+## Phase 5: Ignore Patterns (Week 11)
 
 ### 5.1 Pattern Parser (Priority: High)
 
@@ -406,7 +536,7 @@ Phase 6: Preferences & Polish
 
 ---
 
-## Phase 6: Preferences & Polish (Week 10)
+## Phase 6: Preferences & Polish (Week 12)
 
 ### 6.1 Preferences UI (Priority: High)
 
@@ -471,13 +601,14 @@ Phase 6: Preferences & Polish
 
 | Phase | Tasks | Estimated Hours |
 |-------|-------|-----------------|
-| Phase 1: Core Enhancements | 17 | 34h |
+| Phase 0: UI Foundation | 19 | 42h |
+| Phase 1: File Actions & Enhancements | 14 | 28h |
 | Phase 2: Query Syntax | 8 | 16h |
 | Phase 3: Browsing Mode | 11 | 19h |
 | Phase 4: Custom Index | 14 | 27h |
 | Phase 5: Ignore Patterns | 6 | 13h |
 | Phase 6: Preferences & Polish | 9 | 22h |
-| **Total** | **65** | **131h** |
+| **Total** | **81** | **167h** |
 
 ---
 
@@ -485,22 +616,26 @@ Phase 6: Preferences & Polish
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
+| Split-view UI complexity | High | Incremental implementation, reuse existing patterns |
 | Spotlight API limitations | High | Custom index fallback |
 | Index size for large file systems | Medium | Limit scopes, lazy loading |
 | File system watcher reliability | Medium | Periodic reindex fallback |
 | Permission complexities | Medium | Clear user guidance |
+| Detail panel preview performance | Medium | Lazy loading, caching |
 | Performance on HDD | Low | Prioritize SSD, async I/O |
 
 ---
 
 ## Success Criteria
 
-1. All Raycast file search features implemented
-2. Search latency <100ms
-3. Browsing mode latency <50ms
-4. Index builds in <60s for 100k files
-5. All unit and integration tests passing
-6. User testing feedback incorporated
+1. Split-view UI matches Raycast layout exactly (List + Detail panel)
+2. All Raycast file search features implemented
+3. Search latency <100ms
+4. Browsing mode latency <50ms
+5. Detail panel preview loads <200ms
+6. Index builds in <60s for 100k files
+7. All unit and integration tests passing
+8. User testing feedback incorporated
 
 ---
 
