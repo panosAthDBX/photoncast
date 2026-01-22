@@ -52,40 +52,172 @@ This specification defines a comprehensive file search system for PhotonCast tha
 
 ---
 
-## 3. Search Modes
+## 3. UI Layout (Raycast Exact Match)
 
-### 3.1 Search Mode (Default)
+### 3.1 Main Layout: List + Detail Panel
 
-Standard file search using Spotlight and custom index.
+Raycast uses a **split-view layout** with:
+- **Left panel**: Scrollable list of file results
+- **Right panel**: Detail view with preview and metadata for selected file
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│  🔍  Search files by name...                                        [All Files ▾]  ⌘P     │
+├────────────────────────────────────────────────────┬────────────────────────────────────────┤
+│                                                    │                                        │
+│  Recent Files                                      │  ┌────────────────────────────────┐   │
+│  ─────────────────────────────────────────────     │  │                                │   │
+│  ▸ 📄  presentation.pdf                            │  │                                │   │
+│       ~/Documents                     2 hours ago  │  │      [File Preview Image]      │   │
+│                                                    │  │         or Quick Look          │   │
+│    📄  budget.xlsx                                 │  │                                │   │
+│       ~/Documents/Work                Yesterday    │  │                                │   │
+│                                                    │  └────────────────────────────────┘   │
+│    📁  Projects                                    │                                        │
+│       ~/Developer                     3 days ago   │  ─────────────────────────────────     │
+│                                                    │  Name          presentation.pdf       │
+│    📄  notes.md                                    │  Kind          PDF Document           │
+│       ~/Desktop                       1 week ago   │  Size          2.4 MB                 │
+│                                                    │  Created       Jan 15, 2026           │
+│                                                    │  Modified      2 hours ago            │
+│                                                    │  Where         ~/Documents            │
+│                                                    │                                        │
+└────────────────────────────────────────────────────┴────────────────────────────────────────┘
+```
+
+### 3.2 List Item Structure
+
+Each file in the list follows Raycast's `List.Item` structure:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  📁  Search Files...                                          esc to exit  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│    Recent Files                                                             │
-│    ├── 📄  presentation.pdf          ~/Documents          2 hours ago      │
-│    ├── 📄  budget.xlsx               ~/Documents/Work     Yesterday        │
-│    ├── 📁  Projects                  ~/Developer          3 days ago       │
-│    └── 📄  notes.md                  ~/Desktop            1 week ago       │
+│  [Icon]  Title                                                              │
+│          Subtitle (path)                              [Accessories: date]   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 Browsing Mode
+**Components:**
+- **Icon**: File type icon (folder, PDF, image, document, code, etc.)
+- **Title**: File name (e.g., `presentation.pdf`)
+- **Subtitle**: Parent folder path (e.g., `~/Documents`)
+- **Accessories**: Relative date (e.g., `2 hours ago`, `Yesterday`, `Jan 15`)
+
+### 3.3 Detail Panel Structure
+
+The right-side detail panel shows:
+
+1. **Preview Area** (top)
+   - Quick Look preview for supported files
+   - File type icon for unsupported files
+   - Thumbnail for images
+
+2. **Metadata Section** (bottom)
+   ```
+   ───────────────────────────────
+   Name          presentation.pdf
+   Kind          PDF Document
+   Size          2.4 MB
+   Created       January 15, 2026 at 3:45 PM
+   Modified      2 hours ago
+   Where         ~/Documents
+   ───────────────────────────────
+   ```
+
+### 3.4 Search Bar with Dropdown Filter
+
+The search bar includes a dropdown accessory for file type filtering:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🔍  Search files by name...                              [All Files ▾]     │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                                                  │
+                                                    ┌─────────────┴─────────────┐
+                                                    │  ○ All Files              │
+                                                    │  ○ Documents              │
+                                                    │  ○ Images                 │
+                                                    │  ○ Videos                 │
+                                                    │  ○ Audio                  │
+                                                    │  ○ Archives               │
+                                                    │  ○ Code                   │
+                                                    │  ○ Folders                │
+                                                    └───────────────────────────┘
+```
+
+- Dropdown triggered by clicking or pressing `⌘P`
+- Selection persists across sessions (`storeValue: true`)
+
+### 3.5 Sections
+
+Results are grouped into sections with headers:
+
+```
+Recent Files
+─────────────────────────────────────────────────────────────────
+  📄  presentation.pdf
+  📄  budget.xlsx
+
+Search Results
+─────────────────────────────────────────────────────────────────
+  📄  project_report.pdf
+  📁  projects-archive
+```
+
+### 3.6 Empty State
+
+When no results match the query:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🔍  xyzabc123...                                         [All Files ▾]     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│                          📁                                                 │
+│                                                                             │
+│                    No files found                                           │
+│                                                                             │
+│           Try a different search term or check your                         │
+│           search scope in preferences.                                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.7 Browsing Mode
 
 Triggered when query starts with `/`, `~`, `~/`, or an absolute path.
+Shows 1:1 representation of file system (like Finder).
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  📁  ~/Documents/                                             esc to exit  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│    📁  Work/                                                                │
-│    📁  Personal/                                                            │
-│    📄  resume.pdf                                                           │
-│    📄  notes.txt                                                            │
-│                                                                             │
-│    Tab to enter folder • Shift+Tab to go back • Type to filter             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│  📁  ~/Documents/                                               [All Files ▾]              │
+├────────────────────────────────────────────────────┬────────────────────────────────────────┤
+│                                                    │                                        │
+│    📁  Work                                        │  ┌────────────────────────────────┐   │
+│       4 items                                      │  │                                │   │
+│                                                    │  │      [Folder Preview]          │   │
+│  ▸ 📁  Personal                                    │  │                                │   │
+│       12 items                                     │  └────────────────────────────────┘   │
+│                                                    │                                        │
+│    📄  resume.pdf                                  │  ─────────────────────────────────     │
+│       2.1 MB                                       │  Name          Personal               │
+│                                                    │  Kind          Folder                 │
+│    📄  notes.txt                                   │  Size          --                     │
+│       4 KB                                         │  Items         12 items               │
+│                                                    │  Modified      Yesterday              │
+│                                                    │  Where         ~/Documents            │
+│                                                    │                                        │
+│  ─────────────────────────────────────────────     │                                        │
+│  Tab ↹ enter folder • ⇧Tab go back • Type filter  │                                        │
+└────────────────────────────────────────────────────┴────────────────────────────────────────┘
 ```
+
+**Browsing Mode Behaviors:**
+- `Tab` on folder: Enter the folder, append to path
+- `Tab` on file: Expand full path in search bar
+- `Tab` on symlink: Resolve to target path
+- `Shift+Tab`: Navigate to parent directory
+- Type text: Filter current directory contents
+- `Ctrl+Enter` / `Cmd+Enter`: Show in Finder
 
 ---
 
@@ -472,6 +604,71 @@ pub fn default_search_scopes() -> Vec<PathBuf> {
 │    ○  Folders Only                                                          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### 10.3 File Type Icons
+
+Each file type displays a distinctive icon in the list:
+
+| File Type | Icon | Examples |
+|-----------|------|----------|
+| Folder | 📁 | Directories |
+| PDF | 📕 | .pdf |
+| Document | 📄 | .doc, .docx, .txt, .rtf, .odt |
+| Spreadsheet | 📊 | .xls, .xlsx, .numbers, .csv |
+| Presentation | 📽️ | .ppt, .pptx, .key |
+| Image | 🖼️ | .jpg, .png, .gif, .svg, .heic |
+| Video | 🎬 | .mp4, .mov, .avi, .mkv |
+| Audio | 🎵 | .mp3, .wav, .flac, .m4a |
+| Archive | 🗜️ | .zip, .rar, .7z, .tar.gz, .dmg |
+| Code | 💻 | .rs, .js, .py, .swift, .go |
+| Config | ⚙️ | .json, .yaml, .toml, .xml |
+| Executable | ⚡ | .app, .exe, .sh |
+| Unknown | 📄 | Other file types |
+
+**Note:** On macOS, use actual file icons from the file system when available via `NSWorkspace.shared.icon(forFile:)`.
+
+### 10.4 Date Formatting
+
+Dates are displayed in relative format:
+
+| Age | Format | Example |
+|-----|--------|---------|
+| < 1 minute | `Just now` | Just now |
+| < 1 hour | `Xm` | 5m |
+| < 24 hours | `Xh` | 3h |
+| Yesterday | `Yesterday` | Yesterday |
+| < 7 days | `Xd` | 3d |
+| < 1 year | `Mon D` | Jan 15 |
+| > 1 year | `Mon D, YYYY` | Jan 15, 2025 |
+
+### 10.5 Size Formatting
+
+File sizes are displayed in human-readable format:
+
+| Size | Format |
+|------|--------|
+| < 1 KB | `X bytes` |
+| < 1 MB | `X.X KB` |
+| < 1 GB | `X.X MB` |
+| >= 1 GB | `X.XX GB` |
+
+### 10.6 Detail Panel Metadata Fields
+
+The detail panel displays these metadata fields (matching Raycast exactly):
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| **Name** | File name with extension | `presentation.pdf` |
+| **Kind** | File type description | `PDF Document`, `Folder`, `PNG Image` |
+| **Size** | Human-readable size | `2.4 MB` |
+| **Created** | Creation date | `January 15, 2026 at 3:45 PM` |
+| **Modified** | Last modification (relative) | `2 hours ago` |
+| **Where** | Parent folder path | `~/Documents/Work` |
+
+For folders, additional field:
+| Field | Description | Example |
+|-------|-------------|---------|
+| **Items** | Number of items | `12 items` |
 
 ---
 
