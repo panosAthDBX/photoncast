@@ -5,6 +5,7 @@
 
 pub mod accessibility;
 pub mod appearance;
+pub mod file_actions;
 pub mod hotkey;
 pub mod hotkey_settings;
 pub mod launch;
@@ -38,4 +39,10 @@ pub use menu_bar::{
 pub use spotlight::{
     FileKind, FileResult, SpotlightError, SpotlightProvider, SpotlightQuery, DEFAULT_MAX_RESULTS,
     DEFAULT_TIMEOUT_MS,
+};
+#[cfg(target_os = "macos")]
+pub use file_actions::{
+    compress, copy_file_to_clipboard, delete_permanently, duplicate_file, get_apps_for_file,
+    get_file_info, move_file, move_to_trash, open_with_app, rename_file, validate_filename,
+    AppInfo, FileActionError, FileInfo,
 };

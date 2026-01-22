@@ -38,6 +38,7 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod app_events;
+mod file_search_view;
 mod launcher;
 mod platform;
 mod preferences_window;
