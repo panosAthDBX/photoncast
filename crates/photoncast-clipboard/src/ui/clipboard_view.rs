@@ -77,6 +77,8 @@ pub struct ClipboardHistoryView {
     search_query: String,
     /// Currently selected index.
     selected_index: usize,
+    /// Scroll handle for keyboard navigation.
+    scroll_handle: gpui::ScrollHandle,
     /// Focus handle.
     focus_handle: FocusHandle,
     /// Whether we're in search mode.
@@ -108,6 +110,7 @@ impl ClipboardHistoryView {
             recent_items: Vec::new(),
             search_query: String::new(),
             selected_index: 0,
+            scroll_handle: gpui::ScrollHandle::new(),
             focus_handle,
             is_searching: false,
             is_loading: true,
@@ -243,6 +246,7 @@ impl ClipboardHistoryView {
         let total = self.total_items();
         if total > 0 {
             self.selected_index = (self.selected_index + 1) % total;
+            self.scroll_handle.scroll_to_item(self.selected_index);
             cx.notify();
         }
     }
@@ -256,6 +260,7 @@ impl ClipboardHistoryView {
             } else {
                 self.selected_index - 1
             };
+            self.scroll_handle.scroll_to_item(self.selected_index);
             cx.notify();
         }
     }
@@ -1089,6 +1094,7 @@ impl Render for ClipboardHistoryView {
                     .id("clipboard-scroll-container")
                     .flex_1()
                     .overflow_y_scroll()
+                    .track_scroll(&self.scroll_handle)
                     .py(rems(0.25))
                     .child(if is_loading {
                         Self::render_loading_state(&colors).into_any_element()

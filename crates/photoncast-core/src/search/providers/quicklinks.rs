@@ -17,7 +17,7 @@ use crate::utils::paths;
 use photoncast_quicklinks::{placeholder, QuickLink, QuickLinkIcon, QuickLinksStorage};
 
 /// Provides search results for quick links stored in SQLite.
-/// 
+///
 /// Uses an internal cache to avoid loading from database on every keystroke.
 /// Call `invalidate_cache()` after modifying quicklinks.
 pub struct QuickLinksProvider {
@@ -48,7 +48,7 @@ impl QuickLinksProvider {
             tracing::warn!(error = %e, "Failed to populate bundled quicklinks");
         }
 
-        Ok(Self { 
+        Ok(Self {
             storage,
             cache: RwLock::new(None),
         })
@@ -58,7 +58,7 @@ impl QuickLinksProvider {
     #[cfg(test)]
     pub fn new_in_memory() -> anyhow::Result<Self> {
         let storage = QuickLinksStorage::open_in_memory()?;
-        Ok(Self { 
+        Ok(Self {
             storage,
             cache: RwLock::new(None),
         })
@@ -67,12 +67,12 @@ impl QuickLinksProvider {
     /// Creates a provider from an existing storage instance.
     #[must_use]
     pub fn with_storage(storage: QuickLinksStorage) -> Self {
-        Self { 
+        Self {
             storage,
             cache: RwLock::new(None),
         }
     }
-    
+
     /// Invalidates the cache, forcing a reload on next search.
     /// Call this after adding, updating, or deleting quicklinks.
     pub fn invalidate_cache(&self) {
@@ -81,7 +81,7 @@ impl QuickLinksProvider {
             tracing::debug!("QuickLinks cache invalidated");
         }
     }
-    
+
     /// Gets quicklinks from cache, loading from storage if needed.
     fn get_cached_links(&self) -> Vec<QuickLink> {
         // Try to read from cache first
@@ -90,36 +90,42 @@ impl QuickLinksProvider {
                 return links.clone();
             }
         }
-        
+
         // Cache miss - load from storage and populate cache
         let links = match self.storage.load_all_sync() {
             Ok(links) => {
-                tracing::debug!(count = links.len(), "Loaded quicklinks from storage (cache miss)");
+                tracing::debug!(
+                    count = links.len(),
+                    "Loaded quicklinks from storage (cache miss)"
+                );
                 links
-            }
+            },
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to load quicklinks");
                 return Vec::new();
-            }
+            },
         };
-        
+
         // Store in cache
         if let Ok(mut cache) = self.cache.write() {
             *cache = Some(links.clone());
         }
-        
+
         links
     }
 
     /// Converts a QuickLink to a SearchResult.
-    fn link_to_result(link: &QuickLink, score: f64, indices: Vec<usize>, arguments: &str) -> SearchResult {
+    fn link_to_result(
+        link: &QuickLink,
+        score: f64,
+        indices: Vec<usize>,
+        arguments: &str,
+    ) -> SearchResult {
         let icon = match &link.icon {
             QuickLinkIcon::Favicon(path) => IconSource::FileIcon { path: path.clone() },
-            QuickLinkIcon::Emoji(emoji) => {
-                IconSource::Emoji {
-                    char: emoji.chars().next().unwrap_or('🔗'),
-                }
-            }
+            QuickLinkIcon::Emoji(emoji) => IconSource::Emoji {
+                char: emoji.chars().next().unwrap_or('🔗'),
+            },
             QuickLinkIcon::SystemIcon(name) => IconSource::SystemIcon { name: name.clone() },
             QuickLinkIcon::CustomImage(path) => IconSource::FileIcon { path: path.clone() },
             QuickLinkIcon::Default => IconSource::Emoji { char: '🔗' },
@@ -165,7 +171,7 @@ impl SearchProvider for QuickLinksProvider {
 
     fn search(&self, query: &str, max_results: usize) -> Vec<SearchResult> {
         tracing::debug!(query = ?query, query_len = query.len(), "QuickLinks search started");
-        
+
         if query.is_empty() {
             return Vec::new();
         }
@@ -184,18 +190,16 @@ impl SearchProvider for QuickLinksProvider {
         // Also match by name if the quicklink has argument placeholders but no alias
         for link in &all_links {
             let requires_input = placeholder::requires_user_input(&link.link);
-            
+
             // Try alias first, then fall back to name if quicklink requires arguments
-            let match_term = link.alias.as_ref()
-                .map(|a| a.to_lowercase())
-                .or_else(|| {
-                    if requires_input {
-                        Some(link.name.to_lowercase())
-                    } else {
-                        None
-                    }
-                });
-            
+            let match_term = link.alias.as_ref().map(|a| a.to_lowercase()).or_else(|| {
+                if requires_input {
+                    Some(link.name.to_lowercase())
+                } else {
+                    None
+                }
+            });
+
             if let Some(term) = match_term {
                 // Exact match with arguments (e.g., "g test" or "google test")
                 if first_word == term && query_parts.len() > 1 {
@@ -242,7 +246,8 @@ impl SearchProvider for QuickLinksProvider {
 
             // Check keywords
             for keyword in &link.keywords {
-                if let Some((score, indices)) = matcher.score(&query_lower, &keyword.to_lowercase()) {
+                if let Some((score, indices)) = matcher.score(&query_lower, &keyword.to_lowercase())
+                {
                     if best_score.as_ref().map_or(true, |(s, _)| score > *s) {
                         best_score = Some((score, indices));
                     }

@@ -58,10 +58,19 @@ plist.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation.workspace = true
 core-foundation-sys.workspace = true
-objc2-foundation = { workspace = true, features = ["NSURL", "NSString", "NSError"] }
+# Native Spotlight integration via objc2
+objc2.workspace = true
+objc2-foundation.workspace = true
+block2.workspace = true
 
 # File System Watching
 notify.workspace = true
+
+# Directory Traversal
+walkdir.workspace = true
+
+# Unicode Processing
+unicode-normalization.workspace = true
 
 # Utilities
 chrono.workspace = true
@@ -71,6 +80,9 @@ parking_lot.workspace = true
 directories.workspace = true
 dirs.workspace = true
 url.workspace = true
+
+# Caching
+lru.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

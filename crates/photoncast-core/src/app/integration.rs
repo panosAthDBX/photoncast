@@ -91,6 +91,8 @@ pub struct PhotonCastApp {
     search_engine: SearchEngine,
     /// Shared app index for the app provider.
     app_index: Arc<RwLock<Vec<IndexedApp>>>,
+    /// Quick links provider reference for cache invalidation.
+    quicklinks_provider: Option<Arc<QuickLinksProvider>>,
     /// Configuration.
     config: IntegrationConfig,
 }
@@ -116,21 +118,23 @@ impl PhotonCastApp {
         let mut search_engine = SearchEngine::with_config(search_config);
 
         // Register all search providers (Task 3.10.1)
-        Self::register_providers(&mut search_engine, Arc::clone(&app_index), &config);
+        let quicklinks_provider = Self::register_providers(&mut search_engine, Arc::clone(&app_index), &config);
 
         Self {
             search_engine,
             app_index,
+            quicklinks_provider,
             config,
         }
     }
 
     /// Registers all search providers with the engine (Task 3.10.1).
+    /// Returns the QuickLinksProvider reference for cache invalidation.
     fn register_providers(
         engine: &mut SearchEngine,
         app_index: Arc<RwLock<Vec<IndexedApp>>>,
         config: &IntegrationConfig,
-    ) {
+    ) -> Option<Arc<QuickLinksProvider>> {
         info!("Registering search providers...");
 
         // 1. App Provider (highest priority)
@@ -149,15 +153,18 @@ impl PhotonCastApp {
         debug!("Registered WindowProvider");
 
         // 4. Quick links provider (optional if storage fails)
-        match QuickLinksProvider::new() {
+        let quicklinks_provider = match QuickLinksProvider::new() {
             Ok(provider) => {
-                engine.add_provider(provider);
+                let provider = Arc::new(provider);
+                engine.add_provider_arc(Arc::clone(&provider));
                 debug!("Registered QuickLinksProvider");
+                Some(provider)
             },
             Err(e) => {
                 warn!(error = %e, "Quick links provider unavailable");
+                None
             },
-        }
+        };
 
         // 5. Calendar provider
         let calendar_provider = CalendarProvider::new();
@@ -188,6 +195,17 @@ impl PhotonCastApp {
             "Search providers registered: {} providers",
             engine.provider_count()
         );
+
+        quicklinks_provider
+    }
+
+    /// Invalidates the quicklinks cache, causing a reload on next search.
+    /// Call this after adding, updating, or deleting quicklinks.
+    pub fn invalidate_quicklinks_cache(&self) {
+        if let Some(provider) = &self.quicklinks_provider {
+            provider.invalidate_cache();
+            debug!("Quicklinks cache invalidated via PhotonCastApp");
+        }
     }
 
     /// Performs a search with timeout handling (Task 3.10.2).

@@ -13,10 +13,9 @@ mod macos {
         CGEventTapPlacement, CGEventType,
     };
 
-    use objc2::msg_send_id;
     use objc2::rc::Retained;
     use objc2::sel;
-    use objc2::{declare_class, mutability, ClassType, DeclaredClass};
+    use objc2::{define_class, msg_send_id, AllocAnyThread, ClassType, MainThreadOnly};
     use objc2_app_kit::{
         NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu,
         NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
@@ -64,6 +63,41 @@ mod macos {
         app.keyWindow().map(|window| window.frame().size.height)
     }
 
+    /// Resize the key window to the specified size, keeping top-center position fixed.
+    /// Uses dispatch_async to defer the resize outside of GPUI's event loop.
+    pub fn resize_window(new_width: f64, new_height: f64) {
+        use dispatch::Queue;
+        
+        // Use dispatch_async to schedule resize on next run loop iteration
+        // This avoids RefCell borrow conflicts with GPUI's window management
+        Queue::main().exec_async(move || {
+            // SAFETY: dispatch_async to main queue ensures we're on the main thread
+            let mtm = unsafe { MainThreadMarker::new_unchecked() };
+
+            let app = NSApplication::sharedApplication(mtm);
+            let Some(window) = app.keyWindow() else {
+                return;
+            };
+
+            let current_frame = window.frame();
+
+            // Calculate new frame - keep top-center position fixed
+            let width_diff = new_width - current_frame.size.width;
+            let height_diff = new_height - current_frame.size.height;
+            let new_frame = NSRect::new(
+                objc2_foundation::NSPoint::new(
+                    current_frame.origin.x - (width_diff / 2.0), // Center horizontally
+                    current_frame.origin.y - height_diff,        // Keep top fixed, expand downward
+                ),
+                objc2_foundation::NSSize::new(new_width, new_height),
+            );
+
+            // Animate the resize
+            // SAFETY: The frame is valid and display/animate flags are booleans
+            unsafe { window.setFrame_display_animate(new_frame, true, true) };
+        });
+    }
+
     /// Gets app icon using NSWorkspace and returns PNG data.
     /// This handles all icon formats (icns, asset catalogs, etc.)
     ///
@@ -94,7 +128,7 @@ mod macos {
 
         // Create bitmap image rep from the TIFF data
         let bitmap: Option<Retained<NSBitmapImageRep>> =
-            unsafe { NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff_data) };
+            NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff_data);
 
         let Some(bitmap) = bitmap else {
             tracing::warn!("Failed to create bitmap rep for {}", app_path.display());
@@ -102,7 +136,7 @@ mod macos {
         };
 
         // Create empty dictionary for PNG properties
-        let empty_dict: Retained<NSDictionary<NSString>> = unsafe { NSDictionary::dictionary() };
+        let empty_dict: Retained<NSDictionary<NSString>> = NSDictionary::dictionary();
 
         // Convert to PNG data
         let Some(png_data) = (unsafe {
@@ -113,7 +147,8 @@ mod macos {
         };
 
         // Convert NSData to Vec<u8>
-        let bytes = png_data.bytes();
+        // Safety: We're not mutating png_data while the slice is alive
+        let bytes = unsafe { png_data.as_bytes_unchecked() };
         Some(bytes.to_vec())
     }
 
@@ -378,23 +413,17 @@ mod macos {
     /// Global callback for menu bar actions
     static MENU_BAR_CALLBACK: Mutex<Option<Arc<MenuBarCallback>>> = Mutex::new(None);
 
-    declare_class!(
+    define_class!(
+        // SAFETY: NSObject has no subclassing requirements and we don't implement Drop.
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "PhotonCastMenuBarTarget"]
         struct MenuBarTarget;
 
-        unsafe impl ClassType for MenuBarTarget {
-            type Super = NSObject;
-            type Mutability = mutability::MainThreadOnly;
-            const NAME: &'static str = "PhotonCastMenuBarTarget";
-        }
-
-        impl DeclaredClass for MenuBarTarget {
-            type Ivars = ();
-        }
-
-        unsafe impl MenuBarTarget {
-            #[method(menuBarItemSelected:)]
+        impl MenuBarTarget {
+            #[unsafe(method(menuBarItemSelected:))]
             fn menu_bar_item_selected(&self, item: &NSMenuItem) {
-                let tag = unsafe { item.tag() };
+                let tag = item.tag();
                 let action = match tag {
                     1 => Some(MenuBarActionKind::ToggleLauncher),
                     2 => Some(MenuBarActionKind::OpenPreferences),
@@ -605,6 +634,11 @@ pub fn resize_window_height(_new_height: f64) {
 #[cfg(not(target_os = "macos"))]
 pub fn get_window_height() -> Option<f64> {
     None
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn resize_window(_new_width: f64, _new_height: f64) {
+    // No-op on other platforms
 }
 
 #[cfg(not(target_os = "macos"))]

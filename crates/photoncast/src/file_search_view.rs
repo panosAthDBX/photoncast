@@ -19,24 +19,10 @@ use photoncast_calendar::chrono::{DateTime, Datelike, Local, Utc};
 use photoncast_core::platform::spotlight::{FileKind, FileResult};
 use photoncast_core::theme::PhotonTheme;
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/// Height of the search bar
-const SEARCH_BAR_HEIGHT: Pixels = px(48.0);
-
-/// Height of each list item
-const LIST_ITEM_HEIGHT: Pixels = px(56.0);
-
-/// Width of the list panel (60% of ~750px = ~450px)
-const LIST_PANEL_WIDTH: Pixels = px(450.0);
-
-/// Width of the detail panel (40% of ~750px = ~300px)
-const DETAIL_PANEL_WIDTH: Pixels = px(300.0);
-
-/// Section header height
-const SECTION_HEADER_HEIGHT: Pixels = px(28.0);
+use crate::constants::{
+    DETAIL_PANEL_WIDTH, LIST_ITEM_HEIGHT, LIST_PANEL_WIDTH, SEARCH_BAR_HEIGHT,
+    SECTION_HEADER_HEIGHT,
+};
 
 // ============================================================================
 // File Type Filter
@@ -91,6 +77,20 @@ impl FileTypeFilter {
             Self::Code,
             Self::Folders,
         ]
+    }
+
+    /// Returns the mdfind query string for this filter type
+    pub fn mdfind_query(&self) -> &'static str {
+        match self {
+            Self::All => "kMDItemFSContentChangeDate >= $time.today(-7)",
+            Self::Documents => "kMDItemContentTypeTree == 'public.content' && (kMDItemContentType == 'com.adobe.pdf' || kMDItemContentType == 'public.plain-text' || kMDItemContentType == 'org.openxmlformats.wordprocessingml.document' || kMDItemContentType == 'com.microsoft.word.doc' || kMDItemContentType == 'public.rtf' || kMDItemContentType == 'net.daringfireball.markdown')",
+            Self::Images => "kMDItemContentTypeTree == 'public.image'",
+            Self::Videos => "kMDItemContentTypeTree == 'public.movie'",
+            Self::Audio => "kMDItemContentTypeTree == 'public.audio'",
+            Self::Archives => "kMDItemContentType == 'public.archive' || kMDItemContentType == 'com.apple.disk-image' || kMDItemContentType == 'public.zip-archive' || kMDItemContentType == 'org.gnu.gnu-tar-archive'",
+            Self::Code => "kMDItemContentType == 'public.source-code' || kMDItemContentType == 'public.script'",
+            Self::Folders => "kMDItemContentType == 'public.folder'",
+        }
     }
 
     /// Checks if a file matches this filter
@@ -449,14 +449,38 @@ pub struct FileSearchView {
     pub filter: FileTypeFilter,
     /// Whether the filter dropdown is open
     pub dropdown_open: bool,
-    /// Search results (recent files when empty, search results otherwise)
+    /// All results (unfiltered)
+    pub all_results: Vec<FileResult>,
+    /// Filtered results for display
     pub results: Vec<FileResult>,
     /// Currently selected index
     pub selected_index: usize,
+    /// Dropdown selected index (for keyboard navigation)
+    pub dropdown_index: usize,
     /// Whether we're loading results
     pub loading: bool,
     /// Section mode: "recent" when query is empty, "search" otherwise
     pub section_mode: SectionMode,
+    /// Flag to signal the window should be closed
+    pub should_close: bool,
+    /// Flag to signal filter changed and needs re-fetch (set when filter changes while showing recent files)
+    pub needs_refetch: bool,
+    /// Flag to signal query changed and needs search
+    pub query_changed: bool,
+    /// Flag to signal Cmd+Enter (reveal in Finder)
+    pub wants_reveal_in_finder: bool,
+    /// Flag to signal Cmd+Y (Quick Look)
+    pub wants_quick_look: bool,
+    /// Flag to signal Cmd+K (show actions menu)
+    pub wants_actions_menu: bool,
+    /// Flag to signal Enter (open file with default app)
+    pub wants_open_file: bool,
+    /// Whether the file actions menu is visible
+    pub actions_menu_open: bool,
+    /// Selected index in the actions menu
+    pub actions_menu_index: usize,
+    /// Scroll handle for keyboard navigation
+    pub scroll_handle: gpui::ScrollHandle,
 }
 
 impl FileSearchView {
@@ -471,10 +495,22 @@ impl FileSearchView {
             focus_handle,
             filter: FileTypeFilter::default(),
             dropdown_open: false,
+            all_results: Vec::new(),
             results: Vec::new(),
             selected_index: 0,
+            dropdown_index: 0,
             loading: false,
             section_mode: SectionMode::Recent,
+            should_close: false,
+            needs_refetch: false,
+            query_changed: false,
+            wants_reveal_in_finder: false,
+            wants_quick_look: false,
+            wants_actions_menu: false,
+            wants_open_file: false,
+            actions_menu_open: false,
+            actions_menu_index: 0,
+            scroll_handle: gpui::ScrollHandle::new(),
         }
     }
 
@@ -483,15 +519,16 @@ impl FileSearchView {
         self.results.get(self.selected_index)
     }
 
-    /// Handles selection change
+    /// Handles selection change - move down
     pub fn select_next(&mut self, cx: &mut ViewContext<Self>) {
         if !self.results.is_empty() {
             self.selected_index = (self.selected_index + 1) % self.results.len();
+            self.ensure_selected_visible();
             cx.notify();
         }
     }
 
-    /// Handles selection change
+    /// Handles selection change - move up
     pub fn select_previous(&mut self, cx: &mut ViewContext<Self>) {
         if !self.results.is_empty() {
             self.selected_index = if self.selected_index == 0 {
@@ -499,8 +536,56 @@ impl FileSearchView {
             } else {
                 self.selected_index - 1
             };
+            self.ensure_selected_visible();
             cx.notify();
         }
+    }
+
+    /// Unified navigation handler for moving to next item.
+    /// Handles actions menu, dropdown, and main list navigation.
+    pub fn navigate_next(&mut self, cx: &mut ViewContext<Self>) {
+        if self.actions_menu_open {
+            let count = Self::FILE_ACTIONS.len();
+            self.actions_menu_index = (self.actions_menu_index + 1) % count;
+        } else if self.dropdown_open {
+            let options = FileTypeFilter::all_options();
+            self.dropdown_index = (self.dropdown_index + 1) % options.len();
+        } else {
+            self.select_next(cx);
+            return; // select_next calls cx.notify()
+        }
+        cx.notify();
+    }
+
+    /// Unified navigation handler for moving to previous item.
+    /// Handles actions menu, dropdown, and main list navigation.
+    pub fn navigate_previous(&mut self, cx: &mut ViewContext<Self>) {
+        if self.actions_menu_open {
+            let count = Self::FILE_ACTIONS.len();
+            self.actions_menu_index = if self.actions_menu_index == 0 {
+                count - 1
+            } else {
+                self.actions_menu_index - 1
+            };
+        } else if self.dropdown_open {
+            let options = FileTypeFilter::all_options();
+            self.dropdown_index = if self.dropdown_index == 0 {
+                options.len() - 1
+            } else {
+                self.dropdown_index - 1
+            };
+        } else {
+            self.select_previous(cx);
+            return; // select_previous calls cx.notify()
+        }
+        cx.notify();
+    }
+
+    /// Ensure the selected item is visible by scrolling if needed.
+    /// Uses scroll_to_item which centers/shows the item.
+    fn ensure_selected_visible(&mut self) {
+        // Use GPUI's built-in scroll_to_item which handles visibility automatically
+        self.scroll_handle.scroll_to_item(self.selected_index);
     }
 
     /// Toggles the filter dropdown
@@ -509,12 +594,53 @@ impl FileSearchView {
         cx.notify();
     }
 
-    /// Sets the file type filter
+    /// Sets the file type filter and applies it to the results
     pub fn set_filter(&mut self, filter: FileTypeFilter, cx: &mut ViewContext<Self>) {
+        let filter_changed = self.filter != filter;
         self.filter = filter;
         self.dropdown_open = false;
-        // TODO: Trigger re-search with new filter
+        self.selected_index = 0;
+        
+        // Signal that we need to re-fetch files for the new filter type
+        // (when showing recent files, we want the most recent files of the filtered type)
+        if filter_changed && self.section_mode == SectionMode::Recent {
+            self.needs_refetch = true;
+            self.loading = true;
+            // Don't apply_filter here - let the refetch handler set the results
+            // This avoids briefly showing 0 results while loading
+        } else {
+            // For search mode or same filter, apply immediately
+            self.apply_filter();
+        }
+        
         cx.notify();
+    }
+
+    /// Applies the current filter to all_results and updates results
+    pub fn apply_filter(&mut self) {
+        let filter = self.filter;
+        let before_count = self.all_results.len();
+        
+        self.results = self
+            .all_results
+            .iter()
+            .filter(|file| filter.matches(file.kind, &file.path))
+            .cloned()
+            .collect();
+        
+        tracing::debug!(
+            "[Filter] {:?}: {} -> {} files",
+            filter,
+            before_count,
+            self.results.len()
+        );
+    }
+
+    /// Sets results and applies the current filter
+    pub fn set_results(&mut self, results: Vec<FileResult>) {
+        tracing::debug!("[FileSearch] set_results: {} files", results.len());
+        self.all_results = results;
+        self.apply_filter();
     }
 
     // ========================================================================
@@ -528,37 +654,54 @@ impl FileSearchView {
         let surface_hover = colors.surface_hover;
         let text_color = colors.text;
         let text_muted = colors.text_muted;
-        let text_placeholder = colors.text_placeholder;
+        let _text_placeholder = colors.text_placeholder;
+        let accent = colors.accent;
+
+        // Block cursor dimensions (like main modal / Ghostty terminal)
+        let cursor_width = px(9.0);
+        let cursor_height = px(20.0);
 
         div()
             .h(SEARCH_BAR_HEIGHT)
+            .flex_shrink_0() // Don't shrink search bar
             .w_full()
             .px_4()
             .flex()
             .items_center()
             .gap_3()
-            .bg(colors.surface)
-            .border_b_1()
-            .border_color(colors.border)
-            // Search icon
-            .child(
-                div()
-                    .text_size(px(16.0))
-                    .text_color(colors.text_muted)
-                    .child("🔍"),
-            )
-            // Search input area (placeholder for now - actual input handled by parent)
+            // No background - matches main launcher style
+            // Search input area with cursor
             .child(
                 div()
                     .flex_1()
-                    .text_size(px(14.0))
+                    .text_size(px(16.0))
+                    .flex()
+                    .items_center()
                     .when(self.query.is_empty(), |el| {
-                        el.text_color(text_placeholder)
-                            .child("Search files by name...")
+                        el.child(
+                            div()
+                                .w(cursor_width)
+                                .h(cursor_height)
+                                .bg(accent)
+                                .rounded(px(2.0)),
+                        )
                     })
                     .when(!self.query.is_empty(), |el| {
+                        // Show text before cursor
+                        let chars: Vec<char> = self.query.chars().collect();
+                        let before: String = chars[..self.cursor_position].iter().collect();
+                        let after: String = chars[self.cursor_position..].iter().collect();
+                        
                         el.text_color(text_color)
-                            .child(self.query.to_string())
+                            .when(!before.is_empty(), |el| el.child(before))
+                            .child(
+                                div()
+                                    .w(cursor_width)
+                                    .h(cursor_height)
+                                    .bg(accent)
+                                    .rounded(px(2.0)),
+                            )
+                            .when(!after.is_empty(), |el| el.child(after))
                     }),
             )
             // Filter dropdown button
@@ -573,6 +716,7 @@ impl FileSearchView {
                     .border_color(colors.border)
                     .cursor_pointer()
                     .hover(move |el| el.bg(surface_hover))
+                    .on_click(cx.listener(|this, _, cx| this.toggle_dropdown(cx)))
                     .flex()
                     .items_center()
                     .gap_2()
@@ -593,8 +737,8 @@ impl FileSearchView {
             .child(
                 div()
                     .text_size(px(10.0))
-                    .text_color(text_placeholder)
-                    .child("⌘P"),
+                    .text_color(text_muted)
+                    .child("esc to close"),
             )
     }
 
@@ -731,6 +875,50 @@ impl FileSearchView {
             .child(self.render_metadata(&selected_file, &colors))
     }
 
+    /// Check if a file is a previewable image
+    fn is_previewable_image(path: &std::path::Path) -> bool {
+        path.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| {
+                matches!(
+                    ext.to_lowercase().as_str(),
+                    "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "ico"
+                )
+            })
+    }
+
+    /// Check if a file is a previewable text file
+    fn is_previewable_text(path: &std::path::Path) -> bool {
+        path.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| {
+                matches!(
+                    ext.to_lowercase().as_str(),
+                    "txt" | "md" | "markdown" | "rs" | "js" | "ts" | "py" | "rb" | "go" 
+                    | "java" | "c" | "cpp" | "h" | "hpp" | "swift" | "kt" | "json" 
+                    | "yaml" | "yml" | "toml" | "xml" | "html" | "css" | "sh" | "bash"
+                    | "zsh" | "fish" | "log" | "csv"
+                )
+            })
+    }
+
+    /// Read first N lines of a text file for preview
+    fn read_text_preview(path: &std::path::Path, max_lines: usize) -> Option<String> {
+        use std::io::{BufRead, BufReader};
+        let file = std::fs::File::open(path).ok()?;
+        let reader = BufReader::new(file);
+        let lines: Vec<String> = reader
+            .lines()
+            .take(max_lines)
+            .filter_map(|l| l.ok())
+            .collect();
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join("\n"))
+        }
+    }
+
     /// Render the preview area
     fn render_preview(
         &self,
@@ -759,11 +947,81 @@ impl FileSearchView {
                 .into_any_element();
         };
 
-        // Show file icon as preview (actual Quick Look integration would be Phase 1+)
+        // Check if this is a previewable image - try to render actual preview
+        if Self::is_previewable_image(&file.path) && file.path.exists() {
+            return div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .p_2()
+                .child(
+                    img(file.path.clone())
+                        .max_w(px(280.0))
+                        .max_h(px(180.0))
+                        .object_fit(ObjectFit::Contain)
+                        .rounded(px(4.0)),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(colors.text_placeholder)
+                        .child("Press ⌘Y for Quick Look"),
+                )
+                .into_any_element();
+        }
+
+        // Check if this is a previewable text file - show first few lines
+        if Self::is_previewable_text(&file.path) && file.path.exists() {
+            if let Some(preview_text) = Self::read_text_preview(&file.path, 12) {
+                return div()
+                    .flex()
+                    .flex_col()
+                    .p_3()
+                    .gap_2()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .w_full()
+                            .h_full()
+                            .bg(colors.surface)
+                            .rounded(px(4.0))
+                            .p_2()
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .font_family("SF Mono, Monaco, Menlo, monospace")
+                                    .text_color(colors.text_muted)
+                                    .overflow_hidden()
+                                    .child(preview_text),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(colors.text_placeholder)
+                            .child("Press ⌘Y for Quick Look"),
+                    )
+                    .into_any_element();
+            }
+        }
+
+        // Show file icon as preview for non-previewable files (PDFs, docs, etc.)
         let icon_emoji = if file.kind == FileKind::File {
             extension_to_emoji(&file.path)
         } else {
             file_kind_to_emoji(file.kind)
+        };
+
+        // For PDFs and documents, show a hint
+        let hint = if file.path.extension().and_then(|e| e.to_str()).is_some_and(|ext| {
+            matches!(ext.to_lowercase().as_str(), "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "pages" | "numbers" | "key")
+        }) {
+            "Document - Press ⌘Y to preview"
+        } else {
+            "Press ⌘Y for Quick Look"
         };
 
         div()
@@ -776,7 +1034,7 @@ impl FileSearchView {
                 div()
                     .text_size(px(11.0))
                     .text_color(colors.text_placeholder)
-                    .child("Press ⌘Y for Quick Look"),
+                    .child(hint),
             )
             .into_any_element()
     }
@@ -922,13 +1180,133 @@ impl FileSearchView {
             )
     }
 
+    /// Render the footer with action hints
+    fn render_footer(&self, colors: &FileSearchColors) -> impl IntoElement {
+        let text_muted = colors.text_muted;
+        let border_color = colors.border;
+        let surface = colors.surface;
+
+        div()
+            .h(px(36.0))
+            .flex_shrink_0()
+            .w_full()
+            .px_4()
+            .flex()
+            .items_center()
+            .justify_between()
+            .border_t_1()
+            .border_color(border_color)
+            .bg(surface)
+            // Left side: primary actions
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_4()
+                    // Open action
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .px_1()
+                                    .py(px(1.0))
+                                    .bg(colors.surface_elevated)
+                                    .rounded(px(3.0))
+                                    .text_size(px(10.0))
+                                    .text_color(text_muted)
+                                    .child("↵"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(text_muted)
+                                    .child("Open"),
+                            ),
+                    )
+                    // Quick Look action
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .px_1()
+                                    .py(px(1.0))
+                                    .bg(colors.surface_elevated)
+                                    .rounded(px(3.0))
+                                    .text_size(px(10.0))
+                                    .text_color(text_muted)
+                                    .child("⌘Y"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(text_muted)
+                                    .child("Quick Look"),
+                            ),
+                    )
+                    // Reveal in Finder
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .px_1()
+                                    .py(px(1.0))
+                                    .bg(colors.surface_elevated)
+                                    .rounded(px(3.0))
+                                    .text_size(px(10.0))
+                                    .text_color(text_muted)
+                                    .child("⌘⏎"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(text_muted)
+                                    .child("Reveal"),
+                            ),
+                    ),
+            )
+            // Right side: actions menu hint
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .px_1()
+                            .py(px(1.0))
+                            .bg(colors.surface_elevated)
+                            .rounded(px(3.0))
+                            .text_size(px(10.0))
+                            .text_color(text_muted)
+                            .child("⌘K"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(text_muted)
+                            .child("Actions"),
+                    ),
+            )
+    }
+
     /// Render the filter dropdown (0.4)
-    fn render_filter_dropdown(&self, colors: &FileSearchColors) -> impl IntoElement {
+    fn render_filter_dropdown(&self, colors: &FileSearchColors, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let options = FileTypeFilter::all_options();
         let current_filter = self.filter;
+        let dropdown_index = self.dropdown_index;
         let text_color = colors.text;
         let accent = colors.accent;
         let surface_hover = colors.surface_hover;
+        let selection_bg = colors.selection;
 
         div()
             .absolute()
@@ -942,8 +1320,9 @@ impl FileSearchView {
             .shadow_lg()
             .overflow_hidden()
             .py_1()
-            .children(options.iter().map(move |&filter| {
+            .children(options.iter().enumerate().map(|(idx, &filter)| {
                 let is_selected = filter == current_filter;
+                let is_highlighted = idx == dropdown_index;
 
                 div()
                     .id(SharedString::from(format!("filter-{:?}", filter)))
@@ -953,7 +1332,10 @@ impl FileSearchView {
                     .items_center()
                     .gap_2()
                     .cursor_pointer()
-                    .hover(move |el| el.bg(surface_hover))
+                    // Keyboard highlight takes precedence
+                    .when(is_highlighted, |el| el.bg(selection_bg))
+                    .when(!is_highlighted, |el| el.hover(move |el| el.bg(surface_hover)))
+                    .on_click(cx.listener(move |this, _, cx| this.set_filter(filter, cx)))
                     // Checkmark for selected
                     .child(
                         div()
@@ -971,6 +1353,128 @@ impl FileSearchView {
                     )
             }))
     }
+
+    /// File action definitions
+    pub const FILE_ACTIONS: &'static [(&'static str, &'static str, &'static str)] = &[
+        ("Open", "↵", "open"),
+        ("Reveal in Finder", "⌘⏎", "reveal"),
+        ("Quick Look", "⌘Y", "quicklook"),
+        ("Copy", "⌘C", "copyfile"),
+        ("Copy Path", "⌘⇧C", "copypath"),
+        ("Copy Name", "⌘⇧N", "copyname"),
+    ];
+
+    /// Render the file actions menu (Cmd+K)
+    fn render_actions_menu(&self, colors: &FileSearchColors, cx: &mut ViewContext<Self>) -> impl IntoElement {
+        let text_color = colors.text;
+        let text_muted = colors.text_muted;
+        let surface_hover = colors.surface_hover;
+        let selection_bg = colors.selection;
+        let actions_index = self.actions_menu_index;
+
+        div()
+            .absolute()
+            .bottom(px(44.0)) // Above footer
+            .right(px(16.0))
+            .w(px(200.0))
+            .bg(colors.surface_elevated)
+            .rounded_lg()
+            .border_1()
+            .border_color(colors.border)
+            .shadow_lg()
+            .overflow_hidden()
+            .py_1()
+            .children(Self::FILE_ACTIONS.iter().enumerate().map(|(idx, &(name, shortcut, action_id))| {
+                let is_highlighted = idx == actions_index;
+                let action_id_owned = action_id.to_string();
+
+                div()
+                    .id(SharedString::from(format!("action-{}", action_id)))
+                    .px_3()
+                    .py_2()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .cursor_pointer()
+                    .when(is_highlighted, |el| el.bg(selection_bg))
+                    .when(!is_highlighted, |el| el.hover(move |el| el.bg(surface_hover)))
+                    .on_click(cx.listener(move |this, _, cx| {
+                        this.execute_action(&action_id_owned, cx);
+                    }))
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .text_color(text_color)
+                            .child(name),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(text_muted)
+                            .child(shortcut),
+                    )
+            }))
+    }
+
+    /// Execute a file action by ID
+    pub fn execute_action(&mut self, action_id: &str, cx: &mut ViewContext<Self>) {
+        self.actions_menu_open = false;
+        match action_id {
+            "open" => self.wants_open_file = true,
+            "reveal" => self.wants_reveal_in_finder = true,
+            "quicklook" => self.wants_quick_look = true,
+            "copypath" => {
+                if let Some(file) = self.selected_file() {
+                    let path_str = file.path.display().to_string();
+                    cx.write_to_clipboard(ClipboardItem::new_string(path_str.clone()));
+                    tracing::info!("Copied path to clipboard: {}", path_str);
+                }
+            }
+            "copyname" => {
+                if let Some(file) = self.selected_file() {
+                    cx.write_to_clipboard(ClipboardItem::new_string(file.name.clone()));
+                    tracing::info!("Copied name to clipboard: {}", file.name);
+                }
+            }
+            "copyfile" => {
+                if let Some(file) = self.selected_file() {
+                    // Use NSPasteboard via AppleScript to copy file to clipboard
+                    // This method uses the native macOS pasteboard API
+                    let path = &file.path;
+                    let path_str = path.display().to_string();
+                    let escaped_path = path_str.replace('\\', "\\\\").replace('"', "\\\"");
+                    let script = format!(
+                        r#"use framework "AppKit"
+use scripting additions
+set thePath to "{}"
+set theURL to current application's NSURL's fileURLWithPath:thePath
+set thePasteboard to current application's NSPasteboard's generalPasteboard()
+thePasteboard's clearContents()
+thePasteboard's writeObjects:{{theURL}}"#,
+                        escaped_path
+                    );
+                    match std::process::Command::new("osascript")
+                        .arg("-e")
+                        .arg(&script)
+                        .output()
+                    {
+                        Ok(output) if output.status.success() => {
+                            tracing::info!("Copied file to clipboard: {}", path.display());
+                        }
+                        Ok(output) => {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            tracing::error!("Failed to copy file: {}", stderr);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to run osascript: {}", e);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
 }
 
 impl Render for FileSearchView {
@@ -978,9 +1482,26 @@ impl Render for FileSearchView {
         let colors = get_file_search_colors(cx);
         let has_results = !self.results.is_empty();
 
+        // Pre-render dropdown (needs cx for click handlers)
+        let dropdown = if self.dropdown_open {
+            Some(self.render_filter_dropdown(&colors, cx).into_any_element())
+        } else {
+            None
+        };
+
+        // Pre-render actions menu (needs cx for click handlers)
+        let actions_menu = if self.actions_menu_open && self.selected_file().is_some() {
+            Some(self.render_actions_menu(&colors, cx).into_any_element())
+        } else {
+            None
+        };
+
+        // Pre-render footer
+        let footer = self.render_footer(&colors);
+
         div()
             .track_focus(&self.focus_handle)
-            .size_full()
+            .size_full() // Fill parent container
             .flex()
             .flex_col()
             .bg(colors.background)
@@ -991,10 +1512,11 @@ impl Render for FileSearchView {
             .child(
                 div()
                     .flex_1()
+                    .min_h_0()
                     .flex()
                     .flex_row()
                     .overflow_hidden()
-                    // Left panel: List (60%)
+                    // Left panel: List (fixed width ~60%)
                     .child({
                         let empty_state = self.render_empty_state(&colors);
                         let section_header = self.render_section_header(&colors);
@@ -1013,26 +1535,221 @@ impl Render for FileSearchView {
 
                         div()
                             .id("file-search-list")
-                            .flex_1()
+                            .w(LIST_PANEL_WIDTH)
                             .h_full()
                             .flex()
                             .flex_col()
                             .overflow_y_scroll()
+                            .track_scroll(&self.scroll_handle)
+                            .border_r_1()
+                            .border_color(colors.border)
                             // Section header
                             .child(section_header)
+                            // Loading indicator
+                            .when(self.loading, |el| {
+                                el.child(
+                                    div()
+                                        .flex_1()
+                                        .flex()
+                                        .flex_col()
+                                        .items_center()
+                                        .justify_center()
+                                        .py_8()
+                                        .child(
+                                            div()
+                                                .text_size(px(14.0))
+                                                .text_color(colors.text_muted)
+                                                .child("Loading...")
+                                        )
+                                )
+                            })
                             // Results list or empty state
                             .when(!has_results && !self.loading, |el| {
                                 el.child(empty_state)
                             })
-                            .when(has_results, |el| el.children(file_items))
+                            .when(has_results && !self.loading, |el| el.children(file_items))
                     })
-                    // Right panel: Detail (40%)
-                    .child(self.render_detail_panel(cx)),
+                    // Right panel: Detail (remaining space)
+                    .child(
+                        div()
+                            .flex_1()
+                            .h_full()
+                            .child(self.render_detail_panel(cx))
+                    ),
             )
+            // Footer with action hints
+            .child(footer)
             // Dropdown overlay (when open)
-            .when(self.dropdown_open, |el| {
-                el.child(self.render_filter_dropdown(&colors))
+            .when_some(dropdown, |el, dropdown| {
+                el.child(dropdown)
             })
+            // Actions menu overlay (when open)
+            .when_some(actions_menu, |el, menu| {
+                el.child(menu)
+            })
+            // Note: keyboard events are forwarded from launcher, not handled here directly
+    }
+}
+
+impl FocusableView for FileSearchView {
+    fn focus_handle(&self, _cx: &AppContext) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl FileSearchView {
+    /// Handle keyboard input for the search view
+    pub fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
+        let modifiers = &event.keystroke.modifiers;
+
+        // Cmd+P toggles the filter dropdown
+        if modifiers.platform && event.keystroke.key == "p" {
+            self.toggle_dropdown(cx);
+            return;
+        }
+
+        // Cmd+Enter reveals in Finder
+        if modifiers.platform && event.keystroke.key == "enter" {
+            if self.selected_file().is_some() {
+                self.wants_reveal_in_finder = true;
+                cx.notify();
+            }
+            return;
+        }
+
+        // Cmd+Y opens Quick Look
+        if modifiers.platform && event.keystroke.key == "y" {
+            if self.selected_file().is_some() {
+                self.wants_quick_look = true;
+                cx.notify();
+            }
+            return;
+        }
+
+        // Cmd+K toggles actions menu
+        if modifiers.platform && event.keystroke.key == "k" {
+            if self.selected_file().is_some() {
+                self.actions_menu_open = !self.actions_menu_open;
+                self.actions_menu_index = 0;
+                cx.notify();
+            }
+            return;
+        }
+
+        match &event.keystroke.key {
+            key if key == "down" => {
+                if self.actions_menu_open {
+                    let count = Self::FILE_ACTIONS.len();
+                    self.actions_menu_index = (self.actions_menu_index + 1) % count;
+                    cx.notify();
+                } else if self.dropdown_open {
+                    let options = FileTypeFilter::all_options();
+                    self.dropdown_index = (self.dropdown_index + 1) % options.len();
+                    cx.notify();
+                } else {
+                    self.select_next(cx);
+                }
+            }
+            key if key == "up" => {
+                if self.actions_menu_open {
+                    let count = Self::FILE_ACTIONS.len();
+                    self.actions_menu_index = if self.actions_menu_index == 0 {
+                        count - 1
+                    } else {
+                        self.actions_menu_index - 1
+                    };
+                    cx.notify();
+                } else if self.dropdown_open {
+                    let options = FileTypeFilter::all_options();
+                    self.dropdown_index = if self.dropdown_index == 0 {
+                        options.len() - 1
+                    } else {
+                        self.dropdown_index - 1
+                    };
+                    cx.notify();
+                } else {
+                    self.select_previous(cx);
+                }
+            }
+            key if key == "enter" => {
+                if self.actions_menu_open {
+                    // Execute the selected action
+                    if let Some(&(_, _, action_id)) = Self::FILE_ACTIONS.get(self.actions_menu_index) {
+                        self.execute_action(action_id, cx);
+                    }
+                } else if self.dropdown_open {
+                    let options = FileTypeFilter::all_options();
+                    if let Some(&filter) = options.get(self.dropdown_index) {
+                        self.set_filter(filter, cx);
+                    }
+                } else if self.selected_file().is_some() {
+                    // Open the selected file with default app
+                    self.wants_open_file = true;
+                    cx.notify();
+                }
+            }
+            key if key == "escape" => {
+                if self.actions_menu_open {
+                    self.actions_menu_open = false;
+                    cx.notify();
+                } else if self.dropdown_open {
+                    self.dropdown_open = false;
+                    cx.notify();
+                } else {
+                    self.should_close = true;
+                    cx.notify();
+                }
+            }
+            key if key == "backspace" => {
+                if !self.query.is_empty() {
+                    let mut chars: Vec<char> = self.query.chars().collect();
+                    if self.cursor_position > 0 {
+                        chars.remove(self.cursor_position - 1);
+                        self.cursor_position -= 1;
+                        self.query = SharedString::from(chars.into_iter().collect::<String>());
+                        self.section_mode = if self.query.is_empty() {
+                            SectionMode::Recent
+                        } else {
+                            SectionMode::Search
+                        };
+                        self.query_changed = true;
+                        cx.notify();
+                    }
+                }
+            }
+            key => {
+                // Ignore modifier combinations (except shift for uppercase)
+                if modifiers.platform || modifiers.control || modifiers.alt {
+                    return;
+                }
+
+                // Handle regular character input
+                let input_text = if let Some(ime_key) = &event.keystroke.ime_key {
+                    Some(ime_key.clone())
+                } else if key.len() == 1 {
+                    let ch = if modifiers.shift {
+                        key.to_uppercase()
+                    } else {
+                        key.to_string()
+                    };
+                    Some(ch)
+                } else {
+                    None
+                };
+
+                if let Some(text) = input_text {
+                    let mut chars: Vec<char> = self.query.chars().collect();
+                    for c in text.chars() {
+                        chars.insert(self.cursor_position, c);
+                        self.cursor_position += 1;
+                    }
+                    self.query = SharedString::from(chars.into_iter().collect::<String>());
+                    self.section_mode = SectionMode::Search;
+                    self.query_changed = true;
+                    cx.notify();
+                }
+            }
+        }
     }
 }
 

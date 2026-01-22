@@ -34,14 +34,21 @@ use std::sync::Arc;
 
 use gpui::*;
 use parking_lot::RwLock;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod app_events;
+mod constants;
+mod file_search_helper;
 mod file_search_view;
 mod launcher;
 mod platform;
 mod preferences_window;
+
+use constants::{
+    EXPANDED_HEIGHT, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH,
+    MODAL_WIDTH,
+};
 
 use app_events::AppEvent;
 use launcher::{LauncherSharedState, LauncherWindow};
@@ -102,9 +109,6 @@ actions!(
     ]
 );
 
-/// Window dimensions constants (matching Raycast sizing)
-const LAUNCHER_WIDTH: Pixels = px(750.0);
-const LAUNCHER_HEIGHT: Pixels = px(475.0);
 const LAUNCHER_BORDER_RADIUS: Pixels = px(12.0);
 
 /// Position from top of screen (20%)
@@ -238,6 +242,10 @@ fn main() {
         }))
     });
 
+    // Pre-initialize live file index for instant file search
+    // This takes ~7s to populate, so starting early ensures it's ready
+    file_search_helper::init_live_index();
+
     // Initialize and run GPUI application
     App::new().run(move |cx: &mut AppContext| {
         // Initialize theme from config and set as global
@@ -369,12 +377,12 @@ fn main() {
                 // Check for app events
                 match event_rx.try_recv() {
                     Ok(AppEvent::ToggleLauncher) => {
-                        info!("Toggle launcher requested - capturing frontmost window NOW");
+                        debug!("Toggle launcher requested - capturing frontmost window NOW");
                         
                         // Capture frontmost app AND window BEFORE Photoncast becomes active
                         // This is used for window management commands to target the correct window
                         let (previous_app, previous_window_title) = get_frontmost_window_info();
-                        tracing::info!(
+                        tracing::debug!(
                             "Captured frontmost: app={:?}, window={:?}",
                             previous_app,
                             previous_window_title
@@ -617,7 +625,7 @@ fn main() {
                             // Create new window if needed
                             if create_quicklink_handle.is_none() {
                                 if let Some(handle) =
-                                    open_create_quicklink_window(cx, quicklinks_storage.clone())
+                                    open_create_quicklink_window(cx, quicklinks_storage.clone(), &launcher_state_for_events)
                                 {
                                     let _ = handle.update(cx, |_, cx| {
                                         cx.activate(true);
@@ -655,6 +663,7 @@ fn main() {
                                     quicklinks_storage.clone(),
                                     &quicklinks_runtime,
                                     false,
+                                    &launcher_state_for_events,
                                 ) {
                                     let _ = handle.update(cx, |_, cx| {
                                         cx.activate(true);
@@ -696,6 +705,7 @@ fn main() {
                                     quicklinks_storage.clone(),
                                     &quicklinks_runtime,
                                     true, // show_library
+                                    &launcher_state_for_events,
                                 ) {
                                     let _ = handle.update(cx, |_, cx| {
                                         cx.activate(true);
@@ -916,7 +926,7 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
     let (actual_bundle_id, actual_title) = if let Some(window_info) = photoncast_window::get_frontmost_window_via_cgwindowlist() {
         let bundle_id = photoncast_window::get_bundle_id_for_pid(window_info.owner_pid);
         let title = if window_info.title.is_empty() { None } else { Some(window_info.title) };
-        tracing::info!(
+        tracing::debug!(
             "CGWindowList at execution: bundle_id={:?}, title={:?}, owner={}",
             bundle_id, title, window_info.owner_name
         );
@@ -1053,7 +1063,7 @@ fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
             Some(window_info.title)
         };
         
-        tracing::info!(
+        tracing::debug!(
             "CGWindowList: bundle_id={:?}, title={:?}, owner={}",
             bundle_id, title, window_info.owner_name
         );
@@ -1167,10 +1177,6 @@ fn open_launcher_window(
     }
 }
 
-/// Clipboard window dimensions
-const CLIPBOARD_WIDTH: Pixels = px(500.0);
-const CLIPBOARD_HEIGHT: Pixels = px(450.0);
-
 /// Opens a new clipboard history window and returns its handle
 fn open_clipboard_window(
     cx: &mut AppContext,
@@ -1196,12 +1202,12 @@ fn open_clipboard_window(
         |d| d.bounds(),
     );
 
-    let x = display_bounds.origin.x + (display_bounds.size.width - CLIPBOARD_WIDTH) / 2.0;
+    let x = display_bounds.origin.x + (display_bounds.size.width - LAUNCHER_WIDTH) / 2.0;
     let y = display_bounds.origin.y + display_bounds.size.height * 0.25;
 
     let bounds = Bounds {
         origin: point(x, y),
-        size: size(CLIPBOARD_WIDTH, CLIPBOARD_HEIGHT),
+        size: size(LAUNCHER_WIDTH, EXPANDED_HEIGHT),
     };
 
     match cx.open_window(
@@ -1219,7 +1225,7 @@ fn open_clipboard_window(
             display_id: cx.displays().first().map(|d| d.id()),
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast.clipboard".to_string()),
-            window_min_size: Some(size(px(400.0), px(300.0))),
+            window_min_size: Some(size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
             window_decorations: Some(WindowDecorations::Client),
         },
         |cx| {
@@ -1238,10 +1244,6 @@ fn open_clipboard_window(
     }
 }
 
-/// Quick links window dimensions
-const QUICKLINKS_WIDTH: Pixels = px(520.0);
-const QUICKLINKS_HEIGHT: Pixels = px(420.0);
-
 /// Opens a new quick links window and returns its handle
 fn open_quicklinks_window(
     cx: &mut AppContext,
@@ -1255,12 +1257,12 @@ fn open_quicklinks_window(
         |d| d.bounds(),
     );
 
-    let x = display_bounds.origin.x + (display_bounds.size.width - QUICKLINKS_WIDTH) / 2.0;
+    let x = display_bounds.origin.x + (display_bounds.size.width - MODAL_WIDTH) / 2.0;
     let y = display_bounds.origin.y + display_bounds.size.height * 0.25;
 
     let bounds = Bounds {
         origin: point(x, y),
-        size: size(QUICKLINKS_WIDTH, QUICKLINKS_HEIGHT),
+        size: size(MODAL_WIDTH, px(420.0)),
     };
 
     match cx.open_window(
@@ -1298,8 +1300,8 @@ fn open_quicklinks_window(
 }
 
 /// Preferences window dimensions
-const PREFS_WIDTH: Pixels = px(580.0);
-const PREFS_HEIGHT: Pixels = px(600.0);
+const PREFS_WIDTH: Pixels = px(864.0);
+const PREFS_HEIGHT: Pixels = px(1040.0);
 
 /// Opens a new preferences window and returns its handle
 fn open_preferences_window(cx: &mut AppContext) -> Option<WindowHandle<PreferencesWindow>> {
@@ -1335,7 +1337,7 @@ fn open_preferences_window(cx: &mut AppContext) -> Option<WindowHandle<Preferenc
             display_id: cx.displays().first().map(|d| d.id()),
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast.preferences".to_string()),
-            window_min_size: Some(size(px(480.0), px(360.0))),
+            window_min_size: Some(size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
             window_decorations: Some(WindowDecorations::Client),
         },
         |cx| {
@@ -1354,15 +1356,13 @@ fn open_preferences_window(cx: &mut AppContext) -> Option<WindowHandle<Preferenc
     }
 }
 
-/// Create Quicklink window dimensions
-const CREATE_QUICKLINK_WIDTH: Pixels = px(520.0);
-const CREATE_QUICKLINK_HEIGHT: Pixels = px(680.0);
-
 /// Opens a new create quicklink window and returns its handle
 fn open_create_quicklink_window(
     cx: &mut AppContext,
     storage: photoncast_quicklinks::QuickLinksStorage,
+    launcher_state: &LauncherSharedState,
 ) -> Option<WindowHandle<CreateQuicklinkView>> {
+    let launcher_state = launcher_state.clone();
     let display = cx.displays().first().cloned();
     let display_bounds = display.map_or_else(
         || Bounds {
@@ -1372,12 +1372,12 @@ fn open_create_quicklink_window(
         |d| d.bounds(),
     );
 
-    let x = display_bounds.origin.x + (display_bounds.size.width - CREATE_QUICKLINK_WIDTH) / 2.0;
+    let x = display_bounds.origin.x + (display_bounds.size.width - MODAL_WIDTH) / 2.0;
     let y = display_bounds.origin.y + display_bounds.size.height * 0.15;
 
     let bounds = Bounds {
         origin: point(x, y),
-        size: size(CREATE_QUICKLINK_WIDTH, CREATE_QUICKLINK_HEIGHT),
+        size: size(MODAL_WIDTH, px(680.0)),
     };
 
     match cx.open_window(
@@ -1428,6 +1428,8 @@ fn open_create_quicklink_window(
                                     }
                                 });
                             }
+                            // Invalidate quicklinks cache so new quicklink appears in search
+                            launcher_state.invalidate_quicklinks_cache();
                             cx.remove_window();
                         }
                         CreateQuicklinkEvent::Updated(link) => {
@@ -1452,6 +1454,8 @@ fn open_create_quicklink_window(
                                     }
                                 });
                             }
+                            // Invalidate quicklinks cache so updated quicklink appears in search
+                            launcher_state.invalidate_quicklinks_cache();
                             cx.remove_window();
                         }
                         CreateQuicklinkEvent::Cancelled => {
@@ -1553,17 +1557,15 @@ fn open_argument_input_window(
     }
 }
 
-/// Manage Quicklinks window dimensions
-const MANAGE_QUICKLINKS_WIDTH: Pixels = px(620.0);
-const MANAGE_QUICKLINKS_HEIGHT: Pixels = px(550.0);
-
 /// Opens a new manage quicklinks window and returns its handle
 fn open_manage_quicklinks_window(
     cx: &mut AppContext,
     storage: photoncast_quicklinks::QuickLinksStorage,
     runtime: &tokio::runtime::Runtime,
     show_library: bool,
+    launcher_state: &LauncherSharedState,
 ) -> Option<WindowHandle<QuicklinksManageView>> {
+    let launcher_state = launcher_state.clone();
     let display = cx.displays().first().cloned();
     let display_bounds = display.map_or_else(
         || Bounds {
@@ -1573,12 +1575,12 @@ fn open_manage_quicklinks_window(
         |d| d.bounds(),
     );
 
-    let x = display_bounds.origin.x + (display_bounds.size.width - MANAGE_QUICKLINKS_WIDTH) / 2.0;
+    let x = display_bounds.origin.x + (display_bounds.size.width - LAUNCHER_WIDTH) / 2.0;
     let y = display_bounds.origin.y + display_bounds.size.height * 0.15;
 
     let bounds = Bounds {
         origin: point(x, y),
-        size: size(MANAGE_QUICKLINKS_WIDTH, MANAGE_QUICKLINKS_HEIGHT),
+        size: size(LAUNCHER_WIDTH, EXPANDED_HEIGHT),
     };
 
     // Load quicklinks
@@ -1599,7 +1601,7 @@ fn open_manage_quicklinks_window(
             display_id: cx.displays().first().map(|d| d.id()),
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast.managequicklinks".to_string()),
-            window_min_size: Some(size(px(480.0), px(360.0))),
+            window_min_size: Some(size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
             window_decorations: Some(WindowDecorations::Client),
         },
         move |cx| {
@@ -1613,6 +1615,11 @@ fn open_manage_quicklinks_window(
                 if show_library {
                     view.toggle_library(cx);
                 }
+                // Invalidate quicklinks cache when quicklinks are modified
+                let photoncast_app = launcher_state.photoncast_app();
+                view.on_change(move || {
+                    photoncast_app.read().invalidate_quicklinks_cache();
+                });
                 view
             })
         },

@@ -11,6 +11,7 @@
 //! - [`FuzzyMatcher`] - Wrapper around nucleo for fuzzy string matching
 //! - [`SearchProvider`] - Trait for implementing search sources
 //! - [`ResultRanker`] - Ranking algorithm with frecency support
+//! - [`FileQuery`] - Natural language file query parser
 //!
 //! # Providers
 //!
@@ -34,16 +35,27 @@
 //! ```
 
 pub mod engine;
+pub mod file_index;
+pub mod file_query;
 pub mod fuzzy;
+pub mod ignore_patterns;
 pub mod index;
 pub mod providers;
 pub mod ranking;
+
+#[cfg(target_os = "macos")]
+pub mod spotlight;
 
 use std::path::PathBuf;
 use std::time::Duration;
 
 pub use engine::{SearchConfig, SearchEngine};
+pub use file_query::{FileCategory, FileQuery, FileTypeFilter};
 pub use fuzzy::{FuzzyMatcher, MatcherConfig};
+pub use ignore_patterns::{
+    add_to_photonignore, pattern_for_file, IgnoreError, IgnoreMatcher, IgnorePattern,
+    IgnorePatternSet,
+};
 pub use index::{
     EarlyTerminationConfig, IndexedAppEntry, NoUsageData, SearchIndex, UsageDataProvider,
     UsageRecord,

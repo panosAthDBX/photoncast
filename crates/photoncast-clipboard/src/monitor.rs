@@ -359,7 +359,8 @@ impl ClipboardMonitor {
         };
 
         // Get bytes from NSData
-        let bytes: &[u8] = data.bytes();
+        // Safety: We're not mutating the data while the slice is alive
+        let bytes: &[u8] = unsafe { data.as_bytes_unchecked() };
 
         // Check size limit
         if bytes.len() as u64 > self.config.max_image_size {

@@ -571,6 +571,156 @@ fn bench_target_30ms(c: &mut Criterion) {
     group.finish();
 }
 
+// =============================================================================
+// Spotlight Prefetch Benchmarks
+// =============================================================================
+
+#[cfg(target_os = "macos")]
+mod spotlight_benches {
+    use criterion::{black_box, BenchmarkId, Criterion};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use photoncast_core::search::spotlight::prefetch::{
+        PrefetchConfig, SpotlightPrefetcher, start_background_prefetch_with_service,
+    };
+    use photoncast_core::search::spotlight::service::{
+        SpotlightSearchOptions, SpotlightSearchService,
+    };
+
+    /// Benchmark cold search vs warm (prefetched) search.
+    pub fn bench_prefetch_comparison(c: &mut Criterion) {
+        let mut group = c.benchmark_group("spotlight_prefetch");
+        group.sample_size(10); // Spotlight queries can be slow
+
+        let queries = ["doc", "report", "pdf", "readme"];
+
+        // Cold search - new service, no cache
+        group.bench_function("cold_search_no_cache", |b| {
+            b.iter(|| {
+                let service = SpotlightSearchService::new();
+                let options = SpotlightSearchOptions {
+                    use_cache: false,
+                    max_results: 20,
+                    timeout: Duration::from_secs(2),
+                    ..Default::default()
+                };
+                for query in &queries {
+                    let _ = black_box(service.search_with_options(query, &options));
+                }
+            });
+        });
+
+        // Warm search - with prefetched cache
+        group.bench_function("warm_search_prefetched", |b| {
+            // Setup: Create service and prefetch
+            let service = Arc::new(SpotlightSearchService::new());
+            let config = PrefetchConfig {
+                initial_delay: Duration::from_millis(10),
+                query_timeout: Duration::from_secs(2),
+                recent_files_limit: 50,
+                ..Default::default()
+            };
+            let prefetcher = Arc::new(SpotlightPrefetcher::with_config(
+                Arc::clone(&service),
+                config,
+            ));
+
+            // Trigger prefetch and wait for completion
+            prefetcher.trigger();
+            std::thread::sleep(Duration::from_secs(3));
+
+            let options = SpotlightSearchOptions {
+                use_cache: true,
+                max_results: 20,
+                timeout: Duration::from_secs(2),
+                ..Default::default()
+            };
+
+            b.iter(|| {
+                for query in &queries {
+                    let _ = black_box(service.search_with_options(query, &options));
+                }
+            });
+        });
+
+        // Instant results from prefetcher
+        group.bench_function("instant_results_from_prefetcher", |b| {
+            // Setup: Create service and prefetch
+            let service = Arc::new(SpotlightSearchService::new());
+            let prefetcher = start_background_prefetch_with_service(Arc::clone(&service));
+
+            // Wait for prefetch to complete
+            std::thread::sleep(Duration::from_secs(3));
+
+            b.iter(|| {
+                // This should be instant - just reading from memory
+                black_box(prefetcher.get_recent_files())
+            });
+        });
+
+        group.finish();
+    }
+
+    /// Benchmark cache hit vs cache miss.
+    pub fn bench_cache_effectiveness(c: &mut Criterion) {
+        let mut group = c.benchmark_group("spotlight_cache");
+        group.sample_size(10);
+
+        let service = SpotlightSearchService::new();
+        let query = "test";
+        let options = SpotlightSearchOptions {
+            use_cache: true,
+            max_results: 20,
+            timeout: Duration::from_secs(2),
+            ..Default::default()
+        };
+
+        // First query - cache miss
+        group.bench_function("cache_miss", |b| {
+            b.iter_custom(|iters| {
+                let svc = SpotlightSearchService::new();
+                let start = std::time::Instant::now();
+                for _ in 0..iters {
+                    svc.clear_cache();
+                    let _ = black_box(svc.search_with_options(query, &options));
+                }
+                start.elapsed()
+            });
+        });
+
+        // Warm up cache first
+        let _ = service.search_with_options(query, &options);
+
+        // Subsequent query - cache hit
+        group.bench_function("cache_hit", |b| {
+            b.iter(|| {
+                black_box(service.search_with_options(query, &options))
+            });
+        });
+
+        group.finish();
+    }
+}
+
+#[cfg(target_os = "macos")]
+use spotlight_benches::{bench_cache_effectiveness, bench_prefetch_comparison};
+
+#[cfg(target_os = "macos")]
+criterion_group!(
+    benches,
+    bench_fuzzy_matching,
+    bench_search_index,
+    bench_app_provider_comparison,
+    bench_early_termination,
+    bench_ranking,
+    bench_end_to_end_search,
+    bench_target_30ms,
+    bench_prefetch_comparison,
+    bench_cache_effectiveness,
+);
+
+#[cfg(not(target_os = "macos"))]
 criterion_group!(
     benches,
     bench_fuzzy_matching,
@@ -581,4 +731,5 @@ criterion_group!(
     bench_end_to_end_search,
     bench_target_30ms,
 );
+
 criterion_main!(benches);

@@ -652,20 +652,21 @@ impl Database {
     }
 
     /// Gets the top N apps by frecency score.
-    /// 
+    ///
     /// Frecency combines frequency (launch count) and recency (time since last launch).
     /// Apps launched more recently and more frequently score higher.
-    /// 
+    ///
     /// Returns a list of (bundle_id, launch_count, last_launched_at) tuples.
     pub fn get_top_apps_by_frecency(&self, limit: usize) -> Result<Vec<(String, u32, i64)>> {
         let conn = self.conn.lock();
         let now = chrono::Utc::now().timestamp();
-        
+
         // Frecency formula: launch_count * recency_weight
         // recency_weight = 1.0 / (1.0 + days_since_last_launch)
         // This gives higher weight to recently used apps
-        let mut stmt = conn.prepare(
-            r"
+        let mut stmt = conn
+            .prepare(
+                r"
             SELECT 
                 bundle_id, 
                 launch_count, 
@@ -676,7 +677,8 @@ impl Database {
             ORDER BY frecency DESC
             LIMIT ?2
             ",
-        ).context("failed to prepare frecency query")?;
+            )
+            .context("failed to prepare frecency query")?;
 
         let rows = stmt
             .query_map(rusqlite::params![now, limit as i64], |row| {

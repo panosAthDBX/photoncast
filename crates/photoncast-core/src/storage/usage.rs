@@ -116,7 +116,10 @@ impl UsageTracker {
     /// Returns an error if the database operation fails.
     pub fn get_top_apps_by_frecency(&self, limit: usize) -> Result<Vec<String>> {
         let results = self.db.get_top_apps_by_frecency(limit)?;
-        Ok(results.into_iter().map(|(bundle_id, _, _)| bundle_id).collect())
+        Ok(results
+            .into_iter()
+            .map(|(bundle_id, _, _)| bundle_id)
+            .collect())
     }
 
     // -------------------------------------------------------------------------

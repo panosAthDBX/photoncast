@@ -7,7 +7,7 @@ use chrono::{DateTime, Local, TimeZone};
 use std::fmt;
 
 #[cfg(target_os = "macos")]
-use block2::RcBlock;
+use block2::StackBlock;
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
 
@@ -104,18 +104,18 @@ impl EventKitManager {
             return Ok(current);
         }
 
-        tracing::info!("Requesting calendar permission...");
+        tracing::debug!("Requesting calendar permission...");
 
         let store = self.get_or_create_store();
         let (tx, rx) = mpsc::channel();
-        let handler = RcBlock::new(move |granted: objc2::runtime::Bool, _error: *mut NSError| {
+        let handler = StackBlock::new(move |granted: objc2::runtime::Bool, _error: *mut NSError| {
             let _ = tx.send(granted.as_bool());
         });
         #[allow(deprecated)]
         unsafe {
             store.requestAccessToEntityType_completion(
                 EKEntityType::Event,
-                std::ptr::addr_of!(*handler) as *mut _,
+                std::ptr::from_ref(&*handler).cast_mut(),
             );
         };
 
@@ -128,7 +128,7 @@ impl EventKitManager {
 
         let status = self.check_permission();
         if status == PermissionStatus::NotDetermined {
-            tracing::info!("Opening System Settings for calendar permission...");
+            tracing::debug!("Opening System Settings for calendar permission...");
             let _ = std::process::Command::new("open")
                 .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
                 .spawn();
@@ -152,7 +152,7 @@ impl EventKitManager {
     ) -> Result<Vec<CalendarEvent>> {
         // Check permission first
         let permission = self.check_permission();
-        tracing::info!("Calendar permission status: {:?}", permission);
+        tracing::debug!("Calendar permission status: {:?}", permission);
         if permission != PermissionStatus::Authorized {
             return Err(CalendarError::Message {
                 message: format!("Calendar access not authorized: {:?}", permission),
@@ -191,7 +191,7 @@ impl EventKitManager {
         // Sort by start time
         result.sort_by(|a, b| a.start.cmp(&b.start));
 
-        tracing::info!(
+        tracing::debug!(
             "EventKit: Found {} events between {} and {}",
             result.len(),
             start.format("%Y-%m-%d %H:%M"),

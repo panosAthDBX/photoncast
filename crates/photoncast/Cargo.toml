@@ -47,9 +47,16 @@ once_cell.workspace = true
 parking_lot.workspace = true
 directories.workspace = true
 
+# Performance
+rayon.workspace = true
+lru.workspace = true
+
 # macOS Integration
 plist.workspace = true
 dirs.workspace = true
+
+# Native File Dialogs
+rfd.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
@@ -61,3 +68,4 @@ objc2-foundation.workspace = true
 objc2-app-kit.workspace = true
 core-graphics.workspace = true
 core-foundation.workspace = true
+dispatch = "0.2"

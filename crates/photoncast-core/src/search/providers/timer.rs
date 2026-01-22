@@ -36,7 +36,9 @@ impl TimerProvider {
 
     /// Get command info for a parsed timer action
     fn command_for_action(action: &TimerAction) -> Option<TimerCommand> {
-        TimerCommand::all().into_iter().find(|cmd| cmd.action == *action)
+        TimerCommand::all()
+            .into_iter()
+            .find(|cmd| cmd.action == *action)
     }
 }
 
@@ -97,7 +99,10 @@ impl SearchProvider for TimerProvider {
             return results;
         }
 
-        if query_lower.contains("show") || query_lower.contains("status") || query_lower == "active timer" {
+        if query_lower.contains("show")
+            || query_lower.contains("status")
+            || query_lower == "active timer"
+        {
             results.push(SearchResult {
                 id: SearchResultId::new("sleep_timer:Show Timer"),
                 title: "Show Timer".to_string(),
@@ -119,7 +124,10 @@ impl SearchProvider for TimerProvider {
         // This handles queries like "lock in 30 sec", "sleep in 5 minutes", etc.
         if let Ok(parsed) = parse_timer_expression(query) {
             if let Some(cmd) = Self::command_for_action(&parsed.action) {
-                let formatted_time = parsed.execute_at.with_timezone(&chrono::Local).format("%H:%M:%S");
+                let formatted_time = parsed
+                    .execute_at
+                    .with_timezone(&chrono::Local)
+                    .format("%H:%M:%S");
                 results.push(SearchResult {
                     id: SearchResultId::new(format!("sleep_timer:{}", cmd.name)),
                     title: cmd.name.to_string(),
@@ -157,7 +165,7 @@ impl SearchProvider for TimerProvider {
 
             if let Some((score, indices)) = best_score {
                 let action = command_action(&cmd, query, true);
-                
+
                 // For fuzzy matches, show example in subtitle
                 let subtitle = if !cmd.examples.is_empty() {
                     format!("{} (e.g., \"{}\")", cmd.description, cmd.examples[0])

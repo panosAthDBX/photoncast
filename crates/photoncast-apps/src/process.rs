@@ -17,7 +17,7 @@ use objc2_app_kit::{NSRunningApplication, NSWorkspace};
 pub fn get_running_apps() -> Result<Vec<RunningApp>> {
     use objc2_foundation::NSString;
 
-    tracing::info!("Enumerating running applications");
+    tracing::debug!("Enumerating running applications");
 
     let workspace = unsafe { NSWorkspace::sharedWorkspace() };
     let apps = unsafe { workspace.runningApplications() };
@@ -72,7 +72,7 @@ pub fn get_running_apps() -> Result<Vec<RunningApp>> {
 /// Returns an error if process enumeration fails.
 #[cfg(target_os = "macos")]
 pub fn get_running_apps_detailed() -> Result<Vec<RunningApplication>> {
-    tracing::info!("Enumerating running applications with detailed info");
+    tracing::debug!("Enumerating running applications with detailed info");
 
     let workspace = unsafe { NSWorkspace::sharedWorkspace() };
     let apps = unsafe { workspace.runningApplications() };

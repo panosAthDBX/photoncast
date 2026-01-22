@@ -339,10 +339,7 @@ pub fn validate_filename(name: &str) -> Result<()> {
 
     // Check for reserved names
     if name == "." || name == ".." {
-        return Err(FileActionError::invalid_filename(
-            name,
-            "reserved name",
-        ));
+        return Err(FileActionError::invalid_filename(name, "reserved name"));
     }
 
     // Check length (255 bytes for HFS+/APFS)
@@ -359,6 +356,21 @@ pub fn validate_filename(name: &str) -> Result<()> {
 // =============================================================================
 // File Actions (macOS only)
 // =============================================================================
+
+/// Escapes a string for safe use in AppleScript.
+///
+/// This prevents command injection attacks when embedding user-controlled
+/// strings (like file paths) into AppleScript commands.
+///
+/// # Security
+///
+/// Without proper escaping, a malicious filename like:
+/// `test" & do shell script "rm -rf ~" & "`
+/// could execute arbitrary shell commands.
+#[cfg(target_os = "macos")]
+fn escape_applescript_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
 
 /// Copies a file to the clipboard.
 ///
@@ -391,10 +403,8 @@ pub fn copy_file_to_clipboard(path: &Path) -> Result<()> {
 
     // Use osascript to set the clipboard to the file
     // This properly uses NSPasteboard under the hood
-    let script = format!(
-        r#"set the clipboard to (POSIX file "{}")"#,
-        path.display()
-    );
+    let escaped_path = escape_applescript_string(&path.display().to_string());
+    let script = format!(r#"set the clipboard to (POSIX file "{}")"#, escaped_path);
 
     let output = Command::new("osascript")
         .args(["-e", &script])
@@ -450,9 +460,10 @@ pub fn move_to_trash(path: &Path) -> Result<PathBuf> {
     }
 
     // Use AppleScript to move to trash (uses proper NSFileManager)
+    let escaped_path = escape_applescript_string(&path.display().to_string());
     let script = format!(
         r#"tell application "Finder" to delete POSIX file "{}""#,
-        path.display()
+        escaped_path
     );
 
     let output = Command::new("osascript")
@@ -471,7 +482,9 @@ pub fn move_to_trash(path: &Path) -> Result<PathBuf> {
         if stderr.to_lowercase().contains("permission")
             || stderr.to_lowercase().contains("not allowed")
         {
-            return Err(FileActionError::permission_denied(path.display().to_string()));
+            return Err(FileActionError::permission_denied(
+                path.display().to_string(),
+            ));
         }
 
         return Err(FileActionError::operation_failed(
@@ -585,10 +598,8 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
 
     // Use AppleScript to get apps that can open this file type
     // This queries Launch Services
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let escaped_path = escape_applescript_string(&path.display().to_string());
 
     let script = format!(
         r#"
@@ -622,7 +633,7 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
         set AppleScript's text item delimiters to linefeed
         return appList as text
         "#,
-        path.display()
+        escaped_path
     );
 
     let output = Command::new("osascript")
@@ -650,7 +661,7 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
     // If AppleScript failed, try a simpler fallback
     if apps.is_empty() && !extension.is_empty() {
         debug!(extension = %extension, "using fallback to find apps");
-        
+
         // Get default app at least
         let default_script = format!(
             r#"
@@ -661,7 +672,7 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
             end tell
             return appPath & "|" & appName
             "#,
-            path.display()
+            escaped_path
         );
 
         if let Ok(output) = Command::new("osascript")
@@ -673,9 +684,9 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
             if parts.len() >= 2 {
                 // Try to get bundle ID from the path
                 let app_path = PathBuf::from(parts[0]);
-                let bundle_id = get_bundle_id_from_path(&app_path)
-                    .unwrap_or_else(|| "unknown".to_string());
-                
+                let bundle_id =
+                    get_bundle_id_from_path(&app_path).unwrap_or_else(|| "unknown".to_string());
+
                 apps.push(AppInfo {
                     bundle_id,
                     name: parts[1].trim_end_matches(".app").to_string(),
@@ -783,7 +794,9 @@ pub fn rename_file(path: &Path, new_name: &str) -> Result<PathBuf> {
 
     // Check if destination already exists
     if new_path.exists() {
-        return Err(FileActionError::already_exists(new_path.display().to_string()));
+        return Err(FileActionError::already_exists(
+            new_path.display().to_string(),
+        ));
     }
 
     // Perform the rename
@@ -841,7 +854,9 @@ pub fn move_file(path: &Path, destination: &Path) -> Result<PathBuf> {
 
     // Verify destination directory exists
     if !destination.exists() {
-        return Err(FileActionError::not_found(destination.display().to_string()));
+        return Err(FileActionError::not_found(
+            destination.display().to_string(),
+        ));
     }
 
     if !destination.is_dir() {
@@ -852,14 +867,16 @@ pub fn move_file(path: &Path, destination: &Path) -> Result<PathBuf> {
     }
 
     // Construct new path
-    let filename = path.file_name().ok_or_else(|| {
-        FileActionError::operation_failed("move", "source has no filename")
-    })?;
+    let filename = path
+        .file_name()
+        .ok_or_else(|| FileActionError::operation_failed("move", "source has no filename"))?;
     let new_path = destination.join(filename);
 
     // Check if destination already exists
     if new_path.exists() {
-        return Err(FileActionError::already_exists(new_path.display().to_string()));
+        return Err(FileActionError::already_exists(
+            new_path.display().to_string(),
+        ));
     }
 
     // Perform the move
@@ -913,10 +930,7 @@ pub fn duplicate_file(path: &Path) -> Result<PathBuf> {
     }
 
     let parent = path.parent().unwrap_or_else(|| Path::new("/"));
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("file");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
     let extension = path.extension().and_then(|e| e.to_str());
 
     // Find a unique name
@@ -970,25 +984,22 @@ fn find_unique_copy_name(parent: &Path, stem: &str, extension: Option<&str>) -> 
 /// Recursively copies a directory.
 #[cfg(target_os = "macos")]
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
-    std::fs::create_dir_all(dst).map_err(|e| {
-        FileActionError::operation_failed("create directory", e.to_string())
-    })?;
+    std::fs::create_dir_all(dst)
+        .map_err(|e| FileActionError::operation_failed("create directory", e.to_string()))?;
 
-    for entry in std::fs::read_dir(src).map_err(|e| {
-        FileActionError::operation_failed("read directory", e.to_string())
-    })? {
-        let entry = entry.map_err(|e| {
-            FileActionError::operation_failed("read entry", e.to_string())
-        })?;
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| FileActionError::operation_failed("read directory", e.to_string()))?
+    {
+        let entry =
+            entry.map_err(|e| FileActionError::operation_failed("read entry", e.to_string()))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
         if src_path.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
-            std::fs::copy(&src_path, &dst_path).map_err(|e| {
-                FileActionError::operation_failed("copy file", e.to_string())
-            })?;
+            std::fs::copy(&src_path, &dst_path)
+                .map_err(|e| FileActionError::operation_failed("copy file", e.to_string()))?;
         }
     }
 
@@ -1028,9 +1039,8 @@ pub fn get_file_info(path: &Path) -> Result<FileInfo> {
         return Err(FileActionError::not_found(path.display().to_string()));
     }
 
-    let metadata = std::fs::metadata(path).map_err(|e| {
-        FileActionError::operation_failed("get metadata", e.to_string())
-    })?;
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| FileActionError::operation_failed("get metadata", e.to_string()))?;
 
     let is_directory = metadata.is_dir();
 
@@ -1048,7 +1058,9 @@ pub fn get_file_info(path: &Path) -> Result<FileInfo> {
 
     // Count items for directories
     let item_count = if is_directory {
-        std::fs::read_dir(path).ok().map(|entries| entries.count() as u64)
+        std::fs::read_dir(path)
+            .ok()
+            .map(|entries| entries.count() as u64)
     } else {
         None
     };
@@ -1057,7 +1069,7 @@ pub fn get_file_info(path: &Path) -> Result<FileInfo> {
     // Note: This is a simplified check. For accurate permissions, use access() syscall.
     let is_readable = std::fs::File::open(path).is_ok();
     let is_writable = !metadata.permissions().readonly();
-    
+
     #[cfg(unix)]
     let is_executable = {
         use std::os::unix::fs::PermissionsExt;
@@ -1065,7 +1077,7 @@ pub fn get_file_info(path: &Path) -> Result<FileInfo> {
         // Check if any execute bit is set
         mode & 0o111 != 0
     };
-    
+
     #[cfg(not(unix))]
     let is_executable = false;
 
@@ -1191,7 +1203,9 @@ pub fn compress(path: &Path) -> Result<PathBuf> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         warn!(path = %path.display(), stderr = %stderr, "ditto compression failed");
-        return Err(FileActionError::compression_failed(stderr.trim().to_string()));
+        return Err(FileActionError::compression_failed(
+            stderr.trim().to_string(),
+        ));
     }
 
     debug!(path = %path.display(), archive = %archive_path.display(), "compressed successfully");
@@ -1213,7 +1227,9 @@ fn find_unique_archive_name(parent: &Path, stem: &str) -> Result<PathBuf> {
         }
     }
 
-    Err(FileActionError::compression_failed("too many archives exist"))
+    Err(FileActionError::compression_failed(
+        "too many archives exist",
+    ))
 }
 
 // =============================================================================
@@ -1375,7 +1391,10 @@ mod tests {
         fn test_get_file_info_not_found() {
             let result = get_file_info(Path::new("/nonexistent/path/file.txt"));
             assert!(result.is_err());
-            assert!(matches!(result.unwrap_err(), FileActionError::NotFound { .. }));
+            assert!(matches!(
+                result.unwrap_err(),
+                FileActionError::NotFound { .. }
+            ));
         }
 
         #[test]
@@ -1398,7 +1417,10 @@ mod tests {
 
             let result = rename_file(&file_path, "bad/name");
             assert!(result.is_err());
-            assert!(matches!(result.unwrap_err(), FileActionError::InvalidFilename { .. }));
+            assert!(matches!(
+                result.unwrap_err(),
+                FileActionError::InvalidFilename { .. }
+            ));
         }
 
         #[test]
@@ -1411,7 +1433,10 @@ mod tests {
 
             let result = rename_file(&file1, "file2.txt");
             assert!(result.is_err());
-            assert!(matches!(result.unwrap_err(), FileActionError::AlreadyExists { .. }));
+            assert!(matches!(
+                result.unwrap_err(),
+                FileActionError::AlreadyExists { .. }
+            ));
         }
 
         #[test]
@@ -1458,10 +1483,7 @@ mod tests {
         #[test]
         fn test_move_file_not_found() {
             let temp = tempdir().expect("should create temp dir");
-            let result = move_file(
-                Path::new("/nonexistent/file.txt"),
-                temp.path(),
-            );
+            let result = move_file(Path::new("/nonexistent/file.txt"), temp.path());
             assert!(result.is_err());
         }
 
@@ -1516,7 +1538,10 @@ mod tests {
         fn test_copy_file_to_clipboard_not_found() {
             let result = copy_file_to_clipboard(Path::new("/nonexistent/file.txt"));
             assert!(result.is_err());
-            assert!(matches!(result.unwrap_err(), FileActionError::NotFound { .. }));
+            assert!(matches!(
+                result.unwrap_err(),
+                FileActionError::NotFound { .. }
+            ));
         }
     }
 }

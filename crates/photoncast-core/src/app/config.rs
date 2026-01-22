@@ -1,5 +1,7 @@
 //! Application configuration.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 /// User configuration for PhotonCast.
@@ -40,6 +42,10 @@ pub struct Config {
     /// Window management settings.
     #[serde(default)]
     pub window_management: WindowManagementConfig,
+
+    /// File search settings.
+    #[serde(default)]
+    pub file_search: FileSearchConfig,
 }
 
 impl Default for Config {
@@ -54,6 +60,7 @@ impl Default for Config {
             app_management: AppManagementConfig::default(),
             sleep_timer: SleepTimerConfig::default(),
             window_management: WindowManagementConfig::default(),
+            file_search: FileSearchConfig::default(),
         }
     }
 }
@@ -466,6 +473,150 @@ impl Default for WindowManagementConfig {
             show_visual_feedback: true,
         }
     }
+}
+
+/// File search configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct FileSearchConfig {
+    /// Whether file search indexing is enabled.
+    pub indexing_enabled: bool,
+    /// Whether to index hidden files (files starting with `.`).
+    pub index_hidden_files: bool,
+    /// Maximum number of file search results to display.
+    pub max_results: usize,
+    /// Search scopes (directories to index).
+    pub search_scopes: Vec<PathBuf>,
+    /// Custom search scopes with optional extension filters.
+    /// Example: `{ path = "~/code", extensions = ["md", "rs"] }`
+    pub custom_scopes: Vec<CustomSearchScope>,
+    /// Dedicated file search hotkey (default: Cmd+Shift+F).
+    pub hotkey: FileSearchHotkey,
+    /// Show file preview panel.
+    pub show_preview: bool,
+    /// Remember last used file type filter.
+    pub remember_filter: bool,
+}
+
+impl Default for FileSearchConfig {
+    fn default() -> Self {
+        Self {
+            indexing_enabled: true,
+            index_hidden_files: false,
+            max_results: 50,
+            search_scopes: default_search_scopes(),
+            custom_scopes: Vec::new(),
+            hotkey: FileSearchHotkey::default(),
+            show_preview: true,
+            remember_filter: true,
+        }
+    }
+}
+
+/// A custom search scope with optional extension filter.
+///
+/// # Example Configuration (TOML)
+///
+/// ```toml
+/// [[file_search.custom_scopes]]
+/// path = "~/code"
+/// extensions = ["md", "rs", "txt"]
+/// recursive = true
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CustomSearchScope {
+    /// The directory path to search (supports ~ for home directory).
+    pub path: String,
+    /// Optional list of file extensions to include (without dots).
+    /// If empty or not specified, all files are included.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    /// Whether to search recursively in subdirectories.
+    #[serde(default = "default_true")]
+    pub recursive: bool,
+}
+
+impl CustomSearchScope {
+    /// Resolves the path, expanding ~ to home directory.
+    #[must_use]
+    pub fn resolved_path(&self) -> PathBuf {
+        if self.path.starts_with("~/") {
+            if let Some(home) = dirs::home_dir() {
+                return home.join(&self.path[2..]);
+            }
+        }
+        PathBuf::from(&self.path)
+    }
+
+    /// Checks if a file path matches this scope's extension filter.
+    #[must_use]
+    pub fn matches_extension(&self, path: &std::path::Path) -> bool {
+        if self.extensions.is_empty() {
+            return true;
+        }
+        path.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| {
+                self.extensions.iter().any(|e| e.eq_ignore_ascii_case(ext))
+            })
+    }
+}
+
+/// File search dedicated hotkey configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct FileSearchHotkey {
+    /// Whether the dedicated hotkey is enabled.
+    pub enabled: bool,
+    /// The key to use for the hotkey.
+    pub key: String,
+    /// The modifiers to use for the hotkey.
+    pub modifiers: Vec<String>,
+}
+
+impl Default for FileSearchHotkey {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            key: "F".to_string(),
+            modifiers: vec!["Command".to_string(), "Shift".to_string()],
+        }
+    }
+}
+
+impl FileSearchHotkey {
+    /// Returns a formatted string representation of the hotkey (e.g., "⌘⇧F").
+    #[must_use]
+    pub fn display_string(&self) -> String {
+        let mut result = String::new();
+        for modifier in &self.modifiers {
+            match modifier.as_str() {
+                "Command" | "Cmd" => result.push('⌘'),
+                "Shift" => result.push('⇧'),
+                "Control" | "Ctrl" => result.push('⌃'),
+                "Option" | "Alt" => result.push('⌥'),
+                _ => {},
+            }
+        }
+        result.push_str(&self.key);
+        result
+    }
+}
+
+/// Returns the default search scopes (Desktop, Documents, Downloads).
+/// 
+/// These are the recommended default directories for file search indexing.
+/// They cover the most commonly used user file locations without indexing
+/// system files, code repositories, or other non-user content.
+#[must_use]
+pub fn default_search_scopes() -> Vec<PathBuf> {
+    let mut scopes = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        scopes.push(home.join("Desktop"));
+        scopes.push(home.join("Documents"));
+        scopes.push(home.join("Downloads"));
+    }
+    scopes
 }
 
 #[cfg(test)]

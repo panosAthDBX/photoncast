@@ -44,13 +44,66 @@ core-foundation = "0.10"
 core-foundation-sys = "0.8"
 core-graphics = "0.24"
 accessibility = "0.1"
-objc2 = "0.5"
-objc2-foundation = { version = "0.2", features = ["NSGeometry", "NSData", "NSString", "NSArray"] }
-objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSApplication", "NSRunningApplication", "NSResponder", "NSView", "NSWorkspace", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphicsContext", "NSGraphics", "bitflags", "NSStatusBar", "NSStatusItem", "NSMenu", "NSMenuItem", "NSEvent", "NSButton", "NSControl"] }
-objc2-event-kit = { version = "0.2", features = ["EKEventStore", "EKEvent", "EKCalendar", "EKCalendarItem", "EKTypes", "EKObject", "block2", "alloc"] }
+# objc2 ecosystem - Native macOS APIs
+objc2 = { version = "0.6", features = ["std"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSGeometry",
+    "NSData", 
+    "NSString",
+    "NSArray",
+    "NSDictionary",
+    "NSURL",
+    "NSDate",
+    "NSValue",
+    "NSPredicate",
+    "NSCompoundPredicate",
+    "NSNotification",
+    "NSMetadata",
+    "NSOperation",
+    "NSObjCRuntime",
+    "NSRunLoop",
+    "block2",
+] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSWindow",
+    "NSApplication", 
+    "NSRunningApplication",
+    "NSResponder",
+    "NSView",
+    "NSWorkspace",
+    "NSImage",
+    "NSImageRep",
+    "NSBitmapImageRep",
+    "NSGraphicsContext",
+    "NSGraphics",
+    "bitflags",
+    "NSStatusBar",
+    "NSStatusItem",
+    "NSMenu",
+    "NSMenuItem",
+    "NSEvent",
+    "NSButton",
+    "NSControl",
+] }
+objc2-event-kit = { version = "0.3", features = [
+    "EKEventStore",
+    "EKEvent",
+    "EKCalendar",
+    "EKCalendarItem",
+    "EKTypes",
+    "EKObject",
+    "block2",
+] }
+block2 = "0.6"
 
 # File System Watching
 notify = "6.1"
+
+# Directory Traversal
+walkdir = "2.5"
+
+# Unicode Processing
+unicode-normalization = "0.1"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
@@ -62,6 +115,13 @@ dirs = "5.0"
 hostname = "0.4"
 url = "2.5"
 libc = "0.2"
+
+# Performance
+rayon = "1.10"
+lru = "0.12"
+
+# Native File Dialogs
+rfd = "0.14"
 
 # Dev Dependencies
 proptest = "1"

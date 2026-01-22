@@ -600,15 +600,12 @@ impl ClipboardStorage {
     ) -> Result<bool> {
         let conn = self.conn.lock();
         
-        // Update the URL metadata in the content_meta JSON
+        // Update the URL metadata using the existing columns
         let rows_affected = conn.execute(
             r"
             UPDATE clipboard_items 
-            SET content_meta = json_set(
-                COALESCE(content_meta, '{}'),
-                '$.title', ?1,
-                '$.favicon_path', ?2
-            )
+            SET link_title = COALESCE(?1, link_title),
+                favicon_path = COALESCE(?2, favicon_path)
             WHERE id = ?3 AND content_type = 'url'
             ",
             params![

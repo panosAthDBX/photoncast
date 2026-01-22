@@ -32,6 +32,7 @@ use photoncast_calculator::{CalculatorResult, CalculatorResultKind};
 use photoncast_timer::commands::TimerManager;
 
 use crate::app_events::{self, AppEvent};
+use crate::constants::{EXPANDED_HEIGHT, LAUNCHER_HEIGHT, LAUNCHER_WIDTH};
 use crate::{
     Activate, Cancel, ConfirmDialog, CopyBundleId, CopyFile, CopyPath, ForceQuitApp, HideApp,
     NextGroup, OpenPreferences, PreviousGroup, QuickLook, QuickSelect1, QuickSelect2, QuickSelect3,
@@ -164,6 +165,8 @@ pub struct LauncherWindow {
     pending_confirmation: Option<(SystemCommand, ConfirmationDialog)>,
     /// Current search mode (Normal or `FileSearch`)
     search_mode: SearchMode,
+    /// File search view (shown when in FileSearch mode)
+    file_search_view: Option<View<crate::file_search_view::FileSearchView>>,
     /// File search state
     file_search_loading: bool,
     /// Last file search query (for debouncing)
@@ -318,6 +321,18 @@ impl LauncherSharedState {
     pub fn timer_manager(&self) -> Arc<tokio::sync::RwLock<TimerManager>> {
         Arc::clone(&self.timer_manager)
     }
+
+    /// Invalidates the quicklinks cache, causing a reload on next search.
+    /// Call this after adding, updating, or deleting quicklinks.
+    pub fn invalidate_quicklinks_cache(&self) {
+        self.photoncast_app.read().invalidate_quicklinks_cache();
+    }
+
+    /// Returns a clone of the PhotonCastApp reference.
+    /// Useful for callbacks that need to invalidate caches.
+    pub fn photoncast_app(&self) -> Arc<RwLock<PhotonCastApp>> {
+        Arc::clone(&self.photoncast_app)
+    }
 }
 
 /// A single result item for UI display
@@ -433,6 +448,7 @@ impl LauncherWindow {
             index_initialized: false,
             pending_confirmation: None,
             search_mode: SearchMode::Normal,
+            file_search_view: None,
             file_search_loading: false,
             file_search_pending_query: None,
             file_search_generation: 0,
@@ -1321,7 +1337,7 @@ impl LauncherWindow {
 
     /// Fetches the next upcoming meeting from the calendar.
     fn fetch_next_meeting(&mut self, cx: &mut ViewContext<Self>) {
-        tracing::info!("fetch_next_meeting: starting");
+        tracing::debug!("fetch_next_meeting: starting");
         cx.spawn(|this, mut cx| async move {
             // Run calendar fetch in background
             let result = cx
@@ -1336,12 +1352,12 @@ impl LauncherWindow {
             let _ = this.update(&mut cx, |this, cx| {
                 match result {
                     Ok(events) => {
-                        tracing::info!("fetch_next_meeting: got {} events", events.len());
+                        tracing::debug!("fetch_next_meeting: got {} events", events.len());
                         // Find the next event that hasn't ended yet
                         let now = photoncast_calendar::chrono::Local::now();
                         this.next_meeting = events.into_iter().find(|e| e.end > now);
                         if this.next_meeting.is_some() {
-                            tracing::info!(
+                            tracing::debug!(
                                 "Next meeting found: {:?}",
                                 this.next_meeting.as_ref().map(|m| &m.title)
                             );
@@ -1350,7 +1366,7 @@ impl LauncherWindow {
                                 this.meeting_selected = true;
                             }
                         } else {
-                            tracing::info!("fetch_next_meeting: no upcoming meeting found");
+                            tracing::debug!("fetch_next_meeting: no upcoming meeting found");
                             this.meeting_selected = false;
                         }
                     },
@@ -1368,16 +1384,16 @@ impl LauncherWindow {
 
     /// Loads suggestions (frequently used apps).
     fn load_suggestions(&mut self, cx: &mut ViewContext<Self>) {
-        tracing::info!("load_suggestions: index_initialized={}", self.index_initialized);
+        tracing::debug!("load_suggestions: index_initialized={}", self.index_initialized);
         // Only load if index is ready
         if !self.index_initialized {
-            tracing::info!("Skipping suggestions - index not initialized");
+            tracing::debug!("Skipping suggestions - index not initialized");
             return;
         }
 
         // Try to get frecency-based suggestions (recently/frequently used apps)
         let frecent_bundle_ids = self.app_launcher.get_top_apps_by_frecency(6);
-        tracing::info!("Frecency returned {} apps: {:?}", frecent_bundle_ids.len(), frecent_bundle_ids);
+        tracing::debug!("Frecency returned {} apps: {:?}", frecent_bundle_ids.len(), frecent_bundle_ids);
 
         if !frecent_bundle_ids.is_empty() {
             // Look up each app by bundle ID directly from index
@@ -1407,10 +1423,10 @@ impl LauncherWindow {
                     })
                 })
                 .collect();
-            tracing::info!("Loaded {} frecency-based suggestions", self.suggestions.len());
+            tracing::debug!("Loaded {} frecency-based suggestions", self.suggestions.len());
         } else {
             // Fallback: search for common apps if no usage data yet
-            tracing::info!("No frecency data, falling back to search-based suggestions");
+            tracing::debug!("No frecency data, falling back to search-based suggestions");
             let outcome = self.photoncast_app.read().search(""); // Empty search returns popular apps
             self.suggestions = outcome
                 .results
@@ -1420,7 +1436,7 @@ impl LauncherWindow {
                 .flat_map(|g| g.results)
                 .take(6)
                 .collect();
-            tracing::info!("Loaded {} fallback suggestions", self.suggestions.len());
+            tracing::debug!("Loaded {} fallback suggestions", self.suggestions.len());
         }
 
         // If query is empty, populate results with suggestions so they're navigable
@@ -1431,7 +1447,7 @@ impl LauncherWindow {
                 .iter()
                 .map(|r| Self::search_result_to_result_item(r))
                 .collect();
-            tracing::info!("Populated {} results from suggestions", self.results.len());
+            tracing::debug!("Populated {} results from suggestions", self.results.len());
         }
 
         // Notify to trigger re-render
@@ -1623,10 +1639,10 @@ impl LauncherWindow {
     /// Toggle the visibility of the launcher window
     #[allow(dead_code)]
     pub fn toggle(&mut self, cx: &mut ViewContext<Self>) {
-        tracing::info!("toggle() called, visible was {}", self.visible);
+        tracing::debug!("toggle() called, visible was {}", self.visible);
         self.visible = !self.visible;
         if self.visible {
-            tracing::info!("toggle: showing window, calling fetch_next_meeting and load_suggestions");
+            tracing::debug!("toggle: showing window, calling fetch_next_meeting and load_suggestions");
             self.reset_query();
             self.selected_index = 0;
             self.previous_selected_index = None;
@@ -1661,6 +1677,12 @@ impl LauncherWindow {
         if matches!(self.search_mode, SearchMode::Calendar { .. }) {
             self.exit_calendar_mode(cx);
             return;
+        }
+
+        // Clean up file search mode if active
+        if matches!(self.search_mode, SearchMode::FileSearch) {
+            self.search_mode = SearchMode::Normal;
+            self.file_search_view = None;
         }
 
         self.visible = false;
@@ -1755,8 +1777,11 @@ impl LauncherWindow {
     }
 
     /// Schedules a debounced file search.
-    /// Only triggers the actual search after 150ms of no typing.
+    /// Uses adaptive debounce based on query length for better responsiveness.
+    /// Now uses native SpotlightSearchService for better performance.
     fn schedule_file_search(&mut self, cx: &mut ViewContext<Self>) {
+        use crate::file_search_helper::{adaptive_debounce_ms, spotlight_search};
+
         let query = self.query.to_string();
 
         // Require at least 2 characters before searching
@@ -1773,15 +1798,18 @@ impl LauncherWindow {
         self.file_search_generation += 1;
         let generation = self.file_search_generation;
 
+        // Adaptive debounce: shorter for longer queries (more specific = faster)
+        let debounce_ms = adaptive_debounce_ms(query.len());
+
         // Show loading state
         self.file_search_loading = true;
         self.file_search_pending_query = Some(query.clone());
 
         // Spawn debounced async search
         cx.spawn(|this, mut cx| async move {
-            // Debounce: wait 150ms before searching
+            // Adaptive debounce
             cx.background_executor()
-                .timer(Duration::from_millis(150))
+                .timer(Duration::from_millis(debounce_ms))
                 .await;
 
             // Check if this search is still valid (no newer keystrokes)
@@ -1793,89 +1821,37 @@ impl LauncherWindow {
                 return; // A newer search was scheduled, abort this one
             }
 
-            // Execute the actual search in background
-            let results =
+            // Execute the actual search using native SpotlightSearchService
+            // (SpotlightSearchService has built-in caching)
+            let search_results: Vec<SearchResult> =
                 cx.background_executor()
                     .spawn(async move {
-                        // Use mdfind with -onlyin for faster results
-                        // Get more results than needed so we can sort by date
-                        let output = std::process::Command::new("mdfind")
-                            .arg("-name")
-                            .arg(&query)
-                            .arg("-onlyin")
-                            .arg(dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/")))
-                            .output();
+                        // Use native Spotlight search
+                        let file_results = spotlight_search(&query, MAX_VISIBLE_RESULTS);
+                        
+                        // Convert FileResult to SearchResult for UI
+                        file_results
+                            .into_iter()
+                            .map(|file| {
+                                let path = file.path.clone();
+                                let name = file.name.clone();
+                                let subtitle = path.parent().map(|p| p.display().to_string()).unwrap_or_default();
+                                let is_dir = path.is_dir();
+                                let is_app = path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
+                                let result_type = if is_app { CoreResultType::Application } else if is_dir { CoreResultType::Folder } else { CoreResultType::File };
 
-                        match output {
-                            Ok(output) if output.status.success() => {
-                                let stdout = String::from_utf8_lossy(&output.stdout);
-
-                                // Collect paths with modification times for sorting
-                                let mut files_with_time: Vec<(
-                                    std::path::PathBuf,
-                                    std::time::SystemTime,
-                                )> = stdout
-                                .lines()
-                                .filter(|line| !line.is_empty())
-                                .take(50) // Get more to sort from
-                                .filter_map(|line| {
-                                    let path = std::path::PathBuf::from(line);
-                                    let mtime = std::fs::metadata(&path)
-                                        .ok()
-                                        .and_then(|m| m.modified().ok())
-                                        .unwrap_or(std::time::UNIX_EPOCH);
-                                    Some((path, mtime))
-                                })
-                                .collect();
-
-                                // Sort by modification time (newest first)
-                                files_with_time.sort_by(|a, b| b.1.cmp(&a.1));
-
-                                // Take top results and convert to SearchResult
-                                files_with_time
-                                    .into_iter()
-                                    .take(MAX_VISIBLE_RESULTS)
-                                    .map(|(path, _mtime)| {
-                                        let name = path
-                                            .file_name()
-                                            .and_then(|n| n.to_str())
-                                            .unwrap_or("Unknown")
-                                            .to_string();
-                                        let subtitle = path
-                                            .parent()
-                                            .map(|p| p.display().to_string())
-                                            .unwrap_or_default();
-                                        let is_dir = path.is_dir();
-                                        let is_app = path
-                                            .extension()
-                                            .and_then(|ext| ext.to_str())
-                                            .is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
-
-                                        let result_type = if is_app {
-                                            CoreResultType::Application
-                                        } else if is_dir {
-                                            CoreResultType::Folder
-                                        } else {
-                                            CoreResultType::File
-                                        };
-
-                                        SearchResult {
-                                            id: photoncast_core::search::SearchResultId::new(
-                                                format!("file:{}", path.display()),
-                                            ),
-                                            title: name,
-                                            subtitle,
-                                            icon: IconSource::FileIcon { path: path.clone() },
-                                            result_type,
-                                            score: 0.0,
-                                            match_indices: vec![],
-                                            action: SearchAction::OpenFile { path },
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                            },
-                            _ => vec![],
-                        }
+                                SearchResult {
+                                    id: photoncast_core::search::SearchResultId::new(format!("file:{}", path.display())),
+                                    title: name,
+                                    subtitle,
+                                    icon: IconSource::FileIcon { path: path.clone() },
+                                    result_type,
+                                    score: 0.0,
+                                    match_indices: vec![],
+                                    action: SearchAction::OpenFile { path },
+                                }
+                            })
+                            .collect()
                     })
                     .await;
 
@@ -1883,7 +1859,7 @@ impl LauncherWindow {
             let _ = this.update(&mut cx, |view, cx| {
                 if view.file_search_generation == generation {
                     view.file_search_loading = false;
-                    view.base_results = results;
+                    view.base_results = search_results;
                     view.calculator_result = None;
                     view.rebuild_results(cx);
                     cx.notify();
@@ -2085,6 +2061,12 @@ impl LauncherWindow {
     }
 
     fn select_next(&mut self, _: &SelectNext, cx: &mut ViewContext<Self>) {
+        // If file search is active, forward navigation to it
+        if let Some(file_search_view) = &self.file_search_view {
+            file_search_view.update(cx, |view, cx| view.navigate_next(cx));
+            return;
+        }
+        
         // If auto-quit settings is open, navigate within it
         // Options: 0 = toggle, 1-7 = timeout options (1, 2, 3, 5, 10, 15, 30 minutes)
         if self.auto_quit_settings_app.is_some() {
@@ -2156,6 +2138,12 @@ impl LauncherWindow {
     }
 
     fn select_previous(&mut self, _: &SelectPrevious, cx: &mut ViewContext<Self>) {
+        // If file search is active, forward navigation to it
+        if let Some(file_search_view) = &self.file_search_view {
+            file_search_view.update(cx, |view, cx| view.navigate_previous(cx));
+            return;
+        }
+        
         // If auto-quit settings is open, navigate within it
         if self.auto_quit_settings_app.is_some() {
             let option_count = 8; // toggle + 7 timeout options
@@ -2237,6 +2225,37 @@ impl LauncherWindow {
     }
 
     fn activate(&mut self, _: &Activate, cx: &mut ViewContext<Self>) {
+        // If file search view is active, handle Enter for actions menu, dropdown, or file open
+        if let Some(file_search_view) = &self.file_search_view {
+            let selected_path = file_search_view.update(cx, |view, cx| {
+                if view.actions_menu_open {
+                    // Execute the selected action
+                    if let Some(&(_, _, action_id)) = crate::file_search_view::FileSearchView::FILE_ACTIONS.get(view.actions_menu_index) {
+                        view.execute_action(action_id, cx);
+                    }
+                    None
+                } else if view.dropdown_open {
+                    let options = crate::file_search_view::FileTypeFilter::all_options();
+                    if let Some(&filter) = options.get(view.dropdown_index) {
+                        view.set_filter(filter, cx);
+                    }
+                    None
+                } else {
+                    // Get the selected file path
+                    view.selected_file().map(|f| f.path.clone())
+                }
+            });
+            
+            // Open the file with default application
+            if let Some(path) = selected_path {
+                let _ = std::process::Command::new("open")
+                    .arg(&path)
+                    .spawn();
+                self.hide(cx);
+            }
+            return;
+        }
+        
         // If uninstall preview is showing, perform the uninstall
         if self.uninstall_preview.is_some() {
             self.perform_uninstall(cx);
@@ -2523,7 +2542,7 @@ impl LauncherWindow {
                 },
                 SearchAction::EnterFileSearchMode => {
                     // Enter File Search Mode
-                    tracing::info!("Entering File Search Mode");
+                    tracing::debug!("Entering File Search Mode");
                     self.enter_file_search_mode(cx);
                 },
                 SearchAction::QuickLookFile { path } => {
@@ -2568,6 +2587,29 @@ impl LauncherWindow {
     }
 
     fn cancel(&mut self, _: &Cancel, cx: &mut ViewContext<Self>) {
+        // If file search view is active, check for menus first
+        if let Some(file_search_view) = &self.file_search_view {
+            let handled = file_search_view.update(cx, |view, cx| {
+                if view.actions_menu_open {
+                    view.actions_menu_open = false;
+                    cx.notify();
+                    true
+                } else if view.dropdown_open {
+                    view.dropdown_open = false;
+                    cx.notify();
+                    true
+                } else {
+                    false
+                }
+            });
+            if handled {
+                return;
+            }
+            // No menu open, hide the window
+            self.hide(cx);
+            return;
+        }
+        
         // If uninstall preview is showing, close it first
         if self.uninstall_preview.is_some() {
             self.cancel_uninstall_preview(cx);
@@ -2593,7 +2635,7 @@ impl LauncherWindow {
             return;
         }
 
-        // If in file search mode, exit back to normal mode
+        // If in file search mode (without view - shouldn't happen), exit back to normal mode
         if matches!(self.search_mode, SearchMode::FileSearch) {
             self.exit_file_search_mode(cx);
             return;
@@ -2661,8 +2703,220 @@ impl LauncherWindow {
     /// - File search results instead of apps/commands
     /// - Different keyboard shortcuts (Cmd+Enter = Reveal, Cmd+Y = Quick Look)
     fn enter_file_search_mode(&mut self, cx: &mut ViewContext<Self>) {
-        tracing::info!("Entering File Search Mode");
+        tracing::debug!("Entering File Search Mode");
         self.search_mode = SearchMode::FileSearch;
+
+        // Create the file search view
+        let file_search_view = cx.new_view(|cx| {
+            let mut view = crate::file_search_view::FileSearchView::new(cx);
+            // Load recent files
+            view.loading = true;
+            view
+        });
+
+        // Observe the file search view for should_close, needs_refetch, query_changed, and action flags
+        cx.observe(&file_search_view, |this, view, cx| {
+            let (should_close, needs_refetch, query_changed, filter, query,
+                 wants_reveal, wants_quick_look, wants_actions, wants_open, selected_path) = {
+                let v = view.read(cx);
+                (
+                    v.should_close, v.needs_refetch, v.query_changed, v.filter, v.query.clone(),
+                    v.wants_reveal_in_finder, v.wants_quick_look, v.wants_actions_menu, v.wants_open_file,
+                    v.selected_file().map(|f| f.path.clone())
+                )
+            };
+            
+            if should_close {
+                // Hide the entire launcher window
+                this.hide(cx);
+                return;
+            }
+
+            // Handle file action requests
+            if wants_open {
+                view.update(cx, |v, _| v.wants_open_file = false);
+                if let Some(path) = &selected_path {
+                    tracing::info!("Opening file: {}", path.display());
+                    let _ = std::process::Command::new("open").arg(path).spawn();
+                    this.hide(cx);
+                }
+                return;
+            }
+
+            if wants_reveal {
+                view.update(cx, |v, _| v.wants_reveal_in_finder = false);
+                if let Some(path) = &selected_path {
+                    tracing::info!("Revealing in Finder: {}", path.display());
+                    let _ = photoncast_apps::reveal_in_finder(path);
+                    this.hide(cx);
+                }
+                return;
+            }
+
+            if wants_quick_look {
+                view.update(cx, |v, _| v.wants_quick_look = false);
+                if let Some(path) = &selected_path {
+                    tracing::info!("Quick Look: {}", path.display());
+                    let _ = std::process::Command::new("qlmanage")
+                        .arg("-p")
+                        .arg(path)
+                        .spawn();
+                    // Don't hide - Quick Look is a preview
+                }
+                return;
+            }
+
+            if wants_actions {
+                view.update(cx, |v, cx| {
+                    v.wants_actions_menu = false;
+                    v.actions_menu_open = !v.actions_menu_open;
+                    v.actions_menu_index = 0;
+                    cx.notify();
+                });
+                return;
+            }
+            
+            // Handle query change - trigger search
+            if query_changed {
+                use crate::file_search_helper::{spotlight_search, spotlight_recent_files_filtered};
+                
+                let view_handle = view.downgrade();
+                let query_str = query.to_string();
+                let filter_for_search = filter;
+                
+                // Clear the flag first
+                view.update(cx, |v, _| {
+                    v.query_changed = false;
+                });
+                
+                // If query is empty, reload recent files (filtered if a filter is active)
+                if query_str.is_empty() {
+                    cx.spawn(|_this, mut cx| async move {
+                        // Use filtered fetch to respect current filter
+                        let recent_files = cx
+                            .background_executor()
+                            .spawn(async move {
+                                spotlight_recent_files_filtered(filter_for_search, 50)
+                            })
+                            .await;
+
+                        if let Some(view) = view_handle.upgrade() {
+                            let _ = view.update(&mut cx, |view, cx| {
+                                view.all_results = recent_files.clone();
+                                view.results = recent_files;
+                                view.loading = false;
+                                view.section_mode = crate::file_search_view::SectionMode::Recent;
+                                view.selected_index = 0;
+                                cx.notify();
+                            });
+                        }
+                    })
+                    .detach();
+                } else if query_str.len() >= 2 {
+                    // Search using native SpotlightSearchService
+                    view.update(cx, |v, cx| {
+                        v.loading = true;
+                        cx.notify();
+                    });
+                    
+                    cx.spawn(|_this, mut cx| async move {
+                        // Use native Spotlight search (has built-in caching)
+                        let search_results = cx
+                            .background_executor()
+                            .spawn(async move {
+                                spotlight_search(&query_str, 50)
+                            })
+                            .await;
+
+                        if let Some(view) = view_handle.upgrade() {
+                            let _ = view.update(&mut cx, |view, cx| {
+                                // Apply filter to search results
+                                view.all_results = search_results;
+                                view.results = view.all_results.iter()
+                                    .filter(|f| filter_for_search.matches(f.kind, &f.path))
+                                    .cloned()
+                                    .collect();
+                                view.loading = false;
+                                view.section_mode = crate::file_search_view::SectionMode::Search;
+                                view.selected_index = 0;
+                                cx.notify();
+                            });
+                        }
+                    })
+                    .detach();
+                }
+                return;
+            }
+            
+            if needs_refetch {
+                use crate::file_search_helper::spotlight_recent_files_filtered;
+                
+                // Re-fetch files for the new filter type using native Spotlight
+                // Use the filtered fetch to get files of the specific type
+                let view_handle = view.downgrade();
+                let filter_for_closure = filter;
+                
+                cx.spawn(|_this, mut cx| async move {
+                    // Fetch files matching the filter type directly
+                    let recent_files = cx
+                        .background_executor()
+                        .spawn(async move {
+                            spotlight_recent_files_filtered(filter_for_closure, 50)
+                        })
+                        .await;
+
+                    if let Some(view) = view_handle.upgrade() {
+                        let _ = view.update(&mut cx, |view, cx| {
+                            // Results are already filtered, set directly
+                            view.all_results = recent_files.clone();
+                            view.results = recent_files;
+                            view.loading = false;
+                            view.needs_refetch = false;
+                            view.selected_index = 0;
+                            tracing::info!(
+                                "[FileSearch] Refetch complete: {} files for {:?}",
+                                view.results.len(),
+                                filter_for_closure
+                            );
+                            cx.notify();
+                        });
+                    }
+                })
+                .detach();
+            }
+        })
+        .detach();
+
+        // Load recent files in background using native Spotlight
+        let view_handle = file_search_view.downgrade();
+        cx.spawn(|_this, mut cx| async move {
+            use crate::file_search_helper::spotlight_recent_files;
+            
+            // Use native Spotlight to fetch recent files (7 days, max 50 results)
+            // SpotlightSearchService has built-in caching
+            let recent_files = cx
+                .background_executor()
+                .spawn(async move {
+                    spotlight_recent_files(7, 50)
+                })
+                .await;
+
+            // Update the view with results
+            if let Some(view) = view_handle.upgrade() {
+                let _ = view.update(&mut cx, |view, cx| {
+                    view.set_results(recent_files);
+                    view.loading = false;
+                    view.section_mode = crate::file_search_view::SectionMode::Recent;
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+
+        self.file_search_view = Some(file_search_view.clone());
+        
+        // Focus the file search view after storing it
+        cx.focus_view(&file_search_view);
         self.reset_query();
         self.results.clear();
         self.base_results.clear();
@@ -2670,9 +2924,13 @@ impl LauncherWindow {
         self.selected_index = 0;
         self.file_search_loading = false;
         self.file_search_pending_query = None;
-        self.file_search_generation += 1; // Invalidate pending searches
+        self.file_search_generation += 1;
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
+        
+        // Resize window to fit file search view (deferred via dispatch_async)
+        crate::platform::resize_window(LAUNCHER_WIDTH.0.into(), EXPANDED_HEIGHT.0.into());
+        
         cx.notify();
     }
 
@@ -2749,6 +3007,7 @@ impl LauncherWindow {
     fn exit_file_search_mode(&mut self, cx: &mut ViewContext<Self>) {
         tracing::info!("Exiting File Search Mode");
         self.search_mode = SearchMode::Normal;
+        self.file_search_view = None; // Clean up the file search view
         self.reset_query();
         self.results.clear();
         self.base_results.clear();
@@ -2758,14 +3017,29 @@ impl LauncherWindow {
         self.file_search_pending_query = None;
         // Reload suggestions for empty state
         self.load_suggestions(cx);
-        self.file_search_generation += 1; // Invalidate pending searches
+        self.file_search_generation += 1;
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
+        
+        // Resize window back to normal (deferred via dispatch_async)
+        crate::platform::resize_window(LAUNCHER_WIDTH.0.into(), LAUNCHER_HEIGHT.0.into());
+        
         cx.notify();
     }
 
     /// Handles the Reveal in Finder action (Cmd+Enter).
     fn reveal_in_finder(&mut self, _: &RevealInFinder, cx: &mut ViewContext<Self>) {
+        // If file search view is active, reveal selected file
+        if let Some(file_search_view) = &self.file_search_view {
+            let selected_path = file_search_view.read(cx).selected_file().map(|f| f.path.clone());
+            if let Some(path) = selected_path {
+                tracing::info!("Reveal in Finder (file search): {}", path.display());
+                let _ = photoncast_apps::reveal_in_finder(&path);
+                self.hide(cx);
+            }
+            return;
+        }
+        
         // Only active in file search mode with a selected file result
         if !matches!(self.search_mode, SearchMode::FileSearch) {
             return;
@@ -2800,6 +3074,19 @@ impl LauncherWindow {
 
     /// Handles the Quick Look action (Cmd+Y).
     fn quick_look(&mut self, _: &QuickLook, cx: &mut ViewContext<Self>) {
+        // If file search view is active, trigger Quick Look for selected file
+        if let Some(file_search_view) = &self.file_search_view {
+            let selected_path = file_search_view.read(cx).selected_file().map(|f| f.path.clone());
+            if let Some(path) = selected_path {
+                tracing::info!("Quick Look (file search): {}", path.display());
+                let _ = std::process::Command::new("qlmanage")
+                    .arg("-p")
+                    .arg(&path)
+                    .spawn();
+            }
+            return;
+        }
+        
         // Only active in file search mode with a selected file result
         if !matches!(self.search_mode, SearchMode::FileSearch) {
             return;
@@ -2900,6 +3187,19 @@ impl LauncherWindow {
     /// Handles the Show Actions Menu action (Cmd+K).
     fn show_actions_menu(&mut self, _: &ShowActionsMenu, cx: &mut ViewContext<Self>) {
         tracing::info!("show_actions_menu called, search_mode={:?}", std::mem::discriminant(&self.search_mode));
+        
+        // If file search view is active, trigger its actions menu
+        if let Some(file_search_view) = &self.file_search_view {
+            let has_selection = file_search_view.read(cx).selected_file().is_some();
+            if has_selection {
+                file_search_view.update(cx, |view, cx| {
+                    view.wants_actions_menu = true;
+                    cx.notify();
+                });
+            }
+            return;
+        }
+        
         // Check if there's something to show actions for
         let has_items = if let SearchMode::Calendar { events, .. } = &self.search_mode {
             tracing::info!("Calendar mode with {} events", events.len());
@@ -3446,6 +3746,14 @@ impl LauncherWindow {
     }
 
     fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
+        // If file search view is active, forward all key events to it
+        if let Some(file_search_view) = &self.file_search_view {
+            file_search_view.update(cx, |view, cx| {
+                view.handle_key_down(event, cx);
+            });
+            return;
+        }
+
         let key = event.keystroke.key.as_str();
         let shift = event.keystroke.modifiers.shift;
         let cmd = event.keystroke.modifiers.platform;
@@ -4710,31 +5018,29 @@ impl LauncherWindow {
 
     /// Render "no results" state
     fn render_no_results(&self, colors: &LauncherColors) -> impl IntoElement + '_ {
-        if let SearchMode::Calendar { error, .. } = &self.search_mode {
-            let message = error
-                .as_ref()
-                .map_or("No events found", |msg| msg.as_str())
-                .to_string();
-            return div()
-                .w_full()
-                .py_4()
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .text_size(px(14.0))
-                        .text_color(colors.text_muted)
-                        .child(message),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(colors.text_placeholder)
-                        .child("esc Back to search"),
-                );
-        }
+        let (message, hint) = match &self.search_mode {
+            SearchMode::Calendar { error, .. } => {
+                let msg = error
+                    .as_ref()
+                    .map_or("No events found", |msg| msg.as_str())
+                    .to_string();
+                (msg, "esc Back to search")
+            },
+            SearchMode::FileSearch => {
+                if self.file_search_loading {
+                    ("Searching...".to_string(), "")
+                } else {
+                    (
+                        format!("No files found for \"{}\"", self.query),
+                        "↵ Open  ⌘↵ Reveal  ⌘Y Quick Look  esc Exit",
+                    )
+                }
+            },
+            SearchMode::Normal => (
+                format!("No results for \"{}\"", self.query),
+                "Try a different search term",
+            ),
+        };
 
         div()
             .w_full()
@@ -4747,14 +5053,16 @@ impl LauncherWindow {
                 div()
                     .text_size(px(14.0))
                     .text_color(colors.text_muted)
-                    .child(format!("No results for \"{}\"", self.query)),
+                    .child(message),
             )
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(colors.text_placeholder)
-                    .child("Try a different search term"),
-            )
+            .when(!hint.is_empty(), |el| {
+                el.child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(colors.text_placeholder)
+                        .child(hint),
+                )
+            })
     }
 
     /// Render the confirmation dialog overlay
@@ -6390,35 +6698,53 @@ impl Render for LauncherWindow {
             // Keep minimum height when overlays are visible to prevent clipping
             .when(has_overlay, |el| el.min_h(px(400.0)))
             .overflow_hidden()
-            // Search bar
-            .child(self.render_search_bar(cx))
-            // Next meeting widget (show when query is empty and we have a meeting)
-            .when(self.query.is_empty() && self.next_meeting.is_some() && !matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
-                if let Some(meeting) = &self.next_meeting {
-                    el.child(self.render_next_meeting(meeting, &colors))
-                } else {
-                    el
-                }
+            // File Search Mode: render the dedicated FileSearchView
+            .when_some(self.file_search_view.clone(), |el, view| {
+                el.child(
+                    div()
+                        .size_full() // Fill the resized window
+                        .child(view)
+                )
             })
-            // Divider (show when there are results or in calendar mode)
-            .when(!self.results.is_empty() || matches!(self.search_mode, SearchMode::Calendar { .. }), move |el| {
-                el.child(div().h(px(1.0)).w_full().bg(divider_color))
-            })
-            // Empty state: only when query is empty AND no results (no suggestions loaded yet) AND no meeting
-            .when(self.query.is_empty() && self.results.is_empty() && self.next_meeting.is_none() && !matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
-                el.child(empty_state)
-            })
-            // No results message: query entered but nothing found
-            .when(!self.query.is_empty() && self.results.is_empty() && !matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
-                el.child(no_results)
-            })
-            // Results list: show suggestions (when query empty) or search results
-            .when(!self.results.is_empty() || matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
-                el.child(self.render_results(cx))
-            })
-            // Action bar at bottom (visible when there are results or in calendar mode)
-            .when(!self.results.is_empty() || matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
-                el.child(self.render_action_bar(cx))
+            // Normal/Calendar Mode: render the standard launcher content
+            .when(self.file_search_view.is_none(), |el| {
+                el
+                    // Search bar
+                    .child(self.render_search_bar(cx))
+                    // Content area (flex-1 to push action bar to bottom)
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .overflow_hidden()
+                            // Next meeting widget (show when query is empty and we have a meeting)
+                            .when(self.query.is_empty() && self.next_meeting.is_some() && !matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
+                                if let Some(meeting) = &self.next_meeting {
+                                    el.child(self.render_next_meeting(meeting, &colors))
+                                } else {
+                                    el
+                                }
+                            })
+                            // Divider (show when there are results or in calendar mode)
+                            .when(!self.results.is_empty() || matches!(self.search_mode, SearchMode::Calendar { .. }), move |el| {
+                                el.child(div().h(px(1.0)).w_full().bg(divider_color))
+                            })
+                            // Empty state: Normal mode with no meeting
+                            .when(self.query.is_empty() && self.results.is_empty() && matches!(self.search_mode, SearchMode::Normal) && self.next_meeting.is_none(), |el| {
+                                el.child(empty_state)
+                            })
+                            // No results message: query entered but nothing found
+                            .when(!self.query.is_empty() && self.results.is_empty() && !matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
+                                el.child(no_results)
+                            })
+                            // Results list: show suggestions (when query empty) or search results
+                            .when(!self.results.is_empty() || matches!(self.search_mode, SearchMode::Calendar { .. }), |el| {
+                                el.child(self.render_results(cx))
+                            })
+                    )
+                    // Action bar at bottom - always visible, pinned by flex layout
+                    .child(self.render_action_bar(cx))
             })
             // Actions menu overlay (Cmd+K)
             .when(self.show_actions_menu, |el| {

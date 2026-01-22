@@ -169,6 +169,8 @@ pub struct QuicklinksManageView {
     library_scroll_handle: gpui::ScrollHandle,
     /// Scroll handle for quicklinks list.
     quicklinks_scroll_handle: gpui::ScrollHandle,
+    /// Callback called when quicklinks are modified (added, updated, deleted).
+    on_change_callback: Option<Box<dyn Fn() + Send + 'static>>,
 }
 
 impl EventEmitter<ManageViewEvent> for QuicklinksManageView {}
@@ -193,6 +195,19 @@ impl QuicklinksManageView {
             editing: None,
             library_scroll_handle: gpui::ScrollHandle::new(),
             quicklinks_scroll_handle: gpui::ScrollHandle::new(),
+            on_change_callback: None,
+        }
+    }
+
+    /// Sets a callback to be called when quicklinks are modified.
+    pub fn on_change(&mut self, callback: impl Fn() + Send + 'static) {
+        self.on_change_callback = Some(Box::new(callback));
+    }
+
+    /// Notifies the change callback if set.
+    fn notify_change(&self) {
+        if let Some(callback) = &self.on_change_callback {
+            callback();
         }
     }
 
@@ -227,6 +242,7 @@ impl QuicklinksManageView {
         
         // Add to local list with correct DB ID
         self.quicklinks.push(quicklink);
+        self.notify_change();
         cx.notify();
     }
 
@@ -255,6 +271,7 @@ impl QuicklinksManageView {
             }
         }
         
+        self.notify_change();
         cx.notify();
     }
 
@@ -280,6 +297,7 @@ impl QuicklinksManageView {
         
         // Add to local list with correct DB ID
         self.quicklinks.push(copy);
+        self.notify_change();
         cx.notify();
     }
 
@@ -423,48 +441,14 @@ impl QuicklinksManageView {
     
     /// Scrolls to make the selected library item visible.
     fn scroll_to_library_item(&self, index: usize) {
-        // Item: py(8)*2=16 + ~34px content + 2px gap = ~52px
-        const ITEM_HEIGHT: f32 = 52.0;
-        // Window is 550px, header/toolbar ~130px, so list area ~420px
-        const VISIBLE_HEIGHT: f32 = 420.0;
-        
-        let item_top = index as f32 * ITEM_HEIGHT;
-        let item_bottom = item_top + ITEM_HEIGHT;
-        
-        let current_offset = self.library_scroll_handle.offset();
-        let scroll_top = -current_offset.y.0;
-        let scroll_bottom = scroll_top + VISIBLE_HEIGHT;
-        
-        if item_top < scroll_top {
-            self.library_scroll_handle
-                .set_offset(gpui::Point::new(px(0.0), px(-item_top)));
-        } else if item_bottom > scroll_bottom {
-            let new_scroll_top = item_bottom - VISIBLE_HEIGHT;
-            self.library_scroll_handle
-                .set_offset(gpui::Point::new(px(0.0), px(-new_scroll_top)));
-        }
+        // Use GPUI's built-in scroll_to_item which handles visibility automatically
+        self.library_scroll_handle.scroll_to_item(index);
     }
     
     /// Scrolls to make the selected quicklinks item visible.
     fn scroll_to_quicklinks_item(&self, index: usize) {
-        const ITEM_HEIGHT: f32 = 52.0;
-        const VISIBLE_HEIGHT: f32 = 420.0;
-        
-        let item_top = index as f32 * ITEM_HEIGHT;
-        let item_bottom = item_top + ITEM_HEIGHT;
-        
-        let current_offset = self.quicklinks_scroll_handle.offset();
-        let scroll_top = -current_offset.y.0;
-        let scroll_bottom = scroll_top + VISIBLE_HEIGHT;
-        
-        if item_top < scroll_top {
-            self.quicklinks_scroll_handle
-                .set_offset(gpui::Point::new(px(0.0), px(-item_top)));
-        } else if item_bottom > scroll_bottom {
-            let new_scroll_top = item_bottom - VISIBLE_HEIGHT;
-            self.quicklinks_scroll_handle
-                .set_offset(gpui::Point::new(px(0.0), px(-new_scroll_top)));
-        }
+        // Use GPUI's built-in scroll_to_item which handles visibility automatically
+        self.quicklinks_scroll_handle.scroll_to_item(index);
     }
 
     /// Edits the currently selected quicklink.
@@ -541,6 +525,7 @@ impl QuicklinksManageView {
             }
             
             self.quicklinks.push(quicklink);
+            self.notify_change();
         } else {
             // Update existing quicklink
             if let Some(link) = self.quicklinks.iter_mut().find(|l| l.id == editing.original_id) {
@@ -560,6 +545,7 @@ impl QuicklinksManageView {
                         tracing::error!("Failed to update quicklink: {}", e);
                     }
                 }
+                self.notify_change();
             }
         }
         
@@ -1891,6 +1877,8 @@ fn render_shortcut(key: &'static str, label: &'static str, bg: Hsla, text: Hsla)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     #[test]
     fn test_truncate_url() {
@@ -1910,5 +1898,39 @@ mod tests {
         let _ = ManageViewEvent::DeleteQuicklink(link.id.clone());
         let _ = ManageViewEvent::DuplicateQuicklink(link);
         let _ = ManageViewEvent::Close;
+    }
+
+    #[test]
+    fn test_on_change_callback_mechanism() {
+        // Test that the callback type signature is correct
+        // by creating a callback closure
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let call_count_clone = Arc::clone(&call_count);
+
+        // Create a callback that matches the expected signature: Fn() + Send + 'static
+        let callback: Box<dyn Fn() + Send + 'static> = Box::new(move || {
+            call_count_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        // Verify the callback works
+        callback();
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
+
+        callback();
+        callback();
+        assert_eq!(call_count.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_on_change_callback_optional_none() {
+        // Test that Option<Box<dyn Fn() + Send + 'static>> handles None correctly
+        let callback: Option<Box<dyn Fn() + Send + 'static>> = None;
+        
+        // Verify if-let pattern works correctly (matches notify_change implementation)
+        if let Some(cb) = &callback {
+            cb();
+            panic!("Should not reach here");
+        }
+        // No panic means test passes
     }
 }

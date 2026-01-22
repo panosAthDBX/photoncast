@@ -159,7 +159,12 @@ impl SystemCommand {
             CommandInfo {
                 command: Self::CreateQuicklink,
                 name: "Create Quicklink",
-                aliases: &["create quicklink", "new quicklink", "add quicklink", "quicklink"],
+                aliases: &[
+                    "create quicklink",
+                    "new quicklink",
+                    "add quicklink",
+                    "quicklink",
+                ],
                 description: "Create a new quicklink",
                 icon: "link",
                 requires_confirmation: false,
@@ -175,7 +180,11 @@ impl SystemCommand {
             CommandInfo {
                 command: Self::BrowseQuicklinkLibrary,
                 name: "Browse Quicklink Library",
-                aliases: &["quicklink library", "browse quicklinks", "quicklinks library"],
+                aliases: &[
+                    "quicklink library",
+                    "browse quicklinks",
+                    "quicklinks library",
+                ],
                 description: "Browse and add quicklinks from the library",
                 icon: "book",
                 requires_confirmation: false,
@@ -245,11 +254,18 @@ impl SystemCommand {
                 &["launch at login", "startup", "auto start", "login item"]
             },
             Self::Preferences => &["preferences", "settings", "config", "configure"],
-            Self::CreateQuicklink => &["create quicklink", "new quicklink", "add quicklink", "quicklink"],
+            Self::CreateQuicklink => &[
+                "create quicklink",
+                "new quicklink",
+                "add quicklink",
+                "quicklink",
+            ],
             Self::ManageQuicklinks => &["manage quicklinks", "edit quicklinks", "quicklinks"],
-            Self::BrowseQuicklinkLibrary => {
-                &["quicklink library", "browse quicklinks", "quicklinks library"]
-            },
+            Self::BrowseQuicklinkLibrary => &[
+                "quicklink library",
+                "browse quicklinks",
+                "quicklinks library",
+            ],
         }
     }
 

@@ -209,12 +209,35 @@ impl AutoQuitManager {
 
     /// Loads the manager from disk configuration.
     ///
+    /// This also initializes activity tracking for any enabled apps that are
+    /// currently running, so auto-quit works immediately after app restart.
+    ///
     /// # Errors
     ///
     /// Returns an error if the configuration cannot be loaded.
     pub fn load() -> Result<Self> {
         let config = AutoQuitConfig::load()?;
-        Ok(Self::new(config))
+        let mut manager = Self::new(config);
+        
+        // Initialize activity tracking for enabled apps that are currently running
+        // This ensures auto-quit works after app restart
+        if let Ok(running_apps) = crate::process::get_running_apps() {
+            let running_bundle_ids: std::collections::HashSet<String> = running_apps
+                .iter()
+                .filter_map(|app| app.bundle_id.as_ref().map(|id| id.to_lowercase()))
+                .collect();
+            
+            let now = Instant::now();
+            for (bundle_id, app_config) in &manager.config.apps {
+                if app_config.enabled && running_bundle_ids.contains(&bundle_id.to_lowercase()) {
+                    // App is enabled and running - start tracking it
+                    manager.activity_tracker.insert(bundle_id.clone(), now);
+                    tracing::debug!("Auto-quit: Initialized tracking for running app: {}", bundle_id);
+                }
+            }
+        }
+        
+        Ok(manager)
     }
 
     /// Saves the current configuration to disk.

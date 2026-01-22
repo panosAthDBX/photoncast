@@ -81,6 +81,12 @@ impl SearchEngine {
         self.providers.push(Arc::new(provider));
     }
 
+    /// Adds a search provider to the engine from an existing Arc.
+    /// This allows keeping a reference to the provider for cache invalidation.
+    pub fn add_provider_arc(&mut self, provider: Arc<impl SearchProvider + 'static>) {
+        self.providers.push(provider);
+    }
+
     /// Returns a reference to the configuration.
     #[must_use]
     pub fn config(&self) -> &SearchConfig {

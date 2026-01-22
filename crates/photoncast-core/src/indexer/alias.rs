@@ -166,11 +166,9 @@ fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
     let url = unsafe { NSURL::fileURLWithPath(&ns_path) };
 
     // Try to resolve as alias
-    // Options: NSURLBookmarkResolutionWithoutUI | NSURLBookmarkResolutionWithoutMounting
-    let options = NSURLBookmarkResolutionOptions(
-        NSURLBookmarkResolutionOptions::NSURLBookmarkResolutionWithoutUI.0
-            | NSURLBookmarkResolutionOptions::NSURLBookmarkResolutionWithoutMounting.0,
-    );
+    // Options: WithoutUI | WithoutMounting
+    let options = NSURLBookmarkResolutionOptions::WithoutUI
+        | NSURLBookmarkResolutionOptions::WithoutMounting;
 
     let resolved = unsafe { NSURL::URLByResolvingAliasFileAtURL_options_error(&url, options) };
 

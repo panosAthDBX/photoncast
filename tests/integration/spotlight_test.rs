@@ -502,3 +502,7 @@ fn test_usage_tracker_integration() {
     assert_eq!(frecency.frequency, 1);
     assert!(frecency.score() > 0.0);
 }
+
+// NOTE: Native Spotlight integration tests (objc2) are now in:
+// crates/photoncast-core/tests/spotlight_integration.rs
+// Run with: cargo test -p photoncast-core --test spotlight_integration

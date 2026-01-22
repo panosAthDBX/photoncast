@@ -271,12 +271,12 @@ impl AccessibilityManager {
     pub fn activate_app(&self, bundle_id: &str) -> Result<()> {
         use objc2_app_kit::NSWorkspace;
 
-        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+        let workspace = NSWorkspace::sharedWorkspace();
         let running_apps = unsafe { workspace.runningApplications() };
         let count = running_apps.len();
 
         for i in 0..count {
-            let app = &running_apps[i];
+            let app = unsafe { running_apps.objectAtIndex(i) };
             if let Some(app_bundle_id) = unsafe { app.bundleIdentifier() } {
                 if app_bundle_id.to_string() == bundle_id {
                     #[allow(deprecated)]
@@ -307,12 +307,12 @@ impl AccessibilityManager {
     pub fn activate_any_app_except(&self, except_bundle_id: &str) -> Result<String> {
         use objc2_app_kit::NSWorkspace;
 
-        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+        let workspace = NSWorkspace::sharedWorkspace();
         let running_apps = unsafe { workspace.runningApplications() };
         let count = running_apps.len();
 
         for i in 0..count {
-            let app = &running_apps[i];
+            let app = unsafe { running_apps.objectAtIndex(i) };
             // Skip hidden apps
             if unsafe { app.isHidden() } {
                 continue;
