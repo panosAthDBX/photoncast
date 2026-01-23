@@ -2789,6 +2789,12 @@ impl LauncherWindow {
                     v.query_changed = false;
                 });
                 
+                // If in browsing mode, don't trigger Spotlight search - browsing handles its own results
+                let is_browsing = view.read(cx).section_mode == crate::file_search_view::SectionMode::Browsing;
+                if is_browsing {
+                    return;
+                }
+                
                 // If query is empty, reload recent files (filtered if a filter is active)
                 if query_str.is_empty() {
                     cx.spawn(|_this, mut cx| async move {
