@@ -407,9 +407,8 @@ fn main() {
                                         previous_window_title.clone(),
                                     );
                                     view.toggle(cx);
-                                    // Don't call cx.activate(true) - PopUp windows don't need
-                                    // full app activation and it would pause media playback
-                                    cx.activate_window();
+                                    // For PopUp windows, don't activate the app or window
+                                    // Just focus the view - this prevents media from pausing
                                     cx.focus_self();
                                 })
                                 .is_ok()
