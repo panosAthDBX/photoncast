@@ -875,8 +875,7 @@ impl PredicateBuilder {
 
         // Combine with AND
         let array = NSArray::from_retained_slice(&predicates);
-        // SAFETY: andPredicateWithSubpredicates is safe to call with a valid array
-        let compound = unsafe { NSCompoundPredicate::andPredicateWithSubpredicates(&array) };
+        let compound = NSCompoundPredicate::andPredicateWithSubpredicates(&array);
 
         // Upcast NSCompoundPredicate to NSPredicate
         // NSCompoundPredicate is a subclass of NSPredicate
@@ -926,8 +925,7 @@ impl OrPredicateBuilder {
 
         // Combine with OR
         let array = NSArray::from_retained_slice(&predicates);
-        // SAFETY: orPredicateWithSubpredicates is safe to call with a valid array
-        let compound = unsafe { NSCompoundPredicate::orPredicateWithSubpredicates(&array) };
+        let compound = NSCompoundPredicate::orPredicateWithSubpredicates(&array);
 
         Retained::into_super(compound)
     }
@@ -945,6 +943,7 @@ fn create_predicate_from_format(format: &str) -> Retained<NSPredicate> {
     let format_str = NSString::from_str(format);
     // SAFETY: We're calling +[NSPredicate predicateWithFormat:] which is a standard
     // Foundation method. The format string must be valid predicate syntax.
+    #[allow(deprecated)]
     unsafe {
         let cls = class!(NSPredicate);
         msg_send_id![cls, predicateWithFormat: &*format_str]

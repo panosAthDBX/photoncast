@@ -45,6 +45,7 @@ pub const LIST_ITEM_HEIGHT: Pixels = px(56.0);
 pub const SECTION_HEADER_HEIGHT: Pixels = px(28.0);
 
 /// Height of footers.
+#[allow(dead_code)]
 pub const FOOTER_HEIGHT: Pixels = px(36.0);
 
 // =============================================================================

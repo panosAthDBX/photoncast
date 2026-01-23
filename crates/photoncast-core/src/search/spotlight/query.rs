@@ -158,6 +158,7 @@ impl MetadataQueryWrapper {
     /// This prioritizes recently accessed files, which is useful for file search
     /// where users typically want to find files they've worked with recently.
     pub fn sort_by_last_used(&mut self) -> &mut Self {
+        #[allow(deprecated)]
         unsafe {
             // Create NSSortDescriptor for kMDItemLastUsedDate, descending
             let key = NSString::from_str("kMDItemLastUsedDate");
@@ -179,6 +180,7 @@ impl MetadataQueryWrapper {
     ///
     /// Use this when you want to prioritize recently modified files over recently opened files.
     pub fn sort_by_modification_date(&mut self) -> &mut Self {
+        #[allow(deprecated)]
         unsafe {
             let key = NSString::from_str("kMDItemFSContentChangeDate");
             let cls = class!(NSSortDescriptor);
@@ -198,6 +200,7 @@ impl MetadataQueryWrapper {
     /// This uses Spotlight's built-in relevance ranking based on how well
     /// items match the search criteria.
     pub fn sort_by_relevance(&mut self) -> &mut Self {
+        #[allow(deprecated)]
         unsafe {
             // kMDQueryResultContentRelevance is the relevance score attribute
             let key = NSString::from_str("kMDQueryResultContentRelevance");
@@ -244,7 +247,7 @@ impl MetadataQueryWrapper {
         });
 
         // Register for the finish notification
-        let notification_center = unsafe { NSNotificationCenter::defaultCenter() };
+        let notification_center = NSNotificationCenter::defaultCenter();
         let observer = unsafe {
             notification_center.addObserverForName_object_queue_usingBlock(
                 Some(NSMetadataQueryDidFinishGatheringNotification),

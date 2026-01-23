@@ -282,8 +282,7 @@ impl MetadataExtractor {
     /// Returns `None` if the attribute is missing or not a string.
     #[must_use]
     pub fn get_string_attribute(item: &NSMetadataItem, key: &NSString) -> Option<String> {
-        // SAFETY: valueForAttribute is safe to call with any key
-        let value: Option<Retained<AnyObject>> = unsafe { item.valueForAttribute(key) };
+        let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value.and_then(|obj| {
             // Try to interpret as NSString
@@ -297,8 +296,8 @@ impl MetadataExtractor {
     /// Returns `None` if the attribute is missing or not a number.
     #[must_use]
     pub fn get_number_attribute(item: &NSMetadataItem, key: &NSString) -> Option<i64> {
-        // SAFETY: valueForAttribute is safe to call with any key
-        let value: Option<Retained<AnyObject>> = unsafe { item.valueForAttribute(key) };
+
+        let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value.and_then(|obj| {
             // Try to interpret as NSNumber
@@ -312,8 +311,8 @@ impl MetadataExtractor {
     /// Returns `None` if the attribute is missing or not a date.
     #[must_use]
     pub fn get_date_attribute(item: &NSMetadataItem, key: &NSString) -> Option<SystemTime> {
-        // SAFETY: valueForAttribute is safe to call with any key
-        let value: Option<Retained<AnyObject>> = unsafe { item.valueForAttribute(key) };
+
+        let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value.and_then(|obj| {
             // Try to interpret as NSDate
@@ -330,8 +329,8 @@ impl MetadataExtractor {
     /// Returns `None` if the attribute is missing or not a URL.
     #[must_use]
     pub fn get_url_attribute(item: &NSMetadataItem, key: &NSString) -> Option<PathBuf> {
-        // SAFETY: valueForAttribute is safe to call with any key
-        let value: Option<Retained<AnyObject>> = unsafe { item.valueForAttribute(key) };
+
+        let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value.and_then(|obj| {
             // Try to interpret as NSURL
@@ -348,8 +347,8 @@ impl MetadataExtractor {
     /// Returns an empty vector if the attribute is missing or not an array.
     #[must_use]
     pub fn get_string_array_attribute(item: &NSMetadataItem, key: &NSString) -> Vec<String> {
-        // SAFETY: valueForAttribute is safe to call with any key
-        let value: Option<Retained<AnyObject>> = unsafe { item.valueForAttribute(key) };
+
+        let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value
             .and_then(|obj| {

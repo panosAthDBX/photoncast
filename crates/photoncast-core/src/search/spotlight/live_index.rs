@@ -656,7 +656,7 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
     }
 
     // Get notification center
-    let notification_center = unsafe { NSNotificationCenter::defaultCenter() };
+    let notification_center = NSNotificationCenter::defaultCenter();
 
     // Clone inner for update callback
     let inner_for_update = Arc::clone(&inner);

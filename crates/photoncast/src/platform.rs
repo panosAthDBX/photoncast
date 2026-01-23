@@ -51,8 +51,7 @@ mod macos {
         );
 
         // Animate the resize
-        // SAFETY: The frame is valid and display/animate flags are booleans
-        unsafe { window.setFrame_display_animate(new_frame, true, true) };
+        window.setFrame_display_animate(new_frame, true, true);
     }
 
     /// Get the current window height
@@ -94,8 +93,7 @@ mod macos {
             );
 
             // Animate the resize
-            // SAFETY: The frame is valid and display/animate flags are booleans
-            unsafe { window.setFrame_display_animate(new_frame, true, true) };
+            window.setFrame_display_animate(new_frame, true, true);
         });
     }
 
@@ -111,15 +109,15 @@ mod macos {
         let ns_path = NSString::from_str(&path_str);
 
         // Get the shared workspace (requires main thread)
-        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-        let icon: Retained<NSImage> = unsafe { workspace.iconForFile(&ns_path) };
+        let workspace = NSWorkspace::sharedWorkspace();
+        let icon: Retained<NSImage> = workspace.iconForFile(&ns_path);
 
         // Set the icon size for rendering
         let target_size = NSSize::new(f64::from(size), f64::from(size));
-        unsafe { icon.setSize(target_size) };
+        icon.setSize(target_size);
 
         // Get TIFF representation from NSImage
-        let Some(tiff_data) = (unsafe { icon.TIFFRepresentation() }) else {
+        let Some(tiff_data) = icon.TIFFRepresentation() else {
             tracing::warn!(
                 "Failed to get TIFF representation for {}",
                 app_path.display()
@@ -179,13 +177,13 @@ mod macos {
         use objc2_app_kit::NSWorkspace;
         use objc2_foundation::NSString;
 
-        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+        let workspace = NSWorkspace::sharedWorkspace();
         let bundle_id_ns = NSString::from_str(bundle_id);
 
         let url: Option<Retained<objc2_foundation::NSURL>> =
-            unsafe { workspace.URLForApplicationWithBundleIdentifier(&bundle_id_ns) };
+            workspace.URLForApplicationWithBundleIdentifier(&bundle_id_ns);
 
-        url.and_then(|u| unsafe { u.path() })
+        url.and_then(|u| u.path())
             .map(|p| std::path::PathBuf::from(p.to_string()))
     }
 
@@ -474,18 +472,19 @@ mod macos {
         let mtm = unsafe { MainThreadMarker::new_unchecked() };
 
         // Get the system status bar
-        let status_bar = unsafe { NSStatusBar::systemStatusBar() };
+        let status_bar = NSStatusBar::systemStatusBar();
 
         // Create status item with variable length (NSVariableStatusItemLength = -1)
-        let status_item = unsafe { status_bar.statusItemWithLength(-1.0) };
+        let status_item = status_bar.statusItemWithLength(-1.0);
 
         // Set the button title to show an icon in the menu bar
         // Use objc2 msg_send! since button() isn't exposed in objc2-app-kit 0.2
+        #[allow(deprecated)]
         let button: Option<Retained<NSButton>> = unsafe { msg_send_id![&status_item, button] };
 
         if let Some(button) = button {
             let title = NSString::from_str("⚡");
-            unsafe { button.setTitle(&title) };
+            button.setTitle(&title);
         } else {
             warn!("Could not get status item button to set title");
         }
@@ -494,9 +493,10 @@ mod macos {
         let menu = create_status_menu(mtm);
 
         let target = mtm.alloc::<MenuBarTarget>().set_ivars(());
+        #[allow(deprecated)]
         let target: Retained<MenuBarTarget> = unsafe { msg_send_id![super(target), init] };
         for tag in [1, 2, 3] {
-            if let Some(item) = unsafe { menu.itemWithTag(tag) } {
+            if let Some(item) = menu.itemWithTag(tag) {
                 unsafe {
                     item.setTarget(Some(target.as_ref()));
                     item.setAction(Some(sel!(menuBarItemSelected:)));
@@ -508,7 +508,7 @@ mod macos {
             *cell.borrow_mut() = Some(target);
         });
 
-        unsafe { status_item.setMenu(Some(&menu)) };
+        status_item.setMenu(Some(&menu));
 
         // Store the status item in thread-local storage to keep it alive
         MENU_BAR_STATUS_ITEM.with(|cell| {
@@ -534,9 +534,9 @@ mod macos {
                 &open_key,
             )
         };
-        unsafe { open_item.setTag(1) };
+        open_item.setTag(1);
         // Disable the item since it doesn't have an action (shows greyed out with shortcut hint)
-        unsafe { open_item.setEnabled(false) };
+        open_item.setEnabled(false);
         menu.addItem(&open_item);
 
         // Separator
@@ -554,7 +554,7 @@ mod macos {
                 &prefs_key,
             )
         };
-        unsafe { prefs_item.setTag(2) };
+        prefs_item.setTag(2);
         menu.addItem(&prefs_item);
 
         // Separator
@@ -572,7 +572,7 @@ mod macos {
                 &quit_key,
             )
         };
-        unsafe { quit_item.setTag(3) };
+        quit_item.setTag(3);
         menu.addItem(&quit_item);
 
         menu
@@ -588,9 +588,8 @@ mod macos {
 
         MENU_BAR_STATUS_ITEM.with(|cell| {
             if let Some(status_item) = cell.borrow_mut().take() {
-                // SAFETY: Called from main thread
-                let status_bar = unsafe { NSStatusBar::systemStatusBar() };
-                unsafe { status_bar.removeStatusItem(&status_item) };
+                let status_bar = NSStatusBar::systemStatusBar();
+                status_bar.removeStatusItem(&status_item);
             }
         });
 

@@ -1077,12 +1077,12 @@ fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
     tracing::warn!("CGWindowList returned no windows, falling back to NSWorkspace");
     use objc2_app_kit::NSWorkspace;
     
-    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let app = match unsafe { workspace.frontmostApplication() } {
+    let workspace = NSWorkspace::sharedWorkspace();
+    let app = match workspace.frontmostApplication() {
         Some(a) => a,
         None => return (None, None),
     };
-    let bundle_id = unsafe { app.bundleIdentifier() }.map(|s| s.to_string());
+    let bundle_id = app.bundleIdentifier().map(|s| s.to_string());
     
     // Try to get the frontmost window title using Accessibility API
     let window_title = get_frontmost_window_title();
