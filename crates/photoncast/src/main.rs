@@ -407,7 +407,8 @@ fn main() {
                                         previous_window_title.clone(),
                                     );
                                     view.toggle(cx);
-                                    cx.activate(true);
+                                    // Don't call cx.activate(true) - PopUp windows don't need
+                                    // full app activation and it would pause media playback
                                     cx.activate_window();
                                     cx.focus_self();
                                 })
@@ -1205,7 +1206,9 @@ fn open_launcher_window(
             window_bounds: Some(WindowBounds::Windowed(calculate_window_bounds(cx))),
             focus: true,
             show: true,
-            kind: WindowKind::Normal,
+            // Use PopUp to create an NSPanel that doesn't fully activate the app
+            // This prevents media playback from pausing when the launcher is shown
+            kind: WindowKind::PopUp,
             is_movable: false,
             display_id: cx.displays().first().map(|d| d.id()),
             window_background: WindowBackgroundAppearance::Blurred,
@@ -1214,7 +1217,8 @@ fn open_launcher_window(
             window_decorations: Some(WindowDecorations::Client),
         },
         |cx| {
-            cx.activate(true);
+            // Don't call cx.activate(true) - PopUp windows don't need full app activation
+            // and doing so would pause media playback in other apps
             cx.new_view(|cx| LauncherWindow::new(cx, &launcher_state))
         },
     ) {
