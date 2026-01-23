@@ -2,7 +2,7 @@
 
 > **Spec:** `/droidz/specs/2026-01-23-native-extension-system/spec.md`  
 > **Created:** 2026-01-23  
-> **Total Tasks:** 62
+> **Total Tasks:** 68
 
 ---
 
@@ -742,3 +742,112 @@
   - Threshold check (<250ms) reported
   - Benchmarks run deterministically
 - **Complexity**: Small
+
+---
+
+## Task Group 11: Phase 3 Preparation (Raycast Compatibility)
+
+> These tasks prepare the codebase for future Raycast extension compatibility (Phase 3).
+> See spec section 14 for full Phase 3 planning details.
+
+### Task 11.1: Add Serialize/Deserialize to all view types
+- **Description**: Add `#[derive(Serialize, Deserialize)]` to all extension view and action types for JSON-RPC transport.
+- **Dependencies**: Tasks 1.3, 1.4, 1.5, 6.10
+- **Acceptance Criteria**:
+  - `ExtensionView`, `ListView`, `DetailView`, `FormView`, `GridView` are serializable
+  - `ListItem`, `Action`, `ActionHandler`, `Preview`, `Accessory` are serializable
+  - `IconSource`, `ImageSource`, `TagColor` are serializable
+  - All types round-trip through JSON without data loss
+  - Unit tests verify serialization/deserialization
+- **Complexity**: Medium
+
+### Task 11.2: Define ExtensionHostProtocol trait
+- **Description**: Create an abstract protocol trait that both native extensions and future Node.js sidecar can implement.
+- **Dependencies**: Tasks 1.2, 5.1
+- **Acceptance Criteria**:
+  - Trait defines all host service methods (render, toast, clipboard, open, etc.)
+  - Trait is `Send + Sync` for thread safety
+  - Native implementation wraps existing `ExtensionHost`
+  - Protocol is documented with method contracts
+- **Complexity**: Medium
+
+```rust
+pub trait ExtensionHostProtocol: Send + Sync {
+    fn render_view(&self, view: ExtensionView) -> Result<ViewHandle>;
+    fn update_view(&self, handle: ViewHandle, patch: ViewPatch) -> Result<()>;
+    fn show_toast(&self, toast: Toast) -> Result<()>;
+    fn show_hud(&self, message: &str) -> Result<()>;
+    fn copy_to_clipboard(&self, text: &str) -> Result<()>;
+    fn read_clipboard(&self) -> Result<Option<String>>;
+    fn open_url(&self, url: &str) -> Result<()>;
+    fn open_file(&self, path: &Path) -> Result<()>;
+    fn reveal_in_finder(&self, path: &Path) -> Result<()>;
+    fn get_preferences(&self) -> Result<PreferenceValues>;
+    fn get_storage(&self) -> Result<&dyn ExtensionStorage>;
+    fn launch_command(&self, extension_id: &str, command_id: &str) -> Result<()>;
+    fn get_frontmost_application(&self) -> Result<Option<ApplicationInfo>>;
+}
+```
+
+### Task 11.3: Implement showHUD host service
+- **Description**: Add minimal HUD overlay that displays a brief message and auto-dismisses.
+- **Dependencies**: Task 5.1
+- **Acceptance Criteria**:
+  - `show_hud(message)` displays centered overlay text
+  - HUD auto-dismisses after 1.5 seconds
+  - HUD does not block user interaction
+  - HUD uses consistent styling (semi-transparent background, system font)
+  - Multiple rapid calls replace previous HUD
+- **Complexity**: Medium
+
+### Task 11.4: Implement Cache API for extensions
+- **Description**: Add in-memory and disk cache API for extensions to store temporary data.
+- **Dependencies**: Tasks 1.6, 5.2
+- **Acceptance Criteria**:
+  - `Cache` struct with `get`, `set`, `remove`, `clear` methods
+  - Supports optional TTL (time-to-live) per entry
+  - In-memory cache with configurable max size
+  - Disk persistence for cache entries (optional, per-key flag)
+  - Cache is namespaced by extension ID
+  - Cache directory is in extension's cache folder
+- **Complexity**: Medium
+
+```rust
+pub struct Cache {
+    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T>;
+    pub fn set<T: Serialize>(&self, key: &str, value: &T, ttl: Option<Duration>);
+    pub fn remove(&self, key: &str);
+    pub fn clear(&self);
+    pub fn has(&self, key: &str) -> bool;
+}
+```
+
+### Task 11.5: Implement launchCommand for cross-extension invocation
+- **Description**: Allow extensions to invoke commands from other extensions.
+- **Dependencies**: Tasks 4.3, 6.4
+- **Acceptance Criteria**:
+  - `launch_command(extension_id, command_id)` triggers command execution
+  - Target extension is loaded/activated if not already
+  - Arguments can be passed to target command
+  - Caller receives result or error
+  - Circular invocation is detected and prevented
+  - Permission check ensures target extension allows invocation
+- **Complexity**: Medium
+
+### Task 11.6: Implement getFrontmostApplication
+- **Description**: Add host service to get information about the frontmost macOS application.
+- **Dependencies**: Task 5.1
+- **Acceptance Criteria**:
+  - Returns `ApplicationInfo` with name, bundle ID, path
+  - Uses macOS accessibility or NSWorkspace APIs
+  - Returns `None` if no frontmost app (e.g., desktop focused)
+  - Does not require accessibility permissions for basic info
+- **Complexity**: Small
+
+```rust
+pub struct ApplicationInfo {
+    pub name: String,
+    pub bundle_id: Option<String>,
+    pub path: PathBuf,
+}
+```
