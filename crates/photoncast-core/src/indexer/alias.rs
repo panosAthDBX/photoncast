@@ -163,19 +163,19 @@ fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
     let ns_path = NSString::from_str(&path_str);
 
     // Create file URL
-    let url = unsafe { NSURL::fileURLWithPath(&ns_path) };
+    let url = NSURL::fileURLWithPath(&ns_path);
 
     // Try to resolve as alias
     // Options: WithoutUI | WithoutMounting
     let options = NSURLBookmarkResolutionOptions::WithoutUI
         | NSURLBookmarkResolutionOptions::WithoutMounting;
 
-    let resolved = unsafe { NSURL::URLByResolvingAliasFileAtURL_options_error(&url, options) };
+    let resolved = NSURL::URLByResolvingAliasFileAtURL_options_error(&url, options);
 
     match resolved {
         Ok(resolved_url) => {
             // Get the path from the resolved URL
-            let resolved_path = unsafe { resolved_url.path() };
+            let resolved_path = resolved_url.path();
             resolved_path.and_then(|p| {
                 let resolved = PathBuf::from(p.to_string());
                 // Only consider it an alias if the resolved path is different from the original.

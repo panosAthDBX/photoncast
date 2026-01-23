@@ -145,14 +145,14 @@ fn move_to_trash(path: &Path) -> Result<()> {
     // Convert path to NSURL
     let path_str = path.to_string_lossy();
     let ns_path = NSString::from_str(&path_str);
-    let url = unsafe { NSURL::fileURLWithPath(&ns_path) };
+    let url = NSURL::fileURLWithPath(&ns_path);
 
     // Get the default file manager
-    let file_manager = unsafe { NSFileManager::defaultManager() };
+    let file_manager = NSFileManager::defaultManager();
 
     // Use trashItemAtURL to move to Trash
     // This returns the new URL in Trash if successful
-    let result = unsafe { file_manager.trashItemAtURL_resultingItemURL_error(&url, None) };
+    let result = file_manager.trashItemAtURL_resultingItemURL_error(&url, None);
 
     match result {
         Ok(()) => {

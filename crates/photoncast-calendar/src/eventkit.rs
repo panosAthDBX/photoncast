@@ -167,8 +167,8 @@ impl EventKitManager {
         #[allow(clippy::cast_precision_loss)]
         let end_timestamp = end.timestamp() as f64;
 
-        let start_date = unsafe { NSDate::dateWithTimeIntervalSince1970(start_timestamp) };
-        let end_date = unsafe { NSDate::dateWithTimeIntervalSince1970(end_timestamp) };
+        let start_date = NSDate::dateWithTimeIntervalSince1970(start_timestamp);
+        let end_date = NSDate::dateWithTimeIntervalSince1970(end_timestamp);
 
         // Create predicate for the date range
         let predicate = unsafe {
@@ -182,7 +182,7 @@ impl EventKitManager {
         let mut result = Vec::new();
         let count = events.count();
         for i in 0..count {
-            let event = unsafe { events.objectAtIndex(i) };
+            let event = events.objectAtIndex(i);
             if let Some(calendar_event) = Self::convert_event(&event) {
                 result.push(calendar_event);
             }
@@ -237,8 +237,8 @@ impl EventKitManager {
         let start_date = unsafe { event.startDate() };
         let end_date = unsafe { event.endDate() };
 
-        let start_timestamp = unsafe { start_date.timeIntervalSince1970() };
-        let end_timestamp = unsafe { end_date.timeIntervalSince1970() };
+        let start_timestamp = start_date.timeIntervalSince1970();
+        let end_timestamp = end_date.timeIntervalSince1970();
 
         #[allow(clippy::cast_possible_truncation)]
         let start = Local
@@ -262,7 +262,7 @@ impl EventKitManager {
 
         // Get URL
         let url = unsafe { event.URL() }
-            .and_then(|u| unsafe { u.absoluteString() })
+            .and_then(|u| u.absoluteString())
             .map(|s| s.to_string());
 
         // Detect conference URL from location and notes

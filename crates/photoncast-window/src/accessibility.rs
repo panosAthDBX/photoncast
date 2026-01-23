@@ -244,16 +244,16 @@ impl AccessibilityManager {
         use objc2_app_kit::NSWorkspace;
 
         // NSWorkspace doesn't require accessibility permission
-        let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-        let app = unsafe { workspace.frontmostApplication() }.ok_or_else(|| {
+        let workspace = NSWorkspace::sharedWorkspace();
+        let app = workspace.frontmostApplication().ok_or_else(|| {
             tracing::debug!("NSWorkspace.frontmostApplication() returned None");
             WindowError::WindowNotFound
         })?;
         
-        let name = unsafe { app.localizedName() }
+        let name = app.localizedName()
             .map_or_else(|| "<no name>".to_string(), |n| n.to_string());
         
-        if let Some(bundle_id) = unsafe { app.bundleIdentifier() } {
+        if let Some(bundle_id) = app.bundleIdentifier() {
             return Ok(bundle_id.to_string());
         }
         
@@ -272,17 +272,16 @@ impl AccessibilityManager {
         use objc2_app_kit::NSWorkspace;
 
         let workspace = NSWorkspace::sharedWorkspace();
-        let running_apps = unsafe { workspace.runningApplications() };
+        let running_apps = workspace.runningApplications();
         let count = running_apps.len();
 
         for i in 0..count {
-            let app = unsafe { running_apps.objectAtIndex(i) };
-            if let Some(app_bundle_id) = unsafe { app.bundleIdentifier() } {
+            let app = running_apps.objectAtIndex(i);
+            if let Some(app_bundle_id) = app.bundleIdentifier() {
                 if app_bundle_id.to_string() == bundle_id {
                     #[allow(deprecated)]
-                    let activated = unsafe { 
-                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty()) 
-                    };
+                    let activated = 
+                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty());
                     if activated {
                         tracing::debug!("Activated app: {}", bundle_id);
                         return Ok(());
@@ -308,28 +307,27 @@ impl AccessibilityManager {
         use objc2_app_kit::NSWorkspace;
 
         let workspace = NSWorkspace::sharedWorkspace();
-        let running_apps = unsafe { workspace.runningApplications() };
+        let running_apps = workspace.runningApplications();
         let count = running_apps.len();
 
         for i in 0..count {
-            let app = unsafe { running_apps.objectAtIndex(i) };
+            let app = running_apps.objectAtIndex(i);
             // Skip hidden apps
-            if unsafe { app.isHidden() } {
+            if app.isHidden() {
                 continue;
             }
             // Skip apps without windows (activation policy != regular)
             // NSApplicationActivationPolicyRegular = 0
-            if unsafe { app.activationPolicy() } != objc2_app_kit::NSApplicationActivationPolicy::Regular {
+            if app.activationPolicy() != objc2_app_kit::NSApplicationActivationPolicy::Regular {
                 continue;
             }
 
-            if let Some(app_bundle_id) = unsafe { app.bundleIdentifier() } {
+            if let Some(app_bundle_id) = app.bundleIdentifier() {
                 let bundle_str = app_bundle_id.to_string();
                 if bundle_str != except_bundle_id && !bundle_str.contains("photoncast") {
                     #[allow(deprecated)]
-                    let activated = unsafe { 
-                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty()) 
-                    };
+                    let activated = 
+                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty());
                     if activated {
                         tracing::debug!("Activated app: {}", bundle_str);
                         return Ok(bundle_str);
@@ -1049,9 +1047,9 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
 pub fn get_bundle_id_for_pid(pid: i32) -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
     
-    let app = unsafe { NSRunningApplication::runningApplicationWithProcessIdentifier(pid) };
+    let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
     
-    app.and_then(|a| unsafe { a.bundleIdentifier() }.map(|s| s.to_string()))
+    app.and_then(|a| a.bundleIdentifier().map(|s| s.to_string()))
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -230,8 +230,8 @@ impl ClipboardMonitor {
         use objc2_app_kit::NSPasteboard;
 
         // Get pasteboard
-        let pasteboard = unsafe { NSPasteboard::generalPasteboard() };
-        let types = unsafe { pasteboard.types() };
+        let pasteboard = NSPasteboard::generalPasteboard();
+        let types = pasteboard.types();
 
         let Some(types) = types else {
             return Err(ClipboardError::clipboard_access("No types available"));
@@ -423,8 +423,8 @@ impl ClipboardMonitor {
 fn get_pasteboard_change_count() -> i64 {
     use objc2_app_kit::NSPasteboard;
 
-    let pasteboard = unsafe { NSPasteboard::generalPasteboard() };
-    (unsafe { pasteboard.changeCount() }) as i64
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.changeCount() as i64
 }
 
 /// Checks if the pasteboard content is transient.
@@ -432,14 +432,14 @@ fn get_pasteboard_change_count() -> i64 {
 fn is_transient_content() -> bool {
     use objc2_app_kit::NSPasteboard;
 
-    let pasteboard = unsafe { NSPasteboard::generalPasteboard() };
-    let types = unsafe { pasteboard.types() };
+    let pasteboard = NSPasteboard::generalPasteboard();
+    let types = pasteboard.types();
 
     if let Some(types) = types {
         // Check for transient type
         let transient_type = "org.nspasteboard.TransientType";
         for i in 0..types.count() {
-            let t = unsafe { types.objectAtIndex(i) };
+            let t = types.objectAtIndex(i);
             if t.to_string() == transient_type {
                 return true;
             }
@@ -455,15 +455,15 @@ fn get_source_app_info() -> (Option<String>, Option<String>) {
     use objc2_app_kit::NSWorkspace;
 
     // Get frontmost application
-    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let app = unsafe { workspace.frontmostApplication() };
+    let workspace = NSWorkspace::sharedWorkspace();
+    let app = workspace.frontmostApplication();
 
     let Some(app) = app else {
         return (None, None);
     };
 
-    let name = unsafe { app.localizedName() }.map(|n| n.to_string());
-    let bundle_id = unsafe { app.bundleIdentifier() }.map(|b| b.to_string());
+    let name = app.localizedName().map(|n| n.to_string());
+    let bundle_id = app.bundleIdentifier().map(|b| b.to_string());
     (name, bundle_id)
 }
 
@@ -474,7 +474,7 @@ fn has_type(
     type_name: &str,
 ) -> bool {
     for i in 0..types.count() {
-        let t = unsafe { types.objectAtIndex(i) };
+        let t = types.objectAtIndex(i);
         if t.to_string().contains(type_name) {
             return true;
         }

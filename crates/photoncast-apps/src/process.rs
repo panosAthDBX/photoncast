@@ -19,26 +19,26 @@ pub fn get_running_apps() -> Result<Vec<RunningApp>> {
 
     tracing::debug!("Enumerating running applications");
 
-    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let apps = unsafe { workspace.runningApplications() };
+    let workspace = NSWorkspace::sharedWorkspace();
+    let apps = workspace.runningApplications();
 
     let mut result = Vec::new();
     let count = apps.count();
     for i in 0..count {
-        let app = unsafe { apps.objectAtIndex(i) };
+        let app = apps.objectAtIndex(i);
 
         #[allow(clippy::cast_sign_loss)]
-        let pid = unsafe { app.processIdentifier() } as u32;
+        let pid = app.processIdentifier() as u32;
 
-        let name = unsafe { app.localizedName() }.map_or_else(
+        let name = app.localizedName().map_or_else(
             || format!("Process {}", pid),
             |s: objc2::rc::Retained<NSString>| s.to_string(),
         );
 
         let bundle_id =
-            unsafe { app.bundleIdentifier() }.map(|s: objc2::rc::Retained<NSString>| s.to_string());
+            app.bundleIdentifier().map(|s: objc2::rc::Retained<NSString>| s.to_string());
 
-        let is_responding = !unsafe { app.isTerminated() };
+        let is_responding = !app.isTerminated();
 
         result.push(RunningApp {
             pid,
@@ -74,25 +74,25 @@ pub fn get_running_apps() -> Result<Vec<RunningApp>> {
 pub fn get_running_apps_detailed() -> Result<Vec<RunningApplication>> {
     tracing::debug!("Enumerating running applications with detailed info");
 
-    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let apps = unsafe { workspace.runningApplications() };
+    let workspace = NSWorkspace::sharedWorkspace();
+    let apps = workspace.runningApplications();
 
     let mut result = Vec::new();
     let count = apps.count();
     for i in 0..count {
-        let app = unsafe { apps.objectAtIndex(i) };
+        let app = apps.objectAtIndex(i);
 
         // Skip apps without bundle IDs (system processes, etc.)
-        let Some(bundle_id_ns) = (unsafe { app.bundleIdentifier() }) else {
+        let Some(bundle_id_ns) = app.bundleIdentifier() else {
             continue;
         };
         let bundle_id = bundle_id_ns.to_string();
 
         #[allow(clippy::cast_sign_loss)]
-        let pid = unsafe { app.processIdentifier() } as u32;
+        let pid = app.processIdentifier() as u32;
 
         // Get is_hidden directly from NSRunningApplication
-        let is_hidden = unsafe { app.isHidden() };
+        let is_hidden = app.isHidden();
 
         // Get launch time from NSRunningApplication.launchDate
         let launch_time = get_app_launch_time(&app);
@@ -118,12 +118,12 @@ pub fn get_running_apps_detailed() -> Result<Vec<RunningApplication>> {
 #[cfg(target_os = "macos")]
 fn get_app_launch_time(app: &NSRunningApplication) -> DateTime<Utc> {
     // Try to get launch date from NSRunningApplication
-    let launch_date = unsafe { app.launchDate() };
+    let launch_date = app.launchDate();
 
     match launch_date {
         Some(date) => {
             // NSDate.timeIntervalSince1970 returns seconds since Unix epoch
-            let timestamp = unsafe { date.timeIntervalSince1970() };
+            let timestamp = date.timeIntervalSince1970();
             #[allow(clippy::cast_possible_truncation)]
             let secs = timestamp as i64;
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
@@ -154,9 +154,9 @@ pub fn get_running_apps_detailed() -> Result<Vec<RunningApplication>> {
 #[cfg(target_os = "macos")]
 #[must_use]
 pub fn get_frontmost_app_bundle_id() -> Option<String> {
-    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let app = unsafe { workspace.frontmostApplication() }?;
-    let bundle_id = unsafe { app.bundleIdentifier() }?;
+    let workspace = NSWorkspace::sharedWorkspace();
+    let app = workspace.frontmostApplication()?;
+    let bundle_id = app.bundleIdentifier()?;
     Some(bundle_id.to_string())
 }
 
@@ -180,7 +180,7 @@ pub fn quit_app(pid: u32) -> Result<()> {
     #[allow(clippy::cast_possible_wrap)]
     let pid_i32 = pid as i32;
 
-    let app = unsafe { NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32) };
+    let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32);
 
     app.map_or_else(
         || {
@@ -190,7 +190,7 @@ pub fn quit_app(pid: u32) -> Result<()> {
             )))
         },
         |app| {
-            let success = unsafe { app.terminate() };
+            let success = app.terminate();
             if success {
                 tracing::info!("Successfully sent terminate request to PID {}", pid);
                 Ok(())
@@ -241,7 +241,7 @@ pub fn force_quit_app(pid: u32) -> Result<()> {
     #[allow(clippy::cast_possible_wrap)]
     let pid_i32 = pid as i32;
 
-    let app = unsafe { NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32) };
+    let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32);
 
     app.map_or_else(
         || {
@@ -250,7 +250,7 @@ pub fn force_quit_app(pid: u32) -> Result<()> {
             send_sigkill(pid)
         },
         |app| {
-            let success = unsafe { app.forceTerminate() };
+            let success = app.forceTerminate();
             if success {
                 tracing::info!("Successfully force terminated PID {}", pid);
                 Ok(())
@@ -299,7 +299,7 @@ pub fn is_app_responding(pid: i32) -> bool {
     tracing::debug!("Checking if PID {} is responding", pid);
 
     // First check if the process exists via NSRunningApplication
-    let app = unsafe { NSRunningApplication::runningApplicationWithProcessIdentifier(pid) };
+    let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
 
     let Some(app) = app else {
         tracing::debug!("PID {} not found in NSRunningApplication", pid);
@@ -307,7 +307,7 @@ pub fn is_app_responding(pid: i32) -> bool {
     };
 
     // If the app is terminated, it's not responding
-    if unsafe { app.isTerminated() } {
+    if app.isTerminated() {
         return false;
     }
 
@@ -419,16 +419,16 @@ pub fn is_app_responding(pid: i32) -> bool {
 pub fn is_app_running(bundle_id: &str) -> bool {
     tracing::debug!("Checking if app with bundle ID '{}' is running", bundle_id);
 
-    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let apps = unsafe { workspace.runningApplications() };
+    let workspace = NSWorkspace::sharedWorkspace();
+    let apps = workspace.runningApplications();
 
     let bundle_id_lower = bundle_id.to_lowercase();
     let count = apps.count();
 
     for i in 0..count {
-        let app = unsafe { apps.objectAtIndex(i) };
+        let app = apps.objectAtIndex(i);
 
-        if let Some(app_bundle_id) = unsafe { app.bundleIdentifier() } {
+        if let Some(app_bundle_id) = app.bundleIdentifier() {
             let app_bundle_id_str = app_bundle_id.to_string();
             if app_bundle_id_str.to_lowercase() == bundle_id_lower {
                 tracing::debug!("Found running app with bundle ID '{}'", bundle_id);
@@ -474,7 +474,7 @@ pub fn quit_app_with_timeout(pid: i32) -> ActionResult<bool> {
 
     tracing::info!("Sending quit request to PID {} with {}s timeout", pid, QUIT_TIMEOUT_SECS);
 
-    let app = unsafe { NSRunningApplication::runningApplicationWithProcessIdentifier(pid) };
+    let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
 
     let Some(app) = app else {
         return Err(ActionError::Process(format!(
@@ -484,7 +484,7 @@ pub fn quit_app_with_timeout(pid: i32) -> ActionResult<bool> {
     };
 
     // Send terminate request
-    let success = unsafe { app.terminate() };
+    let success = app.terminate();
     if !success {
         return Err(ActionError::OperationFailed {
             operation: "quit".to_string(),
@@ -500,7 +500,7 @@ pub fn quit_app_with_timeout(pid: i32) -> ActionResult<bool> {
     let poll_interval = Duration::from_millis(100);
 
     while start.elapsed() < timeout {
-        if unsafe { app.isTerminated() } {
+        if app.isTerminated() {
             tracing::info!("PID {} quit successfully in {:?}", pid, start.elapsed());
             return Ok(true);
         }
@@ -598,19 +598,19 @@ pub fn should_confirm_force_quit(pid: i32) -> bool {
 pub fn quit_app_by_bundle_id(bundle_id: &str) -> ActionResult<bool> {
     tracing::info!("Attempting to quit app with bundle ID: {}", bundle_id);
 
-    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-    let apps = unsafe { workspace.runningApplications() };
+    let workspace = NSWorkspace::sharedWorkspace();
+    let apps = workspace.runningApplications();
 
     let bundle_id_lower = bundle_id.to_lowercase();
     let count = apps.count();
 
     for i in 0..count {
-        let app = unsafe { apps.objectAtIndex(i) };
+        let app = apps.objectAtIndex(i);
 
-        if let Some(app_bundle_id) = unsafe { app.bundleIdentifier() } {
+        if let Some(app_bundle_id) = app.bundleIdentifier() {
             let app_bundle_id_str = app_bundle_id.to_string();
             if app_bundle_id_str.to_lowercase() == bundle_id_lower {
-                let pid = unsafe { app.processIdentifier() };
+                let pid = app.processIdentifier();
                 tracing::debug!("Found running app '{}' with PID {}", bundle_id, pid);
                 return quit_app_with_timeout(pid);
             }
@@ -646,10 +646,10 @@ pub fn quit_app_by_bundle_id(bundle_id: &str) -> ActionResult<bool> {
 pub fn force_quit_app_action(pid: i32) -> ActionResult<()> {
     tracing::info!("Force quitting PID {}", pid);
 
-    let app = unsafe { NSRunningApplication::runningApplicationWithProcessIdentifier(pid) };
+    let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
 
     if let Some(app) = app {
-        let success = unsafe { app.forceTerminate() };
+        let success = app.forceTerminate();
         if success {
             tracing::info!("Successfully force terminated PID {}", pid);
             Ok(())
