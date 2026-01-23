@@ -75,6 +75,8 @@ pub struct ClipboardHistoryView {
     recent_items: Vec<ClipboardItem>,
     /// Current search query.
     search_query: String,
+    /// Cursor position in search query.
+    search_cursor: usize,
     /// Currently selected index.
     selected_index: usize,
     /// Scroll handle for keyboard navigation.
@@ -109,6 +111,7 @@ impl ClipboardHistoryView {
             pinned_items: Vec::new(),
             recent_items: Vec::new(),
             search_query: String::new(),
+            search_cursor: 0,
             selected_index: 0,
             scroll_handle: gpui::ScrollHandle::new(),
             focus_handle,
@@ -215,6 +218,7 @@ impl ClipboardHistoryView {
     /// Clears the search and reloads items.
     pub fn clear_search(&mut self, cx: &mut ViewContext<Self>) {
         self.search_query.clear();
+        self.search_cursor = 0;
         self.is_searching = false;
         self.pending_search.take();
         self.load_items(cx);
@@ -369,8 +373,21 @@ impl ClipboardHistoryView {
     /// Renders the search bar.
     fn render_search_bar(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = get_clipboard_colors(cx);
+        let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
+        let accent = theme.colors.accent.to_gpui();
         let query = self.search_query.clone();
         let is_searching = self.is_searching;
+        let has_query = !query.is_empty();
+
+        // Block cursor dimensions (matches launcher)
+        let cursor_width = px(9.0);
+        let cursor_height = px(20.0);
+
+        // Split text at cursor position
+        let chars: Vec<char> = query.chars().collect();
+        let cursor_pos = self.search_cursor.min(chars.len());
+        let before: String = chars[..cursor_pos].iter().collect();
+        let after: String = chars[cursor_pos..].iter().collect();
 
         div()
             .px(rems(0.75))
@@ -394,15 +411,34 @@ impl ClipboardHistoryView {
                             .id("search-input")
                             .flex_1()
                             .text_sm()
-                            .text_color(if query.is_empty() {
-                                colors.overlay0
-                            } else {
-                                colors.text
+                            .flex()
+                            .items_center()
+                            .when(!has_query, |el| {
+                                // Empty field: cursor then placeholder
+                                el.child(
+                                    div()
+                                        .w(cursor_width)
+                                        .h(cursor_height)
+                                        .bg(accent)
+                                        .rounded(px(2.0)),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(colors.overlay0)
+                                        .child("Search clipboard history..."),
+                                )
                             })
-                            .child(if query.is_empty() {
-                                "Search clipboard history...".to_string()
-                            } else {
-                                query
+                            .when(has_query, |el| {
+                                el.text_color(colors.text)
+                                    .when(!before.is_empty(), |el| el.child(before.clone()))
+                                    .child(
+                                        div()
+                                            .w(cursor_width)
+                                            .h(cursor_height)
+                                            .bg(accent)
+                                            .rounded(px(2.0)),
+                                    )
+                                    .when(!after.is_empty(), |el| el.child(after.clone()))
                             }),
                     )
                     .when(is_searching, |el| {
@@ -961,15 +997,18 @@ impl ClipboardHistoryView {
 
     /// Handles key down events.
     fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
-        match event.keystroke.key.as_str() {
+        let key = event.keystroke.key.as_str();
+
+        // Arrow navigation for list items (up/down)
+        match key {
             "down" => {
                 self.select_next(cx);
                 return;
-            },
+            }
             "up" => {
                 self.select_previous(cx);
                 return;
-            },
+            }
             "enter" => {
                 if self.default_action_paste {
                     self.paste_selected(cx);
@@ -977,7 +1016,7 @@ impl ClipboardHistoryView {
                     self.copy_selected(cx);
                 }
                 return;
-            },
+            }
             "escape" => {
                 if self.show_clear_confirmation {
                     self.show_clear_confirmation = false;
@@ -988,12 +1027,51 @@ impl ClipboardHistoryView {
                     cx.remove_window();
                 }
                 return;
-            },
+            }
+            _ => {}
+        }
+
+        // Cursor movement for search (left/right)
+        let len = self.search_query.chars().count();
+        match key {
+            "left" => {
+                if event.keystroke.modifiers.platform {
+                    self.search_cursor = 0;
+                } else if self.search_cursor > 0 {
+                    self.search_cursor -= 1;
+                }
+                cx.notify();
+                return;
+            }
+            "right" => {
+                if event.keystroke.modifiers.platform {
+                    self.search_cursor = len;
+                } else if self.search_cursor < len {
+                    self.search_cursor += 1;
+                }
+                cx.notify();
+                return;
+            }
             "backspace" => {
-                if !self.search_query.is_empty() {
+                if event.keystroke.modifiers.platform {
+                    // Delete everything before cursor
+                    if self.search_cursor > 0 {
+                        let chars: Vec<char> = self.search_query.chars().collect();
+                        let new_query: String = chars[self.search_cursor..].iter().collect();
+                        self.search_cursor = 0;
+                        if new_query.is_empty() {
+                            self.clear_search(cx);
+                        } else {
+                            self.search(new_query, cx);
+                        }
+                        cx.notify();
+                    }
+                } else if self.search_cursor > 0 {
+                    // Delete char before cursor
                     let mut chars: Vec<char> = self.search_query.chars().collect();
-                    chars.pop();
-                    let new_query = chars.into_iter().collect::<String>();
+                    chars.remove(self.search_cursor - 1);
+                    self.search_cursor -= 1;
+                    let new_query: String = chars.into_iter().collect();
                     if new_query.is_empty() {
                         self.clear_search(cx);
                     } else {
@@ -1002,8 +1080,22 @@ impl ClipboardHistoryView {
                     cx.notify();
                 }
                 return;
-            },
-            _ => {},
+            }
+            _ => {}
+        }
+
+        // Handle Cmd+V paste
+        if event.keystroke.modifiers.platform && key == "v" {
+            if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                let chars: Vec<char> = self.search_query.chars().collect();
+                let before: String = chars[..self.search_cursor].iter().collect();
+                let after: String = chars[self.search_cursor..].iter().collect();
+                let new_query = format!("{}{}{}", before, text, after);
+                self.search_cursor += text.chars().count();
+                self.search(new_query, cx);
+                cx.notify();
+            }
+            return;
         }
 
         if event.keystroke.modifiers.platform
@@ -1013,19 +1105,26 @@ impl ClipboardHistoryView {
             return;
         }
 
-        if let Some(ime_key) = &event.keystroke.ime_key {
-            let new_query = format!("{}{}", self.search_query, ime_key);
-            self.search(new_query, cx);
+        // Insert text at cursor position
+        let insert_text = |this: &mut Self, text: String, cx: &mut ViewContext<Self>| {
+            let chars: Vec<char> = this.search_query.chars().collect();
+            let before: String = chars[..this.search_cursor].iter().collect();
+            let after: String = chars[this.search_cursor..].iter().collect();
+            let new_query = format!("{}{}{}", before, text, after);
+            this.search_cursor += text.chars().count();
+            this.search(new_query, cx);
             cx.notify();
+        };
+
+        if let Some(ime_key) = &event.keystroke.ime_key {
+            insert_text(self, ime_key.clone(), cx);
         } else if event.keystroke.key.len() == 1 {
             let key = if event.keystroke.modifiers.shift {
                 event.keystroke.key.to_uppercase()
             } else {
                 event.keystroke.key.clone()
             };
-            let new_query = format!("{}{}", self.search_query, key);
-            self.search(new_query, cx);
-            cx.notify();
+            insert_text(self, key, cx);
         }
     }
 }

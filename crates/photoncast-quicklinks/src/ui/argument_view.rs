@@ -36,6 +36,8 @@ struct ArgumentField {
     info: ArgumentInfo,
     /// Current value entered by the user.
     value: String,
+    /// Cursor position in the value.
+    cursor: usize,
     /// Validation error message (if any).
     error: Option<String>,
     /// Currently selected dropdown index (for options).
@@ -47,6 +49,7 @@ struct ArgumentField {
 impl ArgumentField {
     fn new(info: ArgumentInfo) -> Self {
         let default_value = info.default.clone().unwrap_or_default();
+        let cursor = default_value.chars().count();
         let dropdown_index = if info.options.is_empty() {
             0
         } else {
@@ -59,6 +62,7 @@ impl ArgumentField {
 
         Self {
             value: default_value,
+            cursor,
             info,
             error: None,
             dropdown_index,
@@ -314,6 +318,7 @@ impl ArgumentInputView {
     fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
         let key = event.keystroke.key.as_str();
         let shift = event.keystroke.modifiers.shift;
+        let platform = event.keystroke.modifiers.platform;
 
         match key {
             "escape" => {
@@ -351,18 +356,76 @@ impl ArgumentInputView {
                     }
                 }
             }
-            "backspace" => {
-                // Handle backspace for text input
+            "left" => {
+                // Cursor movement for text fields
                 if let Some(field) = self.arguments.get_mut(self.focus_index) {
-                    if !field.is_dropdown() && !field.value.is_empty() {
-                        field.value.pop();
-                        field.error = None;
+                    if !field.is_dropdown() {
+                        if platform {
+                            field.cursor = 0;
+                        } else if field.cursor > 0 {
+                            field.cursor -= 1;
+                        }
                         cx.notify();
                     }
                 }
             }
+            "right" => {
+                // Cursor movement for text fields
+                if let Some(field) = self.arguments.get_mut(self.focus_index) {
+                    if !field.is_dropdown() {
+                        let len = field.value.chars().count();
+                        if platform {
+                            field.cursor = len;
+                        } else if field.cursor < len {
+                            field.cursor += 1;
+                        }
+                        cx.notify();
+                    }
+                }
+            }
+            "backspace" => {
+                // Handle backspace for text input
+                if let Some(field) = self.arguments.get_mut(self.focus_index) {
+                    if !field.is_dropdown() {
+                        if platform {
+                            // Delete everything before cursor
+                            if field.cursor > 0 {
+                                let chars: Vec<char> = field.value.chars().collect();
+                                field.value = chars[field.cursor..].iter().collect();
+                                field.cursor = 0;
+                                field.error = None;
+                                cx.notify();
+                            }
+                        } else if field.cursor > 0 {
+                            // Delete char before cursor
+                            let mut chars: Vec<char> = field.value.chars().collect();
+                            chars.remove(field.cursor - 1);
+                            field.cursor -= 1;
+                            field.value = chars.into_iter().collect();
+                            field.error = None;
+                            cx.notify();
+                        }
+                    }
+                }
+            }
+            "v" if platform => {
+                // Handle Cmd+V paste
+                if let Some(field) = self.arguments.get_mut(self.focus_index) {
+                    if !field.is_dropdown() {
+                        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                            let chars: Vec<char> = field.value.chars().collect();
+                            let before: String = chars[..field.cursor].iter().collect();
+                            let after: String = chars[field.cursor..].iter().collect();
+                            field.value = format!("{}{}{}", before, text, after);
+                            field.cursor += text.chars().count();
+                            field.error = None;
+                            cx.notify();
+                        }
+                    }
+                }
+            }
             _ => {
-                // Handle character input for text fields
+                // Handle character input for text fields at cursor position
                 // Ignore modifier-only keys
                 if key.len() == 1
                     && !event.keystroke.modifiers.platform
@@ -371,7 +434,11 @@ impl ArgumentInputView {
                 {
                     if let Some(field) = self.arguments.get_mut(self.focus_index) {
                         if !field.is_dropdown() {
-                            field.value.push_str(key);
+                            let chars: Vec<char> = field.value.chars().collect();
+                            let before: String = chars[..field.cursor].iter().collect();
+                            let after: String = chars[field.cursor..].iter().collect();
+                            field.value = format!("{}{}{}", before, key, after);
+                            field.cursor += key.chars().count();
                             field.error = None;
                             cx.notify();
                         }
@@ -415,6 +482,17 @@ impl ArgumentInputView {
             .as_ref()
             .map_or_else(|| format!("Enter {}", field.label()), Clone::clone);
 
+        // Block cursor dimensions (matches launcher)
+        let cursor_width = px(9.0);
+        let cursor_height = px(20.0);
+
+        // Split text at cursor position
+        let chars: Vec<char> = value.chars().collect();
+        let cursor_pos = field.cursor.min(chars.len());
+        let before: String = chars[..cursor_pos].iter().collect();
+        let after: String = chars[cursor_pos..].iter().collect();
+        let has_value = !value.is_empty();
+
         div()
             .flex()
             .flex_col()
@@ -438,22 +516,47 @@ impl ArgumentInputView {
                     .border_color(border_color)
                     .bg(colors.surface)
                     .when(is_focused, |el| el.bg(colors.surface_hover))
-                    .child(if value.is_empty() {
+                    .child(
                         div()
                             .text_sm()
-                            .text_color(colors.text_placeholder)
-                            .child(placeholder)
-                    } else {
-                        div().text_sm().text_color(colors.text).child(value)
-                    }),
+                            .flex()
+                            .items_center()
+                            .when(!has_value && is_focused, |el| {
+                                // Empty field with focus: cursor then placeholder
+                                el.child(
+                                    div()
+                                        .w(cursor_width)
+                                        .h(cursor_height)
+                                        .bg(colors.accent)
+                                        .rounded(px(2.0)),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(colors.text_placeholder)
+                                        .child(placeholder.clone()),
+                                )
+                            })
+                            .when(!has_value && !is_focused, |el| {
+                                el.text_color(colors.text_placeholder).child(placeholder.clone())
+                            })
+                            .when(has_value, |el| {
+                                el.text_color(colors.text)
+                                    .when(!before.is_empty(), |el| el.child(before.clone()))
+                                    .when(is_focused, |el| {
+                                        el.child(
+                                            div()
+                                                .w(cursor_width)
+                                                .h(cursor_height)
+                                                .bg(colors.accent)
+                                                .rounded(px(2.0)),
+                                        )
+                                    })
+                                    .when(!after.is_empty(), |el| el.child(after.clone()))
+                            }),
+                    ),
             )
             .when_some(field.error.clone(), |el, error| {
-                el.child(
-                    div()
-                        .text_xs()
-                        .text_color(colors.error)
-                        .child(error),
-                )
+                el.child(div().text_xs().text_color(colors.error).child(error))
             })
     }
 

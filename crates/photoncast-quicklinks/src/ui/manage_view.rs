@@ -139,6 +139,12 @@ struct EditingState {
     is_new: bool,
     /// Which field is currently focused.
     focused_field: EditField,
+    /// Cursor position in name field.
+    name_cursor: usize,
+    /// Cursor position in link field.
+    link_cursor: usize,
+    /// Cursor position in alias field.
+    alias_cursor: usize,
 }
 
 /// Quick Links management view state.
@@ -151,6 +157,8 @@ pub struct QuicklinksManageView {
     show_library: bool,
     /// Search/filter query.
     search_query: String,
+    /// Cursor position in search query.
+    search_cursor: usize,
     /// ID of quicklink pending delete confirmation.
     confirm_delete: Option<QuickLinkId>,
     /// Focus handle for keyboard navigation.
@@ -186,6 +194,7 @@ impl QuicklinksManageView {
             selected_index: None,
             show_library: false,
             search_query: String::new(),
+            search_cursor: 0,
             confirm_delete: None,
             focus_handle,
             selected_library_category: None,
@@ -465,6 +474,9 @@ impl QuicklinksManageView {
             }
         } else if let Some(link) = self.selected_quicklink() {
             // Start inline editing
+            let name_len = link.name.chars().count();
+            let link_len = link.link.chars().count();
+            let alias_len = link.alias.as_ref().map_or(0, |a| a.chars().count());
             self.editing = Some(EditingState {
                 original_id: link.id.clone(),
                 name: link.name.clone(),
@@ -472,20 +484,47 @@ impl QuicklinksManageView {
                 alias: link.alias.clone().unwrap_or_default(),
                 is_new: false,
                 focused_field: EditField::Name,
+                name_cursor: name_len,
+                link_cursor: link_len,
+                alias_cursor: alias_len,
             });
             cx.notify();
         }
     }
-    
+
     /// Starts creating a new quicklink inline.
     fn start_new_quicklink(&mut self, cx: &mut ViewContext<Self>) {
+        // Try to read URL from clipboard
+        let (link_input, link_cursor) = cx
+            .read_from_clipboard()
+            .and_then(|c| c.text())
+            .filter(|text| {
+                let t = text.trim();
+                t.starts_with("http://")
+                    || t.starts_with("https://")
+                    || t.starts_with("file://")
+                    || t.starts_with("mailto:")
+                    || t.starts_with("/")
+                    || t.starts_with("~")
+                    || (t.contains('.') && !t.contains(' '))
+            })
+            .map(|text| {
+                let trimmed = text.trim().to_string();
+                let len = trimmed.chars().count();
+                (trimmed, len)
+            })
+            .unwrap_or_else(|| (String::new(), 0));
+
         self.editing = Some(EditingState {
             original_id: QuickLinkId::generate(),
             name: String::new(),
-            link: String::new(),
+            link: link_input,
             alias: String::new(),
             is_new: true,
             focused_field: EditField::Name,
+            name_cursor: 0,
+            link_cursor,
+            alias_cursor: 0,
         });
         cx.notify();
     }
@@ -607,6 +646,7 @@ impl QuicklinksManageView {
 
     /// Sets the search query.
     pub fn set_search(&mut self, query: String, cx: &mut ViewContext<Self>) {
+        self.search_cursor = query.chars().count();
         self.search_query = query;
         self.selected_index = if self.filtered_quicklinks().is_empty() {
             None
@@ -641,23 +681,38 @@ impl QuicklinksManageView {
 
     /// Handles key down events.
     fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
+        let key = event.keystroke.key.as_str();
+        let cmd = event.keystroke.modifiers.platform;
+        let shift = event.keystroke.modifiers.shift;
+
         // Handle editing mode keys first
         if let Some(ref mut editing) = self.editing {
-            match event.keystroke.key.as_str() {
+            // Get current field and cursor
+            let (field, cursor) = match editing.focused_field {
+                EditField::Name => (&mut editing.name, &mut editing.name_cursor),
+                EditField::Link => (&mut editing.link, &mut editing.link_cursor),
+                EditField::Alias => (&mut editing.alias, &mut editing.alias_cursor),
+            };
+
+            match key {
                 "escape" => {
                     self.editing = None;
                     cx.notify();
                     return;
                 }
-                "enter" | "s" if event.keystroke.modifiers.platform || event.keystroke.key == "enter" => {
-                    // Save on Cmd+S or Enter
-                    if event.keystroke.modifiers.platform || event.keystroke.key == "enter" {
-                        // Clone editing state before taking it
-                        let editing_clone = editing.clone();
-                        self.editing = None;
-                        self.finish_editing(editing_clone, cx);
-                        return;
-                    }
+                "enter" => {
+                    // Save on Enter
+                    let editing_clone = editing.clone();
+                    self.editing = None;
+                    self.finish_editing(editing_clone, cx);
+                    return;
+                }
+                "s" if cmd => {
+                    // Save on Cmd+S
+                    let editing_clone = editing.clone();
+                    self.editing = None;
+                    self.finish_editing(editing_clone, cx);
+                    return;
                 }
                 "tab" => {
                     // Cycle through fields
@@ -669,48 +724,87 @@ impl QuicklinksManageView {
                     cx.notify();
                     return;
                 }
-                "backspace" => {
-                    // Delete last character from focused field
-                    let field = match editing.focused_field {
-                        EditField::Name => &mut editing.name,
-                        EditField::Link => &mut editing.link,
-                        EditField::Alias => &mut editing.alias,
-                    };
-                    field.pop();
+                "left" => {
+                    // Move cursor left
+                    if cmd {
+                        *cursor = 0; // Move to beginning
+                    } else if *cursor > 0 {
+                        *cursor -= 1;
+                    }
                     cx.notify();
                     return;
                 }
-                _ => {
-                    // Handle typing into focused field
-                    if !event.keystroke.modifiers.platform
-                        && !event.keystroke.modifiers.control
-                        && !event.keystroke.modifiers.alt
-                    {
-                        let char_to_add = event.keystroke.ime_key.as_deref()
-                            .or({
-                                if event.keystroke.key.len() == 1 {
-                                    Some(event.keystroke.key.as_str())
-                                } else {
-                                    None
-                                }
-                            });
-                        
-                        if let Some(ch) = char_to_add {
-                            let text = if event.keystroke.modifiers.shift {
-                                ch.to_uppercase()
-                            } else {
-                                ch.to_string()
-                            };
-                            
-                            let field = match editing.focused_field {
-                                EditField::Name => &mut editing.name,
-                                EditField::Link => &mut editing.link,
-                                EditField::Alias => &mut editing.alias,
-                            };
-                            field.push_str(&text);
+                "right" => {
+                    // Move cursor right
+                    let len = field.chars().count();
+                    if cmd {
+                        *cursor = len; // Move to end
+                    } else if *cursor < len {
+                        *cursor += 1;
+                    }
+                    cx.notify();
+                    return;
+                }
+                "backspace" => {
+                    if cmd {
+                        // Cmd+Backspace: delete from cursor to beginning
+                        let chars: Vec<char> = field.chars().collect();
+                        *field = chars[*cursor..].iter().collect();
+                        *cursor = 0;
+                    } else if *cursor > 0 {
+                        // Delete character before cursor
+                        let mut chars: Vec<char> = field.chars().collect();
+                        chars.remove(*cursor - 1);
+                        *field = chars.into_iter().collect();
+                        *cursor -= 1;
+                    }
+                    cx.notify();
+                    return;
+                }
+                "v" if cmd => {
+                    // Cmd+V: Paste from clipboard
+                    if let Some(clipboard) = cx.read_from_clipboard() {
+                        if let Some(text) = clipboard.text() {
+                            let chars: Vec<char> = field.chars().collect();
+                            let before: String = chars[..*cursor].iter().collect();
+                            let after: String = chars[*cursor..].iter().collect();
+                            *field = format!("{}{}{}", before, text, after);
+                            *cursor += text.chars().count();
                             cx.notify();
                         }
+                    }
+                    return;
+                }
+                _ => {
+                    // Skip other modifier combinations
+                    if cmd || event.keystroke.modifiers.control || event.keystroke.modifiers.alt {
                         return;
+                    }
+
+                    // Handle typing into focused field
+                    let char_to_add = event.keystroke.ime_key.as_deref()
+                        .or({
+                            if key.len() == 1 {
+                                Some(key)
+                            } else {
+                                None
+                            }
+                        });
+
+                    if let Some(ch) = char_to_add {
+                        let text = if shift {
+                            ch.to_uppercase()
+                        } else {
+                            ch.to_string()
+                        };
+
+                        // Insert at cursor position
+                        let chars: Vec<char> = field.chars().collect();
+                        let before: String = chars[..*cursor].iter().collect();
+                        let after: String = chars[*cursor..].iter().collect();
+                        *field = format!("{}{}{}", before, text, after);
+                        *cursor += text.chars().count();
+                        cx.notify();
                     }
                     return;
                 }
@@ -724,6 +818,25 @@ impl QuicklinksManageView {
             "up" => {
                 self.select_previous(cx);
             }
+            "left" => {
+                // Move search cursor left
+                if cmd {
+                    self.search_cursor = 0;
+                } else if self.search_cursor > 0 {
+                    self.search_cursor -= 1;
+                }
+                cx.notify();
+            }
+            "right" => {
+                // Move search cursor right
+                let len = self.search_query.chars().count();
+                if cmd {
+                    self.search_cursor = len;
+                } else if self.search_cursor < len {
+                    self.search_cursor += 1;
+                }
+                cx.notify();
+            }
             "enter" => {
                 // If delete confirmation is showing, confirm delete
                 if self.confirm_delete.is_some() {
@@ -732,14 +845,54 @@ impl QuicklinksManageView {
                     self.edit_selected(cx);
                 }
             }
-            "backspace" | "delete" => {
-                if event.keystroke.modifiers.platform || event.keystroke.modifiers.control {
-                    self.delete_selected(cx);
-                } else if !self.search_query.is_empty() {
-                    // Remove last character from search
+            "backspace" => {
+                if cmd {
+                    // Cmd+Backspace: delete from cursor to beginning or delete quicklink
+                    if self.search_query.is_empty() {
+                        self.delete_selected(cx);
+                    } else {
+                        let chars: Vec<char> = self.search_query.chars().collect();
+                        let new_query: String = chars[self.search_cursor..].iter().collect();
+                        self.search_cursor = 0;
+                        self.search_query = new_query;
+                        self.selected_index = if self.filtered_quicklinks().is_empty() {
+                            None
+                        } else {
+                            Some(0)
+                        };
+                        cx.notify();
+                    }
+                } else if self.search_cursor > 0 {
+                    // Delete character before cursor
                     let mut chars: Vec<char> = self.search_query.chars().collect();
-                    chars.pop();
-                    self.set_search(chars.into_iter().collect(), cx);
+                    chars.remove(self.search_cursor - 1);
+                    self.search_cursor -= 1;
+                    self.search_query = chars.into_iter().collect();
+                    self.selected_index = if self.filtered_quicklinks().is_empty() {
+                        None
+                    } else {
+                        Some(0)
+                    };
+                    cx.notify();
+                }
+            }
+            "v" if cmd => {
+                // Cmd+V: Paste into search
+                if let Some(clipboard) = cx.read_from_clipboard() {
+                    if let Some(text) = clipboard.text() {
+                        let chars: Vec<char> = self.search_query.chars().collect();
+                        let before: String = chars[..self.search_cursor].iter().collect();
+                        let after: String = chars[self.search_cursor..].iter().collect();
+                        let new_query = format!("{}{}{}", before, text, after);
+                        self.search_cursor += text.chars().count();
+                        self.search_query = new_query;
+                        self.selected_index = if self.filtered_quicklinks().is_empty() {
+                            None
+                        } else {
+                            Some(0)
+                        };
+                        cx.notify();
+                    }
                 }
             }
             "escape" => {
@@ -753,37 +906,53 @@ impl QuicklinksManageView {
                     self.close(cx);
                 }
             }
-            "n" if event.keystroke.modifiers.platform => {
+            "n" if cmd => {
                 self.create_new(cx);
             }
             "/" => {
                 // Focus search - clear and start typing
                 self.set_search(String::new(), cx);
             }
-            "l" if event.keystroke.modifiers.platform => {
+            "l" if cmd => {
                 self.toggle_library(cx);
             }
-            "d" if event.keystroke.modifiers.platform => {
+            "d" if cmd => {
                 self.duplicate_selected(cx);
             }
             _ => {
-                // Handle typing into search
-                if !event.keystroke.modifiers.platform
-                    && !event.keystroke.modifiers.control
-                    && !event.keystroke.modifiers.alt
-                {
-                    if let Some(ime_key) = &event.keystroke.ime_key {
-                        let new_query = format!("{}{}", self.search_query, ime_key);
-                        self.set_search(new_query, cx);
-                    } else if event.keystroke.key.len() == 1 {
-                        let key = if event.keystroke.modifiers.shift {
-                            event.keystroke.key.to_uppercase()
+                // Skip other modifier combinations
+                if cmd || event.keystroke.modifiers.control || event.keystroke.modifiers.alt {
+                    return;
+                }
+
+                // Handle typing into search (insert at cursor)
+                let char_to_add = event.keystroke.ime_key.as_deref()
+                    .or({
+                        if event.keystroke.key.len() == 1 {
+                            Some(event.keystroke.key.as_str())
                         } else {
-                            event.keystroke.key.clone()
-                        };
-                        let new_query = format!("{}{}", self.search_query, key);
-                        self.set_search(new_query, cx);
-                    }
+                            None
+                        }
+                    });
+
+                if let Some(ch) = char_to_add {
+                    let text = if shift {
+                        ch.to_uppercase()
+                    } else {
+                        ch.to_string()
+                    };
+
+                    let chars: Vec<char> = self.search_query.chars().collect();
+                    let before: String = chars[..self.search_cursor].iter().collect();
+                    let after: String = chars[self.search_cursor..].iter().collect();
+                    self.search_query = format!("{}{}{}", before, text, after);
+                    self.search_cursor += text.chars().count();
+                    self.selected_index = if self.filtered_quicklinks().is_empty() {
+                        None
+                    } else {
+                        Some(0)
+                    };
+                    cx.notify();
                 }
             }
         }
@@ -835,6 +1004,17 @@ impl QuicklinksManageView {
         let colors = get_colors(cx);
         let query = self.search_query.clone();
         let has_query = !query.is_empty();
+        let is_search_focused = self.editing.is_none() && !self.show_library;
+
+        // Block cursor dimensions (matches launcher)
+        let cursor_width = px(9.0);
+        let cursor_height = px(20.0);
+
+        // Split text at cursor position
+        let chars: Vec<char> = query.chars().collect();
+        let cursor_pos = self.search_cursor.min(chars.len());
+        let before: String = chars[..cursor_pos].iter().collect();
+        let after: String = chars[cursor_pos..].iter().collect();
 
         div()
             .px(px(16.0))
@@ -853,15 +1033,40 @@ impl QuicklinksManageView {
                         div()
                             .flex_1()
                             .text_sm()
-                            .text_color(if has_query {
-                                colors.text
-                            } else {
-                                colors.text_placeholder
+                            .flex()
+                            .items_center()
+                            .when(!has_query && is_search_focused, |el| {
+                                // Empty field with focus: cursor then placeholder
+                                el.child(
+                                    div()
+                                        .w(cursor_width)
+                                        .h(cursor_height)
+                                        .bg(colors.accent)
+                                        .rounded(px(2.0)),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(colors.text_placeholder)
+                                        .child("Search quick links..."),
+                                )
                             })
-                            .child(if has_query {
-                                query
-                            } else {
-                                "Search quick links...".to_string()
+                            .when(!has_query && !is_search_focused, |el| {
+                                el.text_color(colors.text_placeholder)
+                                    .child("Search quick links...")
+                            })
+                            .when(has_query, |el| {
+                                el.text_color(colors.text)
+                                    .when(!before.is_empty(), |el| el.child(before.clone()))
+                                    .when(is_search_focused, |el| {
+                                        el.child(
+                                            div()
+                                                .w(cursor_width)
+                                                .h(cursor_height)
+                                                .bg(colors.accent)
+                                                .rounded(px(2.0)),
+                                        )
+                                    })
+                                    .when(!after.is_empty(), |el| el.child(after.clone()))
                             }),
                     )
                     .when(has_query, |el| {
@@ -1693,32 +1898,38 @@ impl QuicklinksManageView {
         let Some(editing) = &self.editing else {
             return div().into_any_element();
         };
-        
+
         let surface = colors.surface_elevated;
         let text_color = colors.text;
         let text_muted = colors.text_muted;
         let border = colors.border;
         let accent = colors.accent;
         let surface_hover = colors.surface_hover;
-        
+
         let is_new = editing.is_new;
         let name = editing.name.clone();
         let link = editing.link.clone();
         let alias = editing.alias.clone();
         let focused = editing.focused_field;
-        
-        // Helper to render a text field with focus indication
-        let render_field = |field: EditField, label: &'static str, value: String, placeholder: &'static str| {
+
+        // Get cursor positions
+        let name_cursor = editing.name_cursor;
+        let link_cursor = editing.link_cursor;
+        let alias_cursor = editing.alias_cursor;
+
+        // Block cursor dimensions (matches launcher)
+        let cursor_width = px(9.0);
+        let cursor_height = px(20.0);
+
+        // Helper to render a text field with block cursor
+        let render_field = |field: EditField,
+                            label: &'static str,
+                            value: String,
+                            cursor_pos: usize,
+                            placeholder: &'static str| {
             let is_focused = focused == field;
             let is_empty = value.is_empty();
-            let display_value = if is_empty {
-                placeholder.to_string()
-            } else if is_focused {
-                format!("{}|", value) // Show cursor
-            } else {
-                value
-            };
-            
+
             div()
                 .flex()
                 .flex_col()
@@ -1748,14 +1959,58 @@ impl QuicklinksManageView {
                             }
                         }))
                         .child(
+                            // Text with block cursor
                             div()
                                 .text_sm()
-                                .text_color(if is_empty { text_muted } else { text_color })
-                                .child(display_value),
+                                .flex()
+                                .items_center()
+                                .when(is_empty && is_focused, |el| {
+                                    // Empty field with focus: show cursor then placeholder
+                                    el.child(
+                                        div()
+                                            .w(cursor_width)
+                                            .h(cursor_height)
+                                            .bg(accent)
+                                            .rounded(px(2.0)),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_color(text_muted)
+                                            .child(placeholder.to_string()),
+                                    )
+                                })
+                                .when(is_empty && !is_focused, |el| {
+                                    // Empty field without focus: show placeholder
+                                    el.child(
+                                        div()
+                                            .text_color(text_muted)
+                                            .child(placeholder.to_string()),
+                                    )
+                                })
+                                .when(!is_empty, |el| {
+                                    // Non-empty: show text with cursor at position
+                                    let chars: Vec<char> = value.chars().collect();
+                                    let clamped_cursor = cursor_pos.min(chars.len());
+                                    let before: String = chars[..clamped_cursor].iter().collect();
+                                    let after: String = chars[clamped_cursor..].iter().collect();
+
+                                    el.text_color(text_color)
+                                        .when(!before.is_empty(), |el| el.child(before.clone()))
+                                        .when(is_focused, |el| {
+                                            el.child(
+                                                div()
+                                                    .w(cursor_width)
+                                                    .h(cursor_height)
+                                                    .bg(accent)
+                                                    .rounded(px(2.0)),
+                                            )
+                                        })
+                                        .when(!after.is_empty(), |el| el.child(after.clone()))
+                                }),
                         ),
                 )
         };
-        
+
         div()
             .absolute()
             .inset_0()
@@ -1781,11 +2036,11 @@ impl QuicklinksManageView {
                             .child(if is_new { "New Quick Link" } else { "Edit Quick Link" }),
                     )
                     // Name field
-                    .child(render_field(EditField::Name, "Name", name, "Enter name..."))
-                    // URL field  
-                    .child(render_field(EditField::Link, "URL", link, "https://example.com/search?q={argument}"))
+                    .child(render_field(EditField::Name, "Name", name, name_cursor, "Enter name..."))
+                    // URL field
+                    .child(render_field(EditField::Link, "URL", link, link_cursor, "https://example.com/search?q={argument}"))
                     // Alias field
-                    .child(render_field(EditField::Alias, "Alias (optional)", alias, "e.g., g"))
+                    .child(render_field(EditField::Alias, "Alias (optional)", alias, alias_cursor, "e.g., g"))
                     // Hint text
                     .child(
                         div()

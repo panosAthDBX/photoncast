@@ -4,6 +4,7 @@
 //! keyboard navigation, and theme-aware styling.
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use gpui::prelude::*;
 use gpui::{
@@ -122,6 +123,7 @@ struct CreateQuicklinkColors {
     accent: Hsla,
     accent_hover: Hsla,
     error: Hsla,
+    #[allow(dead_code)]
     warning: Hsla,
     success: Hsla,
 }
@@ -202,6 +204,15 @@ pub struct CreateQuicklinkView {
     /// Validation error for link field.
     link_error: Option<String>,
 
+    /// Cursor position for name input.
+    name_cursor: usize,
+    /// Cursor position for link input.
+    link_cursor: usize,
+    /// Cursor position for alias input.
+    alias_cursor: usize,
+    /// Time when cursor last moved (for blink reset).
+    cursor_blink_epoch: Instant,
+
     /// Callback for when a quicklink is created/updated.
     on_event: Option<Box<dyn Fn(CreateQuicklinkEvent, &mut ViewContext<Self>) + 'static>>,
 }
@@ -213,17 +224,9 @@ impl CreateQuicklinkView {
         let focus_handle = cx.focus_handle();
         cx.focus(&focus_handle);
 
-        // Try to auto-populate link from clipboard if it looks like a URL
-        let link_input = cx
-            .read_from_clipboard()
-            .and_then(|c| c.text())
-            .filter(|text| Self::is_valid_link(text.trim()))
-            .map(|text| text.trim().to_string())
-            .unwrap_or_default();
-
-        Self {
+        let mut view = Self {
             name_input: String::new(),
-            link_input,
+            link_input: String::new(),
             alias_input: String::new(),
             selected_app: None,
             selected_icon: QuickLinkIcon::Default,
@@ -237,8 +240,56 @@ impl CreateQuicklinkView {
             icon_picker_index: 0,
             name_error: None,
             link_error: None,
+            name_cursor: 0,
+            link_cursor: 0,
+            alias_cursor: 0,
+            cursor_blink_epoch: Instant::now(),
             on_event: None,
+        };
+
+        // Start cursor blink timer
+        view.start_cursor_blink_timer(cx);
+
+        // Try to read URL from clipboard immediately
+        // If the window isn't focused yet, the deferred read will handle it
+        if let Some(clipboard) = cx.read_from_clipboard() {
+            if let Some(text) = clipboard.text() {
+                let trimmed = text.trim();
+                if Self::is_valid_link(trimmed) {
+                    view.link_input = trimmed.to_string();
+                    view.link_cursor = view.link_input.chars().count();
+                    // Move focus to name field since link is auto-populated
+                    view.focus = CreateQuicklinkFocus::Name;
+                }
+            }
         }
+
+        // Also schedule a deferred clipboard read in case window focus isn't ready yet
+        cx.spawn(|this, mut cx| async move {
+            // Wait for window to be fully active
+            cx.background_executor()
+                .timer(Duration::from_millis(150))
+                .await;
+            let _ = this.update(&mut cx, |this, cx| {
+                // Only try if link is still empty
+                if !this.link_input.is_empty() {
+                    return;
+                }
+                if let Some(clipboard) = cx.read_from_clipboard() {
+                    if let Some(text) = clipboard.text() {
+                        let trimmed = text.trim();
+                        if Self::is_valid_link(trimmed) {
+                            this.link_input = trimmed.to_string();
+                            this.link_cursor = this.link_input.chars().count();
+                            cx.notify();
+                        }
+                    }
+                }
+            });
+        })
+        .detach();
+
+        view
     }
 
     /// Creates a new view for editing an existing quicklink.
@@ -247,7 +298,11 @@ impl CreateQuicklinkView {
         let focus_handle = cx.focus_handle();
         cx.focus(&focus_handle);
 
-        Self {
+        let name_len = link.name.chars().count();
+        let link_len = link.link.chars().count();
+        let alias_len = link.alias.as_ref().map_or(0, |a| a.chars().count());
+
+        let view = Self {
             name_input: link.name.clone(),
             link_input: link.link.clone(),
             alias_input: link.alias.clone().unwrap_or_default(),
@@ -263,8 +318,15 @@ impl CreateQuicklinkView {
             icon_picker_index: 0,
             name_error: None,
             link_error: None,
+            name_cursor: name_len,
+            link_cursor: link_len,
+            alias_cursor: alias_len,
+            cursor_blink_epoch: Instant::now(),
             on_event: None,
-        }
+        };
+
+        view.start_cursor_blink_timer(cx);
+        view
     }
 
     /// Sets the event callback.
@@ -279,6 +341,69 @@ impl CreateQuicklinkView {
     pub fn set_available_apps(&mut self, apps: Vec<AppInfo>, cx: &mut ViewContext<Self>) {
         self.available_apps = apps;
         cx.notify();
+    }
+
+    /// Starts the cursor blink timer.
+    #[allow(clippy::unused_self)]
+    fn start_cursor_blink_timer(&self, cx: &mut ViewContext<Self>) {
+        cx.spawn(|this, mut cx| async move {
+            let blink_interval = Duration::from_millis(530);
+            loop {
+                cx.background_executor().timer(blink_interval).await;
+                let should_continue = this
+                    .update(&mut cx, |_this, cx| {
+                        cx.notify(); // Trigger redraw for cursor blink
+                        true
+                    })
+                    .unwrap_or(false);
+                if !should_continue {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Reset cursor blink timer (call on any cursor movement).
+    fn reset_cursor_blink(&mut self) {
+        self.cursor_blink_epoch = Instant::now();
+    }
+
+    /// Check if cursor should be visible based on blink timing.
+    fn cursor_visible(&self) -> bool {
+        const BLINK_INTERVAL_MS: u128 = 530;
+        let elapsed = self.cursor_blink_epoch.elapsed().as_millis();
+        (elapsed / BLINK_INTERVAL_MS) % 2 == 0
+    }
+
+    /// Gets the cursor position for the currently focused text field.
+    fn get_cursor_for_focus(&self) -> usize {
+        match self.focus {
+            CreateQuicklinkFocus::Name => self.name_cursor,
+            CreateQuicklinkFocus::Link => self.link_cursor,
+            CreateQuicklinkFocus::Alias => self.alias_cursor,
+            _ => 0,
+        }
+    }
+
+    /// Sets the cursor position for the currently focused text field.
+    fn set_cursor_for_focus(&mut self, pos: usize) {
+        match self.focus {
+            CreateQuicklinkFocus::Name => self.name_cursor = pos,
+            CreateQuicklinkFocus::Link => self.link_cursor = pos,
+            CreateQuicklinkFocus::Alias => self.alias_cursor = pos,
+            _ => {}
+        }
+    }
+
+    /// Gets the text for the currently focused field.
+    fn get_text_for_focus(&self) -> &str {
+        match self.focus {
+            CreateQuicklinkFocus::Name => &self.name_input,
+            CreateQuicklinkFocus::Link => &self.link_input,
+            CreateQuicklinkFocus::Alias => &self.alias_input,
+            _ => "",
+        }
     }
 
     /// Returns the default list of common browser apps.
@@ -540,65 +665,145 @@ impl CreateQuicklinkView {
             }
         }
 
-        // Handle backspace for text input
-        if key == "backspace" {
+        // Arrow keys for cursor movement in text fields
+        if key == "left" {
             match self.focus {
-                CreateQuicklinkFocus::Name => {
-                    self.name_input.pop();
-                    self.name_error = None;
-                }
-                CreateQuicklinkFocus::Link => {
-                    self.link_input.pop();
-                    self.link_error = None;
-                }
-                CreateQuicklinkFocus::Alias => {
-                    self.alias_input.pop();
+                CreateQuicklinkFocus::Name | CreateQuicklinkFocus::Link | CreateQuicklinkFocus::Alias => {
+                    let cursor = self.get_cursor_for_focus();
+                    if cmd {
+                        // Cmd+Left: Move to beginning
+                        self.set_cursor_for_focus(0);
+                    } else if cursor > 0 {
+                        self.set_cursor_for_focus(cursor - 1);
+                    }
+                    self.reset_cursor_blink();
+                    cx.notify();
+                    return;
                 }
                 _ => {}
             }
-            cx.notify();
-            return;
         }
 
-        // Handle cmd+backspace to clear field
+        if key == "right" {
+            match self.focus {
+                CreateQuicklinkFocus::Name | CreateQuicklinkFocus::Link | CreateQuicklinkFocus::Alias => {
+                    let cursor = self.get_cursor_for_focus();
+                    let len = self.get_text_for_focus().chars().count();
+                    if cmd {
+                        // Cmd+Right: Move to end
+                        self.set_cursor_for_focus(len);
+                    } else if cursor < len {
+                        self.set_cursor_for_focus(cursor + 1);
+                    }
+                    self.reset_cursor_blink();
+                    cx.notify();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // Handle cmd+backspace to clear field (from cursor to beginning)
         if cmd && key == "backspace" {
             match self.focus {
                 CreateQuicklinkFocus::Name => {
-                    self.name_input.clear();
+                    let cursor = self.name_cursor;
+                    let chars: Vec<char> = self.name_input.chars().collect();
+                    self.name_input = chars[cursor..].iter().collect();
+                    self.name_cursor = 0;
                     self.name_error = None;
                 }
                 CreateQuicklinkFocus::Link => {
-                    self.link_input.clear();
+                    let cursor = self.link_cursor;
+                    let chars: Vec<char> = self.link_input.chars().collect();
+                    self.link_input = chars[cursor..].iter().collect();
+                    self.link_cursor = 0;
                     self.link_error = None;
                 }
                 CreateQuicklinkFocus::Alias => {
-                    self.alias_input.clear();
+                    let cursor = self.alias_cursor;
+                    let chars: Vec<char> = self.alias_input.chars().collect();
+                    self.alias_input = chars[cursor..].iter().collect();
+                    self.alias_cursor = 0;
                 }
                 _ => {}
             }
+            self.reset_cursor_blink();
             cx.notify();
             return;
         }
 
-        // Handle cmd+v to paste
+        // Handle backspace for text input (delete character before cursor)
+        if key == "backspace" {
+            match self.focus {
+                CreateQuicklinkFocus::Name => {
+                    if self.name_cursor > 0 {
+                        let mut chars: Vec<char> = self.name_input.chars().collect();
+                        chars.remove(self.name_cursor - 1);
+                        self.name_input = chars.into_iter().collect();
+                        self.name_cursor -= 1;
+                        self.name_error = None;
+                    }
+                }
+                CreateQuicklinkFocus::Link => {
+                    if self.link_cursor > 0 {
+                        let mut chars: Vec<char> = self.link_input.chars().collect();
+                        chars.remove(self.link_cursor - 1);
+                        self.link_input = chars.into_iter().collect();
+                        self.link_cursor -= 1;
+                        self.link_error = None;
+                    }
+                }
+                CreateQuicklinkFocus::Alias => {
+                    if self.alias_cursor > 0 {
+                        let mut chars: Vec<char> = self.alias_input.chars().collect();
+                        chars.remove(self.alias_cursor - 1);
+                        self.alias_input = chars.into_iter().collect();
+                        self.alias_cursor -= 1;
+                    }
+                }
+                _ => {}
+            }
+            self.reset_cursor_blink();
+            cx.notify();
+            return;
+        }
+
+        // Handle cmd+v to paste (matches launcher pattern exactly)
         if cmd && key == "v" {
             if let Some(clipboard) = cx.read_from_clipboard() {
-                let text = clipboard.text().unwrap_or_default();
-                if !text.is_empty() {
+                if let Some(text) = clipboard.text() {
+                    // Insert at cursor position
                     match self.focus {
                         CreateQuicklinkFocus::Name => {
-                            self.name_input.push_str(&text);
+                            let chars: Vec<char> = self.name_input.chars().collect();
+                            let before: String = chars[..self.name_cursor].iter().collect();
+                            let after: String = chars[self.name_cursor..].iter().collect();
+                            let new_text = format!("{}{}{}", before, text, after);
+                            self.name_cursor += text.chars().count();
+                            self.name_input = new_text;
                             self.name_error = None;
                         }
                         CreateQuicklinkFocus::Link => {
-                            self.link_input.push_str(&text);
+                            let chars: Vec<char> = self.link_input.chars().collect();
+                            let before: String = chars[..self.link_cursor].iter().collect();
+                            let after: String = chars[self.link_cursor..].iter().collect();
+                            let new_text = format!("{}{}{}", before, text, after);
+                            self.link_cursor += text.chars().count();
+                            self.link_input = new_text;
                             self.link_error = None;
                         }
                         CreateQuicklinkFocus::Alias => {
-                            self.alias_input.push_str(&text);
+                            let chars: Vec<char> = self.alias_input.chars().collect();
+                            let before: String = chars[..self.alias_cursor].iter().collect();
+                            let after: String = chars[self.alias_cursor..].iter().collect();
+                            let new_text = format!("{}{}{}", before, text, after);
+                            self.alias_cursor += text.chars().count();
+                            self.alias_input = new_text;
                         }
                         _ => {}
                     }
+                    self.reset_cursor_blink();
                     cx.notify();
                 }
             }
@@ -610,7 +815,7 @@ impl CreateQuicklinkView {
             return;
         }
 
-        // Handle text input
+        // Handle text input (insert at cursor position)
         let input_char = if let Some(ime_key) = &event.keystroke.ime_key {
             ime_key.clone()
         } else if key.len() == 1 {
@@ -623,20 +828,34 @@ impl CreateQuicklinkView {
             return;
         };
 
+        let char_len = input_char.chars().count();
         match self.focus {
             CreateQuicklinkFocus::Name => {
-                self.name_input.push_str(&input_char);
+                let chars: Vec<char> = self.name_input.chars().collect();
+                let before: String = chars[..self.name_cursor].iter().collect();
+                let after: String = chars[self.name_cursor..].iter().collect();
+                self.name_input = format!("{}{}{}", before, input_char, after);
+                self.name_cursor += char_len;
                 self.name_error = None;
             }
             CreateQuicklinkFocus::Link => {
-                self.link_input.push_str(&input_char);
+                let chars: Vec<char> = self.link_input.chars().collect();
+                let before: String = chars[..self.link_cursor].iter().collect();
+                let after: String = chars[self.link_cursor..].iter().collect();
+                self.link_input = format!("{}{}{}", before, input_char, after);
+                self.link_cursor += char_len;
                 self.link_error = None;
             }
             CreateQuicklinkFocus::Alias => {
-                self.alias_input.push_str(&input_char);
+                let chars: Vec<char> = self.alias_input.chars().collect();
+                let before: String = chars[..self.alias_cursor].iter().collect();
+                let after: String = chars[self.alias_cursor..].iter().collect();
+                self.alias_input = format!("{}{}{}", before, input_char, after);
+                self.alias_cursor += char_len;
             }
             _ => {}
         }
+        self.reset_cursor_blink();
         cx.notify();
     }
 
@@ -644,16 +863,18 @@ impl CreateQuicklinkView {
     // Render Helpers
     // ========================================================================
 
-    /// Renders a labeled input field.
+    /// Renders a labeled input field with block cursor.
+    #[allow(clippy::too_many_arguments)]
     fn render_input_field(
         &self,
         label: &str,
         value: &str,
         placeholder: &str,
         is_focused: bool,
+        cursor_position: usize,
         error: Option<&str>,
         colors: &CreateQuicklinkColors,
-        highlight_placeholders: bool,
+        _highlight_placeholders: bool,
     ) -> impl IntoElement {
         let border_color = if error.is_some() {
             colors.error
@@ -668,14 +889,13 @@ impl CreateQuicklinkView {
         let error_color = colors.error;
         let muted_color = colors.text_muted;
         let surface = colors.surface;
-        let warning_color = colors.warning;
+        let cursor_color = colors.accent;
 
-        let display_value = if value.is_empty() {
-            placeholder.to_string()
-        } else {
-            value.to_string()
-        };
+        // Block cursor dimensions (like main launcher / Ghostty terminal)
+        let cursor_width = px(9.0);
+        let cursor_height = px(20.0);
 
+        let show_cursor = is_focused && self.cursor_visible();
         let is_empty = value.is_empty();
 
         div()
@@ -699,20 +919,54 @@ impl CreateQuicklinkView {
                     .bg(surface)
                     .border_1()
                     .border_color(border_color)
-                    .child(if highlight_placeholders && !is_empty {
-                        // Render with placeholder highlighting
-                        Self::render_highlighted_text(value, text_color, warning_color)
-                    } else {
+                    .child(
+                        // Text with cursor
                         div()
+                            .w_full()
                             .text_base()
-                            .text_color(if is_empty {
-                                placeholder_color
-                            } else {
-                                text_color
+                            .flex()
+                            .items_center()
+                            .when(is_empty, |el| {
+                                // Empty: show cursor then placeholder
+                                el.when(show_cursor, |el| {
+                                    el.child(
+                                        div()
+                                            .w(cursor_width)
+                                            .h(cursor_height)
+                                            .bg(cursor_color)
+                                            .rounded(px(2.0)),
+                                    )
+                                })
+                                .child(
+                                    div()
+                                        .text_color(placeholder_color)
+                                        .child(placeholder.to_string()),
+                                )
                             })
-                            .child(display_value)
-                            .into_any_element()
-                    }),
+                            .when(!is_empty, |el| {
+                                // Non-empty: show text with cursor at position (matches launcher)
+                                let chars: Vec<char> = value.chars().collect();
+                                let clamped_cursor = cursor_position.min(chars.len());
+                                let before: String = chars[..clamped_cursor].iter().collect();
+                                let after: String = chars[clamped_cursor..].iter().collect();
+
+                                el.text_color(text_color)
+                                    // Text before cursor
+                                    .when(!before.is_empty(), |el| el.child(before.clone()))
+                                    // Block cursor
+                                    .when(show_cursor, |el| {
+                                        el.child(
+                                            div()
+                                                .w(cursor_width)
+                                                .h(cursor_height)
+                                                .bg(cursor_color)
+                                                .rounded(px(2.0)),
+                                        )
+                                    })
+                                    // Text after cursor
+                                    .when(!after.is_empty(), |el| el.child(after.clone()))
+                            }),
+                    ),
             )
             .when(error.is_some(), |el| {
                 el.child(
@@ -725,6 +979,7 @@ impl CreateQuicklinkView {
     }
 
     /// Renders text with {placeholder} sections highlighted.
+    #[allow(dead_code)]
     fn render_highlighted_text(
         text: &str,
         text_color: Hsla,
@@ -1238,6 +1493,7 @@ impl Render for CreateQuicklinkView {
                         &self.name_input.clone(),
                         "Enter a name for your quicklink",
                         self.focus == CreateQuicklinkFocus::Name,
+                        self.name_cursor,
                         self.name_error.as_deref(),
                         &colors,
                         false,
@@ -1248,6 +1504,7 @@ impl Render for CreateQuicklinkView {
                         &self.link_input.clone(),
                         "https://example.com/search?q={query}",
                         self.focus == CreateQuicklinkFocus::Link,
+                        self.link_cursor,
                         self.link_error.as_deref(),
                         &colors,
                         true, // Highlight {placeholders}
@@ -1258,6 +1515,7 @@ impl Render for CreateQuicklinkView {
                         &self.alias_input.clone(),
                         "Short keyword for quick access",
                         self.focus == CreateQuicklinkFocus::Alias,
+                        self.alias_cursor,
                         None,
                         &colors,
                         false,
