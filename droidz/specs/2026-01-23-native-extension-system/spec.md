@@ -22,6 +22,7 @@
 11. [Performance Requirements](#11-performance-requirements)
 12. [Error Handling Strategy](#12-error-handling-strategy)
 13. [Testing & Verification](#13-testing--verification)
+14. [Phase 3: Raycast Extension Compatibility](#14-phase-3-raycast-extension-compatibility)
 
 ---
 
@@ -904,3 +905,345 @@ Support placeholder interpolation before execution:
 - Extension load benchmark (<50ms).
 - Provider search benchmark (<20ms).
 - Custom command execution latency & output capture.
+
+---
+
+## 14. Phase 3: Raycast Extension Compatibility
+
+> **Status:** Planning  
+> **Target Version:** v1.4.0 (future)  
+> **Priority:** Medium
+
+This section documents the architectural decisions and implementation plan for running Raycast extensions in PhotonCast. The goal is to enable users to install and run existing Raycast extensions with minimal or no modification.
+
+### 14.1 Raycast Extension Architecture Overview
+
+Raycast extensions are built with:
+
+| Component | Technology |
+|-----------|------------|
+| Language | TypeScript/JavaScript |
+| UI Framework | React (custom reconciler) |
+| Runtime | Node.js (managed by Raycast) |
+| API Package | `@raycast/api` (npm) |
+| Manifest | `package.json` with Raycast-specific fields |
+| Build Tool | esbuild (embedded in `ray` CLI) |
+
+**Key insight**: Raycast bundles all npm dependencies at build time using esbuild. The published extension is a single self-contained JS file, not raw source + node_modules.
+
+### 14.2 IPC Protocol
+
+Raycast uses **JSON-RPC** over stdio streams for communication between the Swift host and Node.js process.
+
+**Why JSON-RPC (and why we'll use it too):**
+- Proven at scale (Raycast handles complex extensions like Jira, GitLab)
+- Easy to debug (plain text)
+- Well-supported by OSS libraries
+- Fast enough for UI updates
+- Matches Raycast exactly (simplifies compatibility)
+
+**Message flow:**
+```
+Extension (Node Worker) ←→ Node Parent Process ←→ PhotonCast (via stdio/JSON-RPC)
+```
+
+**UI updates use JSON Patch (RFC 6902)** for efficient incremental rendering:
+```json
+{ "op": "replace", "path": "/sections/0/items/2/title", "value": "Updated" }
+```
+
+### 14.3 Architecture Design
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        PhotonCast App                              │
+├────────────────────────────────────────────────────────────────────┤
+│  Extension Manager                                                 │
+│  ├── Native Extension Loader (libloading) ──→ Direct Rust calls    │
+│  └── Raycast Extension Bridge                                      │
+│      │                                                             │
+│      ├── Extension Detector                                        │
+│      │   └── Identifies Raycast extensions by package.json         │
+│      │                                                             │
+│      ├── Build Pipeline                                            │
+│      │   └── esbuild bundling (if not pre-bundled)                 │
+│      │                                                             │
+│      ├── Node.js Sidecar (one per extension for isolation)         │
+│      │   ├── V8 Worker Thread (runs extension code)                │
+│      │   ├── @photoncast/raycast-compat shim                       │
+│      │   └── JSON-RPC handler                                      │
+│      │                                                             │
+│      └── Host Protocol Bridge                                      │
+│          └── Translates JSON-RPC ←→ PhotonCast host services       │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 14.4 Sidecar Lifecycle
+
+**Decision: One Node.js process per extension**
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| Shared process | Lower memory | Cross-extension interference, crash affects all |
+| **Per-extension** | **Isolation, independent crashes** | Higher memory (~30-50MB per process) |
+
+**Lifecycle states:**
+```
+Dormant → Starting → Ready → Active → Stopping → Stopped
+```
+
+**Process management:**
+- Lazy spawn: Start Node process on first command invocation
+- Idle timeout: Terminate after 5 minutes of inactivity
+- Crash recovery: Restart up to 3 times, then mark Failed
+- Memory limit: Kill if heap exceeds 512MB
+
+### 14.5 Dependency Resolution & Bundling
+
+**Raycast's approach (which we mirror):**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Development Time                             │
+├─────────────────────────────────────────────────────────────────┤
+│  extension/                                                      │
+│  ├── src/command.tsx      (TypeScript + React)                   │
+│  ├── package.json         (declares dependencies)                │
+│  └── node_modules/        (installed via npm install)            │
+│      ├── axios/                                                  │
+│      ├── lodash/                                                 │
+│      └── @raycast/api/    (types only)                           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │  Bundle (esbuild)
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Runtime Bundle                               │
+├─────────────────────────────────────────────────────────────────┤
+│  dist/command.js          (single file, ~50-500KB)               │
+│  ├── axios code           (inlined)                              │
+│  ├── lodash code          (inlined)                              │
+│  └── @raycast/api         (EXTERNAL - not bundled)               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │  Runtime
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     PhotonCast Host                              │
+├─────────────────────────────────────────────────────────────────┤
+│  Node.js Sidecar                                                 │
+│  ├── @photoncast/raycast-compat (replaces @raycast/api)          │
+│  ├── react (provided by host)                                    │
+│  └── Loads dist/command.js in Worker thread                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**External packages (provided by host, not bundled):**
+- `@raycast/api` → replaced by `@photoncast/raycast-compat`
+- `react` / `react-reconciler` → provided by host
+
+**Benefits:**
+- Run existing Raycast extensions unchanged
+- Version consistency (host controls API version)
+- Security (bundled code is inspectable)
+- Performance (single-file bundles load fast)
+- Offline operation (no runtime npm fetches)
+
+### 14.6 API Compatibility Shim
+
+The `@photoncast/raycast-compat` package implements the Raycast API surface:
+
+```typescript
+// @photoncast/raycast-compat/index.ts
+
+// Re-export all Raycast API components and functions
+export { List, Detail, Form, Grid, ActionPanel, Action } from "./components";
+export { showToast, showHUD, closeMainWindow } from "./feedback";
+export { Clipboard, LocalStorage, Cache } from "./storage";
+export { environment, getPreferenceValues } from "./environment";
+export { open, openExtensionPreferences } from "./actions";
+export { launchCommand } from "./launch";
+export * from "./types";
+
+// Internal: IPC bridge to PhotonCast host
+import { ipc } from "./ipc";
+
+export function showToast(options: Toast.Options): Promise<Toast> {
+  return ipc.call("showToast", options);
+}
+
+export const Clipboard = {
+  copy: (text: string) => ipc.call("clipboard.copy", { text }),
+  paste: (text: string) => ipc.call("clipboard.paste", { text }),
+  read: () => ipc.call("clipboard.read", {}),
+};
+```
+
+**Component rendering:**
+
+React components are serialized to our declarative schema:
+
+```typescript
+// Extension code (unchanged from Raycast)
+<List>
+  <List.Item title="Hello" subtitle="World" />
+</List>
+
+// Serialized to JSON-RPC message:
+{
+  "method": "render",
+  "params": {
+    "view": {
+      "type": "List",
+      "items": [
+        { "id": "0", "title": "Hello", "subtitle": "World" }
+      ]
+    }
+  }
+}
+
+// PhotonCast host renders using native ListView
+```
+
+### 14.7 Manifest Translation
+
+Raycast `package.json` → PhotonCast internal representation:
+
+```json
+// Raycast package.json
+{
+  "name": "github",
+  "title": "GitHub",
+  "description": "Search repositories",
+  "icon": "github-icon.png",
+  "author": "raycast",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search-repos",
+      "title": "Search Repositories",
+      "subtitle": "GitHub",
+      "description": "Search GitHub repositories",
+      "mode": "view",
+      "keywords": ["gh", "repo"]
+    }
+  ],
+  "preferences": [
+    {
+      "name": "token",
+      "title": "Personal Access Token",
+      "type": "password",
+      "required": true
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.50.0",
+    "octokit": "^2.0.0"
+  }
+}
+```
+
+**Translation rules:**
+
+| Raycast Field | PhotonCast Equivalent |
+|---------------|----------------------|
+| `name` | `extension.id` (prefixed: `com.raycast.{name}`) |
+| `title` | `extension.name` |
+| `commands[].mode: "view"` | `commands[].mode = "view"` |
+| `commands[].mode: "no-view"` | `commands[].mode = "no-view"` |
+| `preferences[].type: "password"` | `preferences[].type = "secret"` |
+| `preferences[].type: "textfield"` | `preferences[].type = "string"` |
+| `preferences[].type: "dropdown"` | `preferences[].type = "select"` |
+
+### 14.8 Host Services Parity
+
+Required Raycast APIs to implement in the shim:
+
+| Raycast API | Priority | PhotonCast Implementation |
+|-------------|----------|---------------------------|
+| `List`, `Detail`, `Form`, `Grid` | P0 | Map to ExtensionView schema |
+| `Action`, `ActionPanel` | P0 | Map to Action system |
+| `showToast` | P0 | `ExtensionHost::show_toast` |
+| `Clipboard.copy/read` | P0 | `ExtensionHost::copy_to_clipboard` |
+| `LocalStorage` | P0 | `ExtensionStorage` |
+| `environment` | P0 | Extension context info |
+| `getPreferenceValues` | P0 | `PreferenceStore` |
+| `open` / `openExtensionPreferences` | P0 | `ExtensionHost::open_url` |
+| `showHUD` | P1 | New: minimal HUD overlay |
+| `Cache` | P1 | New: in-memory + disk cache |
+| `launchCommand` | P1 | Cross-extension invocation |
+| `getFrontmostApplication` | P2 | macOS accessibility API |
+| `Keyboard.type` | P2 | Synthetic keyboard input |
+| `AI` | P3 | Optional: integrate with local/cloud AI |
+
+### 14.9 Sprint 6 Preparation
+
+To prepare for Phase 3 during Sprint 6, ensure:
+
+1. **Serializable view types**: Add `#[derive(Serialize, Deserialize)]` to all view/action structs
+2. **Protocol abstraction**: Define `ExtensionHostProtocol` trait that both native and sidecar can implement
+3. **Missing host services**: Add `showHUD`, `Cache` API, `getFrontmostApplication` to spec
+4. **launchCommand**: Design cross-extension command invocation
+
+```rust
+// Ensure all view types are serializable for JSON-RPC transport
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExtensionView {
+    List(ListView),
+    Detail(DetailView),
+    Form(FormView),
+    Grid(GridView),
+}
+
+// Protocol that both native extensions and Node sidecar implement
+pub trait ExtensionHostProtocol: Send + Sync {
+    fn render_view(&self, view: ExtensionView) -> Result<ViewHandle>;
+    fn update_view(&self, handle: ViewHandle, patch: ViewPatch) -> Result<()>;
+    fn show_toast(&self, toast: Toast) -> Result<()>;
+    fn show_hud(&self, message: &str) -> Result<()>;
+    fn copy_to_clipboard(&self, text: &str) -> Result<()>;
+    fn read_clipboard(&self) -> Result<Option<String>>;
+    fn open_url(&self, url: &str) -> Result<()>;
+    fn get_preferences(&self) -> Result<PreferenceValues>;
+    fn launch_command(&self, extension_id: &str, command_id: &str) -> Result<()>;
+    // ... etc
+}
+```
+
+### 14.10 Open Questions for Phase 3
+
+| Question | Options | Leaning |
+|----------|---------|---------|
+| Node.js version management | Bundle with app vs. system Node vs. managed download | Managed download (like Raycast) |
+| Extension store | Mirror Raycast store vs. separate vs. manual install only | Manual install + curated list |
+| React version | Match Raycast's React version exactly | Yes, for maximum compatibility |
+| Menu bar commands | Support Raycast menu bar extensions | Defer to Phase 4 |
+| AI API | Implement Raycast AI compatibility | Defer, assess demand |
+
+### 14.11 Implementation Phases
+
+```
+Phase 3a: Core Sidecar Infrastructure
+├── Node.js process management
+├── JSON-RPC transport layer  
+├── Basic component rendering (List, Detail)
+└── Essential host services (toast, clipboard, storage)
+
+Phase 3b: Full API Compatibility  
+├── All view components (Form, Grid, ActionPanel)
+├── Navigation API (push/pop)
+├── Preferences system
+└── Cache API
+
+Phase 3c: Developer Experience
+├── Extension detection and auto-loading
+├── Hot-reload for Raycast extensions
+├── Error reporting with source maps
+└── Debug tooling
+
+Phase 3d: Polish & Compatibility Testing
+├── Test against top 50 Raycast extensions
+├── Performance optimization
+├── Documentation
+└── Migration guide for extension authors
+```
