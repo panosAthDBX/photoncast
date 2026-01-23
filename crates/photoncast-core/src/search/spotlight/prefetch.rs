@@ -169,7 +169,7 @@ impl SpotlightPrefetcher {
 
         if last_run_ms > 0 && elapsed_since_last < self.config.min_interval {
             // Return existing token if running, or a dummy cancelled token
-            let mut token_guard = self.current_token.lock();
+            let token_guard = self.current_token.lock();
             if let Some(ref token) = *token_guard {
                 return token.clone();
             }

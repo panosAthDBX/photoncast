@@ -15,7 +15,8 @@ mod macos {
 
     use objc2::rc::Retained;
     use objc2::sel;
-    use objc2::{define_class, msg_send_id, AllocAnyThread, ClassType, MainThreadOnly};
+    #[allow(deprecated)]
+    use objc2::{define_class, msg_send_id, AllocAnyThread, MainThreadOnly};
     use objc2_app_kit::{
         NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu,
         NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,

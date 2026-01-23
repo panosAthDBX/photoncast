@@ -40,10 +40,10 @@
 //! - `ENDSWITH` - suffix match
 //! - `LIKE` - pattern match with wildcards (* and ?)
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use objc2::rc::Retained;
-use objc2::runtime::AnyClass;
+#[allow(deprecated)]
 use objc2::{class, msg_send_id};
 use objc2_foundation::{NSArray, NSCompoundPredicate, NSPredicate, NSString};
 

@@ -28,9 +28,8 @@ use std::time::{Duration, Instant};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{msg_send, sel};
 use objc2_foundation::{
-    NSArray, NSMetadataItem, NSMetadataQuery, NSMetadataQueryDidFinishGatheringNotification,
+    NSArray, NSMetadataItem, NSMetadataQuery,
     NSMetadataQueryDidUpdateNotification, NSNotification, NSNotificationCenter, NSString,
 };
 use parking_lot::RwLock;
@@ -520,7 +519,7 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
 
     // Channel to collect results from parallel queries
     let (tx, rx) = mpsc::channel::<Vec<SpotlightResult>>();
-    let scope_count = scope_configs.len();
+    let _scope_count = scope_configs.len();
 
     // Spawn a thread per scope for parallel querying
     for (scope_path, custom_config) in scope_configs {
@@ -545,7 +544,7 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
 
     // Collect results from all threads
     let custom_scopes_list = inner.custom_scopes.read().clone();
-    let primary_scopes_list = inner.scopes.read().clone();
+    let _primary_scopes_list = inner.scopes.read().clone();
     
     // Log the scope paths we're using for matching
     tracing::debug!("[FileIndex] Matching against {} custom scope paths:", custom_scopes_list.len());

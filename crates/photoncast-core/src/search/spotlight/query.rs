@@ -33,13 +33,13 @@ use std::sync::Arc;
 
 use block2::RcBlock;
 use core_foundation::runloop::{
-    kCFRunLoopDefaultMode, kCFRunLoopRunFinished, kCFRunLoopRunHandledSource,
-    kCFRunLoopRunStopped, kCFRunLoopRunTimedOut, CFRunLoopGetCurrent, CFRunLoopRunInMode,
+    kCFRunLoopDefaultMode, kCFRunLoopRunStopped, CFRunLoopGetCurrent, CFRunLoopRunInMode,
     CFRunLoopStop,
 };
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{class, msg_send, msg_send_id, sel};
+#[allow(deprecated)]
+use objc2::{class, msg_send, msg_send_id};
 use objc2_foundation::{
     NSArray, NSMetadataItem, NSMetadataQuery,
     NSMetadataQueryDidFinishGatheringNotification, NSNotification, NSNotificationCenter,

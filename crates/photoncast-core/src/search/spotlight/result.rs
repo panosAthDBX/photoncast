@@ -264,8 +264,7 @@ impl MetadataExtractor {
         let mut results = Vec::with_capacity(count);
 
         for i in 0..count {
-            // SAFETY: Index is within bounds (0..count)
-            let item = unsafe { items.objectAtIndex(i) };
+            let item = items.objectAtIndex(i);
             if let Some(result) = Self::extract(&item) {
                 results.push(result);
             }
@@ -288,8 +287,7 @@ impl MetadataExtractor {
 
         value.and_then(|obj| {
             // Try to interpret as NSString
-            // SAFETY: We're checking if the object responds to NSString methods
-            let ns_string: Option<&NSString> = unsafe { obj.downcast_ref() };
+            let ns_string: Option<&NSString> = obj.downcast_ref();
             ns_string.map(|s| s.to_string())
         })
     }
@@ -304,8 +302,7 @@ impl MetadataExtractor {
 
         value.and_then(|obj| {
             // Try to interpret as NSNumber
-            // SAFETY: We're checking if the object responds to NSNumber methods
-            let ns_number: Option<&NSNumber> = unsafe { obj.downcast_ref() };
+            let ns_number: Option<&NSNumber> = obj.downcast_ref();
             ns_number.map(|n| n.as_i64())
         })
     }
@@ -320,11 +317,9 @@ impl MetadataExtractor {
 
         value.and_then(|obj| {
             // Try to interpret as NSDate
-            // SAFETY: We're checking if the object responds to NSDate methods
-            let ns_date: Option<&NSDate> = unsafe { obj.downcast_ref() };
+            let ns_date: Option<&NSDate> = obj.downcast_ref();
             ns_date.and_then(|date| {
-                // SAFETY: timeIntervalSince1970 is always safe to call on NSDate
-                let timestamp = unsafe { date.timeIntervalSince1970() };
+                let timestamp = date.timeIntervalSince1970();
                 nsdate_to_system_time(timestamp)
             })
         })
@@ -340,11 +335,9 @@ impl MetadataExtractor {
 
         value.and_then(|obj| {
             // Try to interpret as NSURL
-            // SAFETY: We're checking if the object responds to NSURL methods
-            let ns_url: Option<&NSURL> = unsafe { obj.downcast_ref() };
+            let ns_url: Option<&NSURL> = obj.downcast_ref();
             ns_url.and_then(|url| {
-                // SAFETY: path() is safe to call on NSURL
-                let path_string = unsafe { url.path() }?;
+                let path_string = url.path()?;
                 Some(PathBuf::from(path_string.to_string()))
             })
         })
@@ -361,17 +354,15 @@ impl MetadataExtractor {
         value
             .and_then(|obj| {
                 // Try to interpret as NSArray
-                // SAFETY: We're checking if the object is an NSArray
-                let ns_array: Option<&NSArray<AnyObject>> = unsafe { obj.downcast_ref() };
+                let ns_array: Option<&NSArray<AnyObject>> = obj.downcast_ref();
                 ns_array.map(|array| {
                     let count = array.count();
                     let mut result = Vec::with_capacity(count);
 
                     for i in 0..count {
-                        // SAFETY: Index is within bounds
-                        let element = unsafe { array.objectAtIndex(i) };
+                        let element = array.objectAtIndex(i);
                         // Try to interpret each element as NSString
-                        let ns_string: Option<&NSString> = unsafe { element.downcast_ref() };
+                        let ns_string: Option<&NSString> = element.downcast_ref();
                         if let Some(s) = ns_string {
                             result.push(s.to_string());
                         }
