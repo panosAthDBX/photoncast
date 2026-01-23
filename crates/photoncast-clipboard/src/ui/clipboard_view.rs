@@ -400,12 +400,7 @@ impl ClipboardHistoryView {
                     .flex_row()
                     .items_center()
                     .gap(rems(0.5))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(colors.overlay0)
-                            .child("🔍"),
-                    )
+                    .child(div().text_sm().text_color(colors.overlay0).child("🔍"))
                     .child(
                         div()
                             .id("search-input")
@@ -702,16 +697,11 @@ impl ClipboardHistoryView {
                             .truncate()
                             .child(format!("{}{}", names.join(", "), suffix)),
                     )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(overlay0)
-                            .child(format!(
-                                "{} files • {}",
-                                paths.len(),
-                                format_kilobytes(*total_size)
-                            )),
-                    )
+                    .child(div().text_xs().text_color(overlay0).child(format!(
+                        "{} files • {}",
+                        paths.len(),
+                        format_kilobytes(*total_size)
+                    )))
             },
             _ => {
                 // Default text preview
@@ -1004,11 +994,11 @@ impl ClipboardHistoryView {
             "down" => {
                 self.select_next(cx);
                 return;
-            }
+            },
             "up" => {
                 self.select_previous(cx);
                 return;
-            }
+            },
             "enter" => {
                 if self.default_action_paste {
                     self.paste_selected(cx);
@@ -1016,7 +1006,7 @@ impl ClipboardHistoryView {
                     self.copy_selected(cx);
                 }
                 return;
-            }
+            },
             "escape" => {
                 if self.show_clear_confirmation {
                     self.show_clear_confirmation = false;
@@ -1027,8 +1017,8 @@ impl ClipboardHistoryView {
                     cx.remove_window();
                 }
                 return;
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         // Cursor movement for search (left/right)
@@ -1042,7 +1032,7 @@ impl ClipboardHistoryView {
                 }
                 cx.notify();
                 return;
-            }
+            },
             "right" => {
                 if event.keystroke.modifiers.platform {
                     self.search_cursor = len;
@@ -1051,7 +1041,7 @@ impl ClipboardHistoryView {
                 }
                 cx.notify();
                 return;
-            }
+            },
             "backspace" => {
                 if event.keystroke.modifiers.platform {
                     // Delete everything before cursor
@@ -1080,8 +1070,8 @@ impl ClipboardHistoryView {
                     cx.notify();
                 }
                 return;
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         // Handle Cmd+V paste
@@ -1233,7 +1223,12 @@ fn render_shortcut(key: &str, label: &str, colors: &ClipboardColors) -> impl Int
                 .text_color(subtext0)
                 .child(key.to_string()),
         )
-        .child(div().text_xs().text_color(overlay0).child(label.to_string()))
+        .child(
+            div()
+                .text_xs()
+                .text_color(overlay0)
+                .child(label.to_string()),
+        )
 }
 
 /// Returns a relative time string.

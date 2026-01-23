@@ -2,7 +2,9 @@
 
 use gpui::prelude::*;
 use gpui::*;
-use photoncast_core::app::config::{AccentColor, ClipboardAction, Config, CustomSearchScope, ThemeSetting, default_search_scopes};
+use photoncast_core::app::config::{
+    default_search_scopes, AccentColor, ClipboardAction, Config, CustomSearchScope, ThemeSetting,
+};
 use photoncast_core::app::config_file::{load_config, save_config};
 use photoncast_core::platform::LoginItemManager;
 use photoncast_core::theme::PhotonTheme;
@@ -293,7 +295,12 @@ impl PreferencesWindow {
 
     fn decrement_clipboard_retention(&mut self, cx: &mut ViewContext<Self>) {
         if self.config.clipboard.retention_days > 1 {
-            self.config.clipboard.retention_days = self.config.clipboard.retention_days.saturating_sub(7).max(1);
+            self.config.clipboard.retention_days = self
+                .config
+                .clipboard
+                .retention_days
+                .saturating_sub(7)
+                .max(1);
             self.has_changes = true;
             self.save_config();
             cx.notify();
@@ -323,7 +330,12 @@ impl PreferencesWindow {
     fn decrement_max_image_size(&mut self, cx: &mut ViewContext<Self>) {
         // Min 1MB
         if self.config.clipboard.max_image_size > 1024 * 1024 {
-            self.config.clipboard.max_image_size = self.config.clipboard.max_image_size.saturating_sub(5 * 1024 * 1024).max(1024 * 1024);
+            self.config.clipboard.max_image_size = self
+                .config
+                .clipboard
+                .max_image_size
+                .saturating_sub(5 * 1024 * 1024)
+                .max(1024 * 1024);
             self.has_changes = true;
             self.save_config();
             cx.notify();
@@ -341,7 +353,10 @@ impl PreferencesWindow {
     }
 
     fn remove_excluded_app(&mut self, bundle_id: &str, cx: &mut ViewContext<Self>) {
-        self.config.clipboard.excluded_apps.retain(|app| app != bundle_id);
+        self.config
+            .clipboard
+            .excluded_apps
+            .retain(|app| app != bundle_id);
         self.has_changes = true;
         self.save_config();
         cx.notify();
@@ -357,7 +372,12 @@ impl PreferencesWindow {
             "com.dashlane.Dashlane",
         ];
         for app in defaults {
-            if !self.config.clipboard.excluded_apps.contains(&app.to_string()) {
+            if !self
+                .config
+                .clipboard
+                .excluded_apps
+                .contains(&app.to_string())
+            {
                 self.config.clipboard.excluded_apps.push(app.to_string());
             }
         }
@@ -369,14 +389,16 @@ impl PreferencesWindow {
     // ==================== App Management Handlers ====================
 
     fn toggle_deep_scan_default(&mut self, cx: &mut ViewContext<Self>) {
-        self.config.app_management.deep_scan_default = !self.config.app_management.deep_scan_default;
+        self.config.app_management.deep_scan_default =
+            !self.config.app_management.deep_scan_default;
         self.has_changes = true;
         self.save_config();
         cx.notify();
     }
 
     fn toggle_app_sleep_enabled(&mut self, cx: &mut ViewContext<Self>) {
-        self.config.app_management.app_sleep.enabled = !self.config.app_management.app_sleep.enabled;
+        self.config.app_management.app_sleep.enabled =
+            !self.config.app_management.app_sleep.enabled;
         self.has_changes = true;
         self.save_config();
         cx.notify();
@@ -444,7 +466,8 @@ impl PreferencesWindow {
     }
 
     fn toggle_window_cycling(&mut self, cx: &mut ViewContext<Self>) {
-        self.config.window_management.cycling_enabled = !self.config.window_management.cycling_enabled;
+        self.config.window_management.cycling_enabled =
+            !self.config.window_management.cycling_enabled;
         self.has_changes = true;
         self.save_config();
         cx.notify();
@@ -479,8 +502,11 @@ impl PreferencesWindow {
 
     fn decrement_almost_maximize_margin(&mut self, cx: &mut ViewContext<Self>) {
         if self.config.window_management.almost_maximize_margin > 0 {
-            self.config.window_management.almost_maximize_margin = 
-                self.config.window_management.almost_maximize_margin.saturating_sub(5);
+            self.config.window_management.almost_maximize_margin = self
+                .config
+                .window_management
+                .almost_maximize_margin
+                .saturating_sub(5);
             self.has_changes = true;
             self.save_config();
             cx.notify();
@@ -488,14 +514,16 @@ impl PreferencesWindow {
     }
 
     fn toggle_window_management_animation(&mut self, cx: &mut ViewContext<Self>) {
-        self.config.window_management.animation_enabled = !self.config.window_management.animation_enabled;
+        self.config.window_management.animation_enabled =
+            !self.config.window_management.animation_enabled;
         self.has_changes = true;
         self.save_config();
         cx.notify();
     }
 
     fn toggle_window_visual_feedback(&mut self, cx: &mut ViewContext<Self>) {
-        self.config.window_management.show_visual_feedback = !self.config.window_management.show_visual_feedback;
+        self.config.window_management.show_visual_feedback =
+            !self.config.window_management.show_visual_feedback;
         self.has_changes = true;
         self.save_config();
         cx.notify();
@@ -595,7 +623,10 @@ impl PreferencesWindow {
             self.config.file_search.search_scopes.push(path);
             self.has_changes = true;
             self.save_config();
-            cx.spawn(|_, _| async { reload_live_index(); }).detach();
+            cx.spawn(|_, _| async {
+                reload_live_index();
+            })
+            .detach();
             cx.notify();
         }
     }
@@ -604,7 +635,10 @@ impl PreferencesWindow {
         self.config.file_search.search_scopes.retain(|p| p != path);
         self.has_changes = true;
         self.save_config();
-        cx.spawn(|_, _| async { reload_live_index(); }).detach();
+        cx.spawn(|_, _| async {
+            reload_live_index();
+        })
+        .detach();
         cx.notify();
     }
 
@@ -613,13 +647,21 @@ impl PreferencesWindow {
         self.config.file_search.search_scopes = default_search_scopes();
         self.has_changes = true;
         self.save_config();
-        cx.spawn(|_, _| async { reload_live_index(); }).detach();
+        cx.spawn(|_, _| async {
+            reload_live_index();
+        })
+        .detach();
         cx.notify();
     }
 
     // ==================== Custom Scopes Handlers ====================
 
-    fn add_custom_scope(&mut self, path: std::path::PathBuf, extensions: Vec<String>, cx: &mut ViewContext<Self>) {
+    fn add_custom_scope(
+        &mut self,
+        path: std::path::PathBuf,
+        extensions: Vec<String>,
+        cx: &mut ViewContext<Self>,
+    ) {
         // Convert path to string with ~ for home directory
         let path_str = if let Some(home) = dirs::home_dir() {
             if let (Some(home_str), Some(path_str)) = (home.to_str(), path.to_str()) {
@@ -636,7 +678,13 @@ impl PreferencesWindow {
         };
 
         // Check if scope with same path already exists
-        if self.config.file_search.custom_scopes.iter().any(|s| s.path == path_str) {
+        if self
+            .config
+            .file_search
+            .custom_scopes
+            .iter()
+            .any(|s| s.path == path_str)
+        {
             return;
         }
 
@@ -648,15 +696,24 @@ impl PreferencesWindow {
         self.config.file_search.custom_scopes.push(scope);
         self.has_changes = true;
         self.save_config();
-        cx.spawn(|_, _| async { reload_live_index(); }).detach();
+        cx.spawn(|_, _| async {
+            reload_live_index();
+        })
+        .detach();
         cx.notify();
     }
 
     fn remove_custom_scope(&mut self, path: &str, cx: &mut ViewContext<Self>) {
-        self.config.file_search.custom_scopes.retain(|s| s.path != path);
+        self.config
+            .file_search
+            .custom_scopes
+            .retain(|s| s.path != path);
         self.has_changes = true;
         self.save_config();
-        cx.spawn(|_, _| async { reload_live_index(); }).detach();
+        cx.spawn(|_, _| async {
+            reload_live_index();
+        })
+        .detach();
         cx.notify();
     }
 
@@ -664,33 +721,62 @@ impl PreferencesWindow {
         self.config.file_search.custom_scopes.clear();
         self.has_changes = true;
         self.save_config();
-        cx.spawn(|_, _| async { reload_live_index(); }).detach();
+        cx.spawn(|_, _| async {
+            reload_live_index();
+        })
+        .detach();
         cx.notify();
     }
 
     fn toggle_custom_scope_recursive(&mut self, path: &str, cx: &mut ViewContext<Self>) {
-        if let Some(scope) = self.config.file_search.custom_scopes.iter_mut().find(|s| s.path == path) {
+        if let Some(scope) = self
+            .config
+            .file_search
+            .custom_scopes
+            .iter_mut()
+            .find(|s| s.path == path)
+        {
             scope.recursive = !scope.recursive;
             self.has_changes = true;
             self.save_config();
-            cx.spawn(|_, _| async { reload_live_index(); }).detach();
+            cx.spawn(|_, _| async {
+                reload_live_index();
+            })
+            .detach();
             cx.notify();
         }
     }
 
-    fn set_custom_scope_extensions(&mut self, path: &str, extensions: Vec<String>, cx: &mut ViewContext<Self>) {
-        if let Some(scope) = self.config.file_search.custom_scopes.iter_mut().find(|s| s.path == path) {
+    fn set_custom_scope_extensions(
+        &mut self,
+        path: &str,
+        extensions: Vec<String>,
+        cx: &mut ViewContext<Self>,
+    ) {
+        if let Some(scope) = self
+            .config
+            .file_search
+            .custom_scopes
+            .iter_mut()
+            .find(|s| s.path == path)
+        {
             scope.extensions = extensions;
             self.has_changes = true;
             self.save_config();
-            cx.spawn(|_, _| async { reload_live_index(); }).detach();
+            cx.spawn(|_, _| async {
+                reload_live_index();
+            })
+            .detach();
             cx.notify();
         }
     }
 
     fn start_editing_scope_extensions(&mut self, path: &str, cx: &mut ViewContext<Self>) {
         // Get current extensions as comma-separated string
-        let current = self.config.file_search.custom_scopes
+        let current = self
+            .config
+            .file_search
+            .custom_scopes
             .iter()
             .find(|s| s.path == path)
             .map(|s| s.extensions.join(", "))
@@ -849,8 +935,12 @@ impl PreferencesWindow {
             PreferenceSection::Clipboard => self.render_clipboard_section(cx).into_any_element(),
             PreferenceSection::Calendar => self.render_calendar_section(cx).into_any_element(),
             PreferenceSection::FileSearch => self.render_file_search_section(cx).into_any_element(),
-            PreferenceSection::AppManagement => self.render_app_management_section(cx).into_any_element(),
-            PreferenceSection::WindowManagement => self.render_window_management_section(cx).into_any_element(),
+            PreferenceSection::AppManagement => {
+                self.render_app_management_section(cx).into_any_element()
+            },
+            PreferenceSection::WindowManagement => {
+                self.render_window_management_section(cx).into_any_element()
+            },
             PreferenceSection::SleepTimer => self.render_sleep_timer_section(cx).into_any_element(),
             PreferenceSection::Shortcuts => self.render_shortcuts_section(cx).into_any_element(),
         };
@@ -1057,7 +1147,13 @@ impl PreferencesWindow {
                             } else {
                                 colors.surface
                             })
-                            .hover(|s| s.bg(if is_paste_default { colors.accent } else { colors.surface_hover }))
+                            .hover(|s| {
+                                s.bg(if is_paste_default {
+                                    colors.accent
+                                } else {
+                                    colors.surface_hover
+                                })
+                            })
                             .cursor_pointer()
                             .on_click(cx.listener(|this, _, cx| {
                                 if this.config.clipboard.default_action != ClipboardAction::Paste {
@@ -1082,7 +1178,13 @@ impl PreferencesWindow {
                             } else {
                                 colors.surface
                             })
-                            .hover(|s| s.bg(if !is_paste_default { colors.accent } else { colors.surface_hover }))
+                            .hover(|s| {
+                                s.bg(if !is_paste_default {
+                                    colors.accent
+                                } else {
+                                    colors.surface_hover
+                                })
+                            })
                             .cursor_pointer()
                             .on_click(cx.listener(|this, _, cx| {
                                 if this.config.clipboard.default_action != ClipboardAction::Copy {
@@ -1273,7 +1375,7 @@ impl PreferencesWindow {
     fn render_file_search_section(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = get_colors(cx);
         let hotkey_display = self.config.file_search.hotkey.display_string();
-        
+
         div()
             .flex()
             .flex_col()
@@ -1490,11 +1592,7 @@ impl PreferencesWindow {
                             .flex()
                             .items_center()
                             .gap(px(8.0))
-                            .child(
-                                div()
-                                    .text_size(px(14.0))
-                                    .child("📁"),
-                            )
+                            .child(div().text_size(px(14.0)).child("📁"))
                             .child(
                                 div()
                                     .text_size(px(12.0))
@@ -1504,7 +1602,10 @@ impl PreferencesWindow {
                     )
                     .child(
                         div()
-                            .id(SharedString::from(format!("remove-scope-{}", scope.display())))
+                            .id(SharedString::from(format!(
+                                "remove-scope-{}",
+                                scope.display()
+                            )))
                             .px(px(6.0))
                             .py(px(2.0))
                             .rounded(px(4.0))
@@ -2026,14 +2127,15 @@ impl PreferencesWindow {
             })
     }
 
-    fn render_custom_scope_buttons(&self, has_scopes: bool, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render_custom_scope_buttons(
+        &self,
+        has_scopes: bool,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let colors = get_colors(cx);
-        
-        let mut buttons = div()
-            .flex()
-            .items_center()
-            .gap(px(4.0));
-        
+
+        let mut buttons = div().flex().items_center().gap(px(4.0));
+
         // Clear All button (only show if there are scopes)
         if has_scopes {
             buttons = buttons.child(
@@ -2054,7 +2156,7 @@ impl PreferencesWindow {
                     ),
             );
         }
-        
+
         // Add Custom Scope button
         buttons = buttons.child(
             div()
@@ -2081,7 +2183,8 @@ impl PreferencesWindow {
                                 })
                             });
                         }
-                    }).detach();
+                    })
+                    .detach();
                 }))
                 .child(
                     div()
@@ -2090,7 +2193,7 @@ impl PreferencesWindow {
                         .child("+ Add Scope"),
                 ),
         );
-        
+
         buttons
     }
 
@@ -2307,7 +2410,12 @@ impl PreferencesWindow {
             )
     }
 
-    fn render_layout_item(&self, name: &'static str, description: &'static str, colors: &PrefsColors) -> impl IntoElement {
+    fn render_layout_item(
+        &self,
+        name: &'static str,
+        description: &'static str,
+        colors: &PrefsColors,
+    ) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -2428,7 +2536,11 @@ impl PreferencesWindow {
         let hotkey = format!(
             "{}{}",
             self.config.hotkey.modifiers.join(" "),
-            if self.config.hotkey.modifiers.is_empty() { "" } else { " " },
+            if self.config.hotkey.modifiers.is_empty() {
+                ""
+            } else {
+                " "
+            },
         ) + &self.config.hotkey.key;
 
         div()
@@ -2530,7 +2642,12 @@ impl PreferencesWindow {
             )
     }
 
-    fn render_suggested_shortcut(&self, name: &'static str, shortcut: &'static str, colors: &PrefsColors) -> impl IntoElement {
+    fn render_suggested_shortcut(
+        &self,
+        name: &'static str,
+        shortcut: &'static str,
+        colors: &PrefsColors,
+    ) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -2588,12 +2705,7 @@ impl PreferencesWindow {
                     .on_click(cx.listener(move |this, _, cx| {
                         this.set_theme(theme.clone(), cx);
                     }))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(text)
-                            .child(*name),
-                    )
+                    .child(div().text_size(px(11.0)).text_color(text).child(*name))
             })
             .collect();
 
@@ -2613,7 +2725,14 @@ impl PreferencesWindow {
                     .text_color(colors.text_muted)
                     .child("Choose your preferred color scheme"),
             )
-            .child(div().flex().flex_wrap().gap(px(6.0)).mt(px(4.0)).children(buttons))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(6.0))
+                    .mt(px(4.0))
+                    .children(buttons),
+            )
     }
 
     fn render_accent_selector(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
@@ -2645,7 +2764,11 @@ impl PreferencesWindow {
                 let is_selected = current_accent == accent;
                 let accent = accent.clone();
                 let color = *color;
-                let border = if is_selected { text } else { hsla(0.0, 0.0, 0.0, 0.0) };
+                let border = if is_selected {
+                    text
+                } else {
+                    hsla(0.0, 0.0, 0.0, 0.0)
+                };
                 div()
                     .id(SharedString::from(*name))
                     .size(px(24.0))
@@ -2676,7 +2799,14 @@ impl PreferencesWindow {
                     .text_color(theme_colors.text_muted)
                     .child("Highlight color for selections and actions"),
             )
-            .child(div().flex().flex_wrap().gap(px(8.0)).mt(px(4.0)).children(buttons))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(8.0))
+                    .mt(px(4.0))
+                    .children(buttons),
+            )
     }
 
     fn render_toggle_row(
@@ -2892,7 +3022,12 @@ impl PreferencesWindow {
             )
     }
 
-    fn render_shortcut_row(&self, label: &'static str, shortcut: &str, colors: &PrefsColors) -> impl IntoElement {
+    fn render_shortcut_row(
+        &self,
+        label: &'static str,
+        shortcut: &str,
+        colors: &PrefsColors,
+    ) -> impl IntoElement {
         div()
             .flex()
             .items_center()

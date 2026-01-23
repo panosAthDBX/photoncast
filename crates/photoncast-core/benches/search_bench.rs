@@ -582,7 +582,7 @@ mod spotlight_benches {
     use std::time::Duration;
 
     use photoncast_core::search::spotlight::prefetch::{
-        PrefetchConfig, SpotlightPrefetcher, start_background_prefetch_with_service,
+        start_background_prefetch_with_service, PrefetchConfig, SpotlightPrefetcher,
     };
     use photoncast_core::search::spotlight::service::{
         SpotlightSearchOptions, SpotlightSearchService,
@@ -694,9 +694,7 @@ mod spotlight_benches {
 
         // Subsequent query - cache hit
         group.bench_function("cache_hit", |b| {
-            b.iter(|| {
-                black_box(service.search_with_options(query, &options))
-            });
+            b.iter(|| black_box(service.search_with_options(query, &options)));
         });
 
         group.finish();

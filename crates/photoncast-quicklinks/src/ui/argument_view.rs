@@ -72,10 +72,7 @@ impl ArgumentField {
 
     /// Returns the label for this field.
     fn label(&self) -> &str {
-        self.info
-            .name
-            .as_deref()
-            .unwrap_or("Query")
+        self.info.name.as_deref().unwrap_or("Query")
     }
 
     /// Returns true if this is a dropdown field.
@@ -202,11 +199,7 @@ impl ArgumentInputView {
         let mut map = HashMap::new();
 
         for (i, field) in self.arguments.iter().enumerate() {
-            let key = field
-                .info
-                .name
-                .clone()
-                .unwrap_or_else(|| i.to_string());
+            let key = field.info.name.clone().unwrap_or_else(|| i.to_string());
             map.insert(key, field.get_value());
         }
 
@@ -323,7 +316,7 @@ impl ArgumentInputView {
         match key {
             "escape" => {
                 self.cancel(cx);
-            }
+            },
             "enter" => {
                 // If dropdown is open, close it; otherwise submit
                 if let Some(field) = self.arguments.get_mut(self.focus_index) {
@@ -334,20 +327,20 @@ impl ArgumentInputView {
                     }
                 }
                 self.submit(cx);
-            }
+            },
             "tab" => {
                 if shift {
                     self.focus_previous(cx);
                 } else {
                     self.focus_next(cx);
                 }
-            }
+            },
             "up" => {
                 self.dropdown_previous(cx);
-            }
+            },
             "down" => {
                 self.dropdown_next(cx);
-            }
+            },
             "space" => {
                 // Toggle dropdown for dropdown fields
                 if let Some(field) = self.arguments.get(self.focus_index) {
@@ -355,7 +348,7 @@ impl ArgumentInputView {
                         self.toggle_dropdown(cx);
                     }
                 }
-            }
+            },
             "left" => {
                 // Cursor movement for text fields
                 if let Some(field) = self.arguments.get_mut(self.focus_index) {
@@ -368,7 +361,7 @@ impl ArgumentInputView {
                         cx.notify();
                     }
                 }
-            }
+            },
             "right" => {
                 // Cursor movement for text fields
                 if let Some(field) = self.arguments.get_mut(self.focus_index) {
@@ -382,7 +375,7 @@ impl ArgumentInputView {
                         cx.notify();
                     }
                 }
-            }
+            },
             "backspace" => {
                 // Handle backspace for text input
                 if let Some(field) = self.arguments.get_mut(self.focus_index) {
@@ -407,7 +400,7 @@ impl ArgumentInputView {
                         }
                     }
                 }
-            }
+            },
             "v" if platform => {
                 // Handle Cmd+V paste
                 if let Some(field) = self.arguments.get_mut(self.focus_index) {
@@ -423,7 +416,7 @@ impl ArgumentInputView {
                         }
                     }
                 }
-            }
+            },
             _ => {
                 // Handle character input for text fields at cursor position
                 // Ignore modifier-only keys
@@ -444,7 +437,7 @@ impl ArgumentInputView {
                         }
                     }
                 }
-            }
+            },
         }
     }
 
@@ -537,7 +530,8 @@ impl ArgumentInputView {
                                 )
                             })
                             .when(!has_value && !is_focused, |el| {
-                                el.text_color(colors.text_placeholder).child(placeholder.clone())
+                                el.text_color(colors.text_placeholder)
+                                    .child(placeholder.clone())
                             })
                             .when(has_value, |el| {
                                 el.text_color(colors.text)
@@ -610,12 +604,7 @@ impl ArgumentInputView {
                     .flex()
                     .items_center()
                     .justify_between()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(colors.text)
-                            .child(current_value),
-                    )
+                    .child(div().text_sm().text_color(colors.text).child(current_value))
                     .child(
                         // Dropdown arrow
                         div()
@@ -690,11 +679,9 @@ impl Render for ArgumentInputView {
             .map(|(i, field)| {
                 let is_focused = i == focus_index;
                 if field.is_dropdown() {
-                    Self::render_dropdown_field(i, field, is_focused, &colors)
-                        .into_any_element()
+                    Self::render_dropdown_field(i, field, is_focused, &colors).into_any_element()
                 } else {
-                    Self::render_text_field(i, field, is_focused, &colors)
-                        .into_any_element()
+                    Self::render_text_field(i, field, is_focused, &colors).into_any_element()
                 }
             })
             .collect();

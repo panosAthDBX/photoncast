@@ -220,9 +220,7 @@ pub fn hide_app(bundle_id: &str) -> ActionResult<()> {
         bundle_id
     );
 
-    let output = Command::new("osascript")
-        .args(["-e", &script])
-        .output()?;
+    let output = Command::new("osascript").args(["-e", &script]).output()?;
 
     if output.status.success() {
         tracing::debug!("Successfully hid app: {}", bundle_id);
@@ -238,15 +236,15 @@ pub fn hide_app(bundle_id: &str) -> ActionResult<()> {
 
 /// Helper function to copy text to the clipboard using pbcopy.
 fn copy_to_clipboard(text: &str) -> ActionResult<()> {
-    let mut child = Command::new("pbcopy")
-        .stdin(Stdio::piped())
-        .spawn()?;
+    let mut child = Command::new("pbcopy").stdin(Stdio::piped()).spawn()?;
 
     if let Some(stdin) = child.stdin.as_mut() {
         use std::io::Write;
-        stdin.write_all(text.as_bytes()).map_err(|e| ActionError::ClipboardFailed {
-            reason: format!("Failed to write to pbcopy: {}", e),
-        })?;
+        stdin
+            .write_all(text.as_bytes())
+            .map_err(|e| ActionError::ClipboardFailed {
+                reason: format!("Failed to write to pbcopy: {}", e),
+            })?;
     }
 
     let status = child.wait()?;
@@ -270,10 +268,7 @@ mod tests {
         let err = ActionError::AppNotRunning {
             bundle_id: "com.example.app".to_string(),
         };
-        assert_eq!(
-            err.to_string(),
-            "application not running: com.example.app"
-        );
+        assert_eq!(err.to_string(), "application not running: com.example.app");
 
         let err = ActionError::OperationFailed {
             operation: "launch".to_string(),
@@ -327,17 +322,19 @@ mod tests {
         let path = PathBuf::from("/nonexistent/path/that/does/not/exist");
 
         let result = reveal_in_finder(&path);
-        assert!(result.is_err(), "reveal_in_finder should fail for nonexistent path");
+        assert!(
+            result.is_err(),
+            "reveal_in_finder should fail for nonexistent path"
+        );
 
         let err = result.unwrap_err();
         match err {
             ActionError::PathNotFound { path: error_path } => {
                 assert_eq!(
-                    error_path,
-                    "/nonexistent/path/that/does/not/exist",
+                    error_path, "/nonexistent/path/that/does/not/exist",
                     "Error should contain the invalid path"
                 );
-            }
+            },
             _ => panic!("Expected PathNotFound error, got: {:?}", err),
         }
     }
@@ -364,13 +361,16 @@ mod tests {
     #[test]
     fn test_copy_bundle_id_empty() {
         let result = copy_bundle_id_to_clipboard("");
-        assert!(result.is_err(), "copy_bundle_id_to_clipboard should fail for empty string");
+        assert!(
+            result.is_err(),
+            "copy_bundle_id_to_clipboard should fail for empty string"
+        );
 
         let err = result.unwrap_err();
         match err {
             ActionError::InvalidBundleId { bundle_id } => {
                 assert_eq!(bundle_id, "", "Error should contain the empty bundle ID");
-            }
+            },
             _ => panic!("Expected InvalidBundleId error, got: {:?}", err),
         }
     }
@@ -399,17 +399,19 @@ mod tests {
         let path = PathBuf::from("/nonexistent/path");
 
         let result = copy_path_to_clipboard(&path);
-        assert!(result.is_err(), "copy_path_to_clipboard should fail for nonexistent path");
+        assert!(
+            result.is_err(),
+            "copy_path_to_clipboard should fail for nonexistent path"
+        );
 
         let err = result.unwrap_err();
         match err {
             ActionError::PathNotFound { path: error_path } => {
                 assert_eq!(
-                    error_path,
-                    "/nonexistent/path",
+                    error_path, "/nonexistent/path",
                     "Error should contain the invalid path"
                 );
-            }
+            },
             _ => panic!("Expected PathNotFound error, got: {:?}", err),
         }
     }
@@ -424,12 +426,14 @@ mod tests {
 
         let err = result.unwrap_err();
         match err {
-            ActionError::AppNotRunning { bundle_id: error_bundle } => {
+            ActionError::AppNotRunning {
+                bundle_id: error_bundle,
+            } => {
                 assert_eq!(
                     error_bundle, bundle_id,
                     "Error should contain the bundle ID"
                 );
-            }
+            },
             _ => panic!("Expected AppNotRunning error, got: {:?}", err),
         }
     }
@@ -444,7 +448,7 @@ mod tests {
         match err {
             ActionError::InvalidBundleId { bundle_id } => {
                 assert_eq!(bundle_id, "", "Error should contain the empty bundle ID");
-            }
+            },
             _ => panic!("Expected InvalidBundleId error, got: {:?}", err),
         }
     }
@@ -454,13 +458,13 @@ mod tests {
     fn test_hide_app_rejects_injection() {
         // Test various injection attempts
         let injection_attempts = [
-            r#"com.example" & do shell script "id" --"#,  // AppleScript injection
-            "com.example\"; evil",                         // Quote escape
-            "com.example$(whoami)",                        // Command substitution
-            "com.example`id`",                             // Backtick injection
-            "com.example\nmalicious",                      // Newline injection
-            "com.example|cat /etc/passwd",                 // Pipe injection
-            "com.example;rm -rf /",                        // Semicolon injection
+            r#"com.example" & do shell script "id" --"#, // AppleScript injection
+            "com.example\"; evil",                       // Quote escape
+            "com.example$(whoami)",                      // Command substitution
+            "com.example`id`",                           // Backtick injection
+            "com.example\nmalicious",                    // Newline injection
+            "com.example|cat /etc/passwd",               // Pipe injection
+            "com.example;rm -rf /",                      // Semicolon injection
         ];
 
         for payload in injection_attempts {
@@ -475,13 +479,16 @@ mod tests {
             match err {
                 ActionError::InvalidBundleId { .. } => {
                     // Expected - injection was blocked
-                }
+                },
                 ActionError::AppNotRunning { .. } => {
                     // Also acceptable if it passed validation but app not running
                     // This shouldn't happen with proper validation
                     panic!("Injection payload passed validation: {}", payload);
-                }
-                _ => panic!("Unexpected error for injection attempt '{}': {:?}", payload, err),
+                },
+                _ => panic!(
+                    "Unexpected error for injection attempt '{}': {:?}",
+                    payload, err
+                ),
             }
         }
     }
@@ -515,17 +522,17 @@ mod tests {
         use super::is_valid_bundle_id;
 
         let invalid_ids = [
-            "",                    // Empty
-            "com.example app",     // Space
-            "com.example\"app",    // Quote
-            "com.example'app",     // Single quote
-            "com.example;app",     // Semicolon
-            "com.example&app",     // Ampersand
-            "com.example|app",     // Pipe
-            "com.example$app",     // Dollar
-            "com.example`app",     // Backtick
-            "com.example\napp",    // Newline
-            "com.example\\app",    // Backslash
+            "",                 // Empty
+            "com.example app",  // Space
+            "com.example\"app", // Quote
+            "com.example'app",  // Single quote
+            "com.example;app",  // Semicolon
+            "com.example&app",  // Ampersand
+            "com.example|app",  // Pipe
+            "com.example$app",  // Dollar
+            "com.example`app",  // Backtick
+            "com.example\napp", // Newline
+            "com.example\\app", // Backslash
         ];
 
         for bundle_id in invalid_ids {
@@ -600,7 +607,10 @@ mod tests {
         let err = ActionError::AppNotResponding {
             bundle_id: "com.frozen.app".to_string(),
         };
-        assert_eq!(err.to_string(), "application not responding: com.frozen.app");
+        assert_eq!(
+            err.to_string(),
+            "application not responding: com.frozen.app"
+        );
     }
 
     // =========================================================================
@@ -840,7 +850,7 @@ mod tests {
 
     #[test]
     fn test_action_panel_action_count() {
-        // Running non-system app should have: Quit, ForceQuit, Hide, RevealInFinder, 
+        // Running non-system app should have: Quit, ForceQuit, Hide, RevealInFinder,
         // CopyPath, CopyBundleId, ToggleAutoQuit, Uninstall = 8 actions
         let running_actions = get_available_actions(true, false);
         assert_eq!(running_actions.len(), 8);

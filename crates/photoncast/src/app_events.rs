@@ -13,18 +13,26 @@ pub enum AppEvent {
         url_template: String,
         arguments: String,
     },
-    OpenCalendar { command_id: String },
-    OpenSleepTimer { expression: String },
-    OpenApps { command_id: String },
+    OpenCalendar {
+        command_id: String,
+    },
+    OpenSleepTimer {
+        expression: String,
+    },
+    OpenApps {
+        command_id: String,
+    },
     QuitApp,
     // Quicklink management events
     CreateQuicklink,
     ManageQuicklinks,
     BrowseQuicklinkLibrary,
     // Timer events (from background polling thread)
-    TimerExpired { action: String },
+    TimerExpired {
+        action: String,
+    },
     // Window management events (executed outside GPUI context to avoid reentrancy)
-    ExecuteWindowCommand { 
+    ExecuteWindowCommand {
         command_id: String,
         /// The bundle ID of the app that was frontmost before Photoncast opened
         target_bundle_id: Option<String>,

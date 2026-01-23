@@ -118,7 +118,11 @@ impl QuickLinksView {
     }
 
     /// Renders a single link item.
-    fn render_link_item(link: &QuickLink, is_selected: bool, colors: &QuickLinksColors) -> impl IntoElement {
+    fn render_link_item(
+        link: &QuickLink,
+        is_selected: bool,
+        colors: &QuickLinksColors,
+    ) -> impl IntoElement {
         let bg = if is_selected {
             colors.item_hover
         } else {

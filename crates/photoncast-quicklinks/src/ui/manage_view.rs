@@ -8,8 +8,8 @@
 
 use gpui::prelude::*;
 use gpui::{
-    actions, div, px, rgba, AppContext, EventEmitter, FocusHandle, FocusableView, FontWeight,
-    Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, SharedString,
+    actions, div, px, rgba, AppContext, EventEmitter, FocusHandle, FocusableView, FontWeight, Hsla,
+    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, SharedString,
     StatefulInteractiveElement, Styled, ViewContext,
 };
 use photoncast_theme::PhotonTheme;
@@ -188,7 +188,7 @@ impl QuicklinksManageView {
     pub fn new(cx: &mut ViewContext<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         cx.focus(&focus_handle);
-        
+
         Self {
             quicklinks: Vec::new(),
             selected_index: None,
@@ -233,7 +233,7 @@ impl QuicklinksManageView {
     /// Adds a quicklink from the bundled library.
     pub fn add_from_library(&mut self, bundled: &BundledQuickLink, cx: &mut ViewContext<Self>) {
         let mut quicklink = crate::library::to_quicklink(bundled);
-        
+
         // Save to storage and update the ID with the DB-generated one
         if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
             let storage = storage.clone();
@@ -241,14 +241,14 @@ impl QuicklinksManageView {
                 Ok(new_id) => {
                     // Update the quicklink with the DB-generated integer ID
                     quicklink.id = new_id;
-                }
+                },
                 Err(e) => {
                     tracing::error!("Failed to save quicklink: {}", e);
                     return;
-                }
+                },
             }
         }
-        
+
         // Add to local list with correct DB ID
         self.quicklinks.push(quicklink);
         self.notify_change();
@@ -266,10 +266,10 @@ impl QuicklinksManageView {
                 return;
             }
         }
-        
+
         // Remove from local list
         self.quicklinks.retain(|link| link.id != *id);
-        
+
         // Adjust selection
         let filtered_len = self.filtered_quicklinks().len();
         if filtered_len == 0 {
@@ -279,7 +279,7 @@ impl QuicklinksManageView {
                 self.selected_index = Some(filtered_len - 1);
             }
         }
-        
+
         self.notify_change();
         cx.notify();
     }
@@ -288,7 +288,7 @@ impl QuicklinksManageView {
     pub fn duplicate_quicklink(&mut self, link: &QuickLink, cx: &mut ViewContext<Self>) {
         let mut copy = link.clone();
         copy.name = format!("{} (Copy)", link.name);
-        
+
         // Save to storage and update the ID with the DB-generated one
         if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
             let storage = storage.clone();
@@ -296,14 +296,14 @@ impl QuicklinksManageView {
                 Ok(new_id) => {
                     // Update with DB-generated integer ID
                     copy.id = new_id;
-                }
+                },
                 Err(e) => {
                     tracing::error!("Failed to save duplicated quicklink: {}", e);
                     return;
-                }
+                },
             }
         }
-        
+
         // Add to local list with correct DB ID
         self.quicklinks.push(copy);
         self.notify_change();
@@ -342,7 +342,10 @@ impl QuicklinksManageView {
                             .alias
                             .as_ref()
                             .is_some_and(|a| a.to_lowercase().contains(&query))
-                        || link.keywords.iter().any(|k| k.to_lowercase().contains(&query))
+                        || link
+                            .keywords
+                            .iter()
+                            .any(|k| k.to_lowercase().contains(&query))
                         || link.tags.iter().any(|t| t.to_lowercase().contains(&query))
                 })
                 .collect()
@@ -352,7 +355,8 @@ impl QuicklinksManageView {
     /// Returns the currently selected quicklink.
     pub fn selected_quicklink(&self) -> Option<&QuickLink> {
         let filtered = self.filtered_quicklinks();
-        self.selected_index.and_then(|idx| filtered.get(idx).copied())
+        self.selected_index
+            .and_then(|idx| filtered.get(idx).copied())
     }
 
     /// Checks if a bundled quicklink is already added.
@@ -368,7 +372,7 @@ impl QuicklinksManageView {
     fn filtered_library_quicklinks(&self) -> Vec<&'static BundledQuickLink> {
         let all = get_bundled_quicklinks();
         let query = self.search_query.to_lowercase();
-        
+
         all.iter()
             .filter(|b| {
                 // Filter by category if selected
@@ -447,13 +451,13 @@ impl QuicklinksManageView {
             }
         }
     }
-    
+
     /// Scrolls to make the selected library item visible.
     fn scroll_to_library_item(&self, index: usize) {
         // Use GPUI's built-in scroll_to_item which handles visibility automatically
         self.library_scroll_handle.scroll_to_item(index);
     }
-    
+
     /// Scrolls to make the selected quicklinks item visible.
     fn scroll_to_quicklinks_item(&self, index: usize) {
         // Use GPUI's built-in scroll_to_item which handles visibility automatically
@@ -528,46 +532,50 @@ impl QuicklinksManageView {
         });
         cx.notify();
     }
-    
+
     /// Cancels the current inline edit.
     fn cancel_editing(&mut self, cx: &mut ViewContext<Self>) {
         self.editing = None;
         cx.notify();
     }
-    
+
     /// Finishes editing and saves changes.
     fn finish_editing(&mut self, editing: EditingState, cx: &mut ViewContext<Self>) {
         // Validate
         if editing.name.trim().is_empty() || editing.link.trim().is_empty() {
             return;
         }
-        
+
         if editing.is_new {
             // Create new quicklink
             let mut quicklink = QuickLink::new(editing.name.trim(), editing.link.trim());
             if !editing.alias.trim().is_empty() {
                 quicklink.alias = Some(editing.alias.trim().to_string());
             }
-            
+
             // Save to storage
             if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
                 let storage = storage.clone();
                 match runtime.block_on(storage.store(&quicklink)) {
                     Ok(new_id) => {
                         quicklink.id = new_id;
-                    }
+                    },
                     Err(e) => {
                         tracing::error!("Failed to save quicklink: {}", e);
                         return;
-                    }
+                    },
                 }
             }
-            
+
             self.quicklinks.push(quicklink);
             self.notify_change();
         } else {
             // Update existing quicklink
-            if let Some(link) = self.quicklinks.iter_mut().find(|l| l.id == editing.original_id) {
+            if let Some(link) = self
+                .quicklinks
+                .iter_mut()
+                .find(|l| l.id == editing.original_id)
+            {
                 link.name = editing.name.trim().to_string();
                 link.link = editing.link.trim().to_string();
                 link.alias = if editing.alias.trim().is_empty() {
@@ -575,7 +583,7 @@ impl QuicklinksManageView {
                 } else {
                     Some(editing.alias.trim().to_string())
                 };
-                
+
                 // Save to storage
                 if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
                     let storage = storage.clone();
@@ -587,7 +595,7 @@ impl QuicklinksManageView {
                 self.notify_change();
             }
         }
-        
+
         cx.notify();
     }
 
@@ -699,21 +707,21 @@ impl QuicklinksManageView {
                     self.editing = None;
                     cx.notify();
                     return;
-                }
+                },
                 "enter" => {
                     // Save on Enter
                     let editing_clone = editing.clone();
                     self.editing = None;
                     self.finish_editing(editing_clone, cx);
                     return;
-                }
+                },
                 "s" if cmd => {
                     // Save on Cmd+S
                     let editing_clone = editing.clone();
                     self.editing = None;
                     self.finish_editing(editing_clone, cx);
                     return;
-                }
+                },
                 "tab" => {
                     // Cycle through fields
                     editing.focused_field = match editing.focused_field {
@@ -723,7 +731,7 @@ impl QuicklinksManageView {
                     };
                     cx.notify();
                     return;
-                }
+                },
                 "left" => {
                     // Move cursor left
                     if cmd {
@@ -733,7 +741,7 @@ impl QuicklinksManageView {
                     }
                     cx.notify();
                     return;
-                }
+                },
                 "right" => {
                     // Move cursor right
                     let len = field.chars().count();
@@ -744,7 +752,7 @@ impl QuicklinksManageView {
                     }
                     cx.notify();
                     return;
-                }
+                },
                 "backspace" => {
                     if cmd {
                         // Cmd+Backspace: delete from cursor to beginning
@@ -760,7 +768,7 @@ impl QuicklinksManageView {
                     }
                     cx.notify();
                     return;
-                }
+                },
                 "v" if cmd => {
                     // Cmd+V: Paste from clipboard
                     if let Some(clipboard) = cx.read_from_clipboard() {
@@ -774,7 +782,7 @@ impl QuicklinksManageView {
                         }
                     }
                     return;
-                }
+                },
                 _ => {
                     // Skip other modifier combinations
                     if cmd || event.keystroke.modifiers.control || event.keystroke.modifiers.alt {
@@ -782,14 +790,13 @@ impl QuicklinksManageView {
                     }
 
                     // Handle typing into focused field
-                    let char_to_add = event.keystroke.ime_key.as_deref()
-                        .or({
-                            if key.len() == 1 {
-                                Some(key)
-                            } else {
-                                None
-                            }
-                        });
+                    let char_to_add = event.keystroke.ime_key.as_deref().or({
+                        if key.len() == 1 {
+                            Some(key)
+                        } else {
+                            None
+                        }
+                    });
 
                     if let Some(ch) = char_to_add {
                         let text = if shift {
@@ -807,17 +814,17 @@ impl QuicklinksManageView {
                         cx.notify();
                     }
                     return;
-                }
+                },
             }
         }
-        
+
         match event.keystroke.key.as_str() {
             "down" => {
                 self.select_next(cx);
-            }
+            },
             "up" => {
                 self.select_previous(cx);
-            }
+            },
             "left" => {
                 // Move search cursor left
                 if cmd {
@@ -826,7 +833,7 @@ impl QuicklinksManageView {
                     self.search_cursor -= 1;
                 }
                 cx.notify();
-            }
+            },
             "right" => {
                 // Move search cursor right
                 let len = self.search_query.chars().count();
@@ -836,7 +843,7 @@ impl QuicklinksManageView {
                     self.search_cursor += 1;
                 }
                 cx.notify();
-            }
+            },
             "enter" => {
                 // If delete confirmation is showing, confirm delete
                 if self.confirm_delete.is_some() {
@@ -844,7 +851,7 @@ impl QuicklinksManageView {
                 } else {
                     self.edit_selected(cx);
                 }
-            }
+            },
             "backspace" => {
                 if cmd {
                     // Cmd+Backspace: delete from cursor to beginning or delete quicklink
@@ -875,7 +882,7 @@ impl QuicklinksManageView {
                     };
                     cx.notify();
                 }
-            }
+            },
             "v" if cmd => {
                 // Cmd+V: Paste into search
                 if let Some(clipboard) = cx.read_from_clipboard() {
@@ -894,7 +901,7 @@ impl QuicklinksManageView {
                         cx.notify();
                     }
                 }
-            }
+            },
             "escape" => {
                 if self.confirm_delete.is_some() {
                     self.cancel_delete(cx);
@@ -905,20 +912,20 @@ impl QuicklinksManageView {
                 } else {
                     self.close(cx);
                 }
-            }
+            },
             "n" if cmd => {
                 self.create_new(cx);
-            }
+            },
             "/" => {
                 // Focus search - clear and start typing
                 self.set_search(String::new(), cx);
-            }
+            },
             "l" if cmd => {
                 self.toggle_library(cx);
-            }
+            },
             "d" if cmd => {
                 self.duplicate_selected(cx);
-            }
+            },
             _ => {
                 // Skip other modifier combinations
                 if cmd || event.keystroke.modifiers.control || event.keystroke.modifiers.alt {
@@ -926,14 +933,13 @@ impl QuicklinksManageView {
                 }
 
                 // Handle typing into search (insert at cursor)
-                let char_to_add = event.keystroke.ime_key.as_deref()
-                    .or({
-                        if event.keystroke.key.len() == 1 {
-                            Some(event.keystroke.key.as_str())
-                        } else {
-                            None
-                        }
-                    });
+                let char_to_add = event.keystroke.ime_key.as_deref().or({
+                    if event.keystroke.key.len() == 1 {
+                        Some(event.keystroke.key.as_str())
+                    } else {
+                        None
+                    }
+                });
 
                 if let Some(ch) = char_to_add {
                     let text = if shift {
@@ -954,7 +960,7 @@ impl QuicklinksManageView {
                     };
                     cx.notify();
                 }
-            }
+            },
         }
     }
 
@@ -1016,77 +1022,74 @@ impl QuicklinksManageView {
         let before: String = chars[..cursor_pos].iter().collect();
         let after: String = chars[cursor_pos..].iter().collect();
 
-        div()
-            .px(px(16.0))
-            .py(px(8.0))
-            .child(
-                div()
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .rounded(px(6.0))
-                    .bg(colors.surface)
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .child(div().text_sm().text_color(colors.text_muted).child("🔍"))
-                    .child(
+        div().px(px(16.0)).py(px(8.0)).child(
+            div()
+                .px(px(12.0))
+                .py(px(8.0))
+                .rounded(px(6.0))
+                .bg(colors.surface)
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(div().text_sm().text_color(colors.text_muted).child("🔍"))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_sm()
+                        .flex()
+                        .items_center()
+                        .when(!has_query && is_search_focused, |el| {
+                            // Empty field with focus: cursor then placeholder
+                            el.child(
+                                div()
+                                    .w(cursor_width)
+                                    .h(cursor_height)
+                                    .bg(colors.accent)
+                                    .rounded(px(2.0)),
+                            )
+                            .child(
+                                div()
+                                    .text_color(colors.text_placeholder)
+                                    .child("Search quick links..."),
+                            )
+                        })
+                        .when(!has_query && !is_search_focused, |el| {
+                            el.text_color(colors.text_placeholder)
+                                .child("Search quick links...")
+                        })
+                        .when(has_query, |el| {
+                            el.text_color(colors.text)
+                                .when(!before.is_empty(), |el| el.child(before.clone()))
+                                .when(is_search_focused, |el| {
+                                    el.child(
+                                        div()
+                                            .w(cursor_width)
+                                            .h(cursor_height)
+                                            .bg(colors.accent)
+                                            .rounded(px(2.0)),
+                                    )
+                                })
+                                .when(!after.is_empty(), |el| el.child(after.clone()))
+                        }),
+                )
+                .when(has_query, |el| {
+                    let surface_hover = colors.surface_hover;
+                    let text_muted = colors.text_muted;
+                    el.child(
                         div()
-                            .flex_1()
-                            .text_sm()
-                            .flex()
-                            .items_center()
-                            .when(!has_query && is_search_focused, |el| {
-                                // Empty field with focus: cursor then placeholder
-                                el.child(
-                                    div()
-                                        .w(cursor_width)
-                                        .h(cursor_height)
-                                        .bg(colors.accent)
-                                        .rounded(px(2.0)),
-                                )
-                                .child(
-                                    div()
-                                        .text_color(colors.text_placeholder)
-                                        .child("Search quick links..."),
-                                )
-                            })
-                            .when(!has_query && !is_search_focused, |el| {
-                                el.text_color(colors.text_placeholder)
-                                    .child("Search quick links...")
-                            })
-                            .when(has_query, |el| {
-                                el.text_color(colors.text)
-                                    .when(!before.is_empty(), |el| el.child(before.clone()))
-                                    .when(is_search_focused, |el| {
-                                        el.child(
-                                            div()
-                                                .w(cursor_width)
-                                                .h(cursor_height)
-                                                .bg(colors.accent)
-                                                .rounded(px(2.0)),
-                                        )
-                                    })
-                                    .when(!after.is_empty(), |el| el.child(after.clone()))
-                            }),
+                            .id("clear-search")
+                            .px(px(6.0))
+                            .py(px(2.0))
+                            .rounded(px(4.0))
+                            .hover(move |s| s.bg(surface_hover))
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, cx| {
+                                this.set_search(String::new(), cx);
+                            }))
+                            .child(div().text_xs().text_color(text_muted).child("✕")),
                     )
-                    .when(has_query, |el| {
-                        let surface_hover = colors.surface_hover;
-                        let text_muted = colors.text_muted;
-                        el.child(
-                            div()
-                                .id("clear-search")
-                                .px(px(6.0))
-                                .py(px(2.0))
-                                .rounded(px(4.0))
-                                .hover(move |s| s.bg(surface_hover))
-                                .cursor_pointer()
-                                .on_click(cx.listener(|this, _, cx| {
-                                    this.set_search(String::new(), cx);
-                                }))
-                                .child(div().text_xs().text_color(text_muted).child("✕")),
-                        )
-                    }),
-            )
+                }),
+        )
     }
 
     /// Renders the toolbar with action buttons.
@@ -1187,26 +1190,20 @@ impl QuicklinksManageView {
                 .justify_center()
                 .gap(px(8.0))
                 .child(div().text_3xl().child("🔗"))
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(colors.text_muted)
-                        .child(if self.search_query.is_empty() {
-                            "No quick links yet"
-                        } else {
-                            "No matching quick links"
-                        }),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(colors.text_placeholder)
-                        .child(if self.search_query.is_empty() {
-                            "Create a new link or browse the library"
-                        } else {
-                            "Try a different search term"
-                        }),
-                )
+                .child(div().text_sm().text_color(colors.text_muted).child(
+                    if self.search_query.is_empty() {
+                        "No quick links yet"
+                    } else {
+                        "No matching quick links"
+                    },
+                ))
+                .child(div().text_xs().text_color(colors.text_placeholder).child(
+                    if self.search_query.is_empty() {
+                        "Create a new link or browse the library"
+                    } else {
+                        "Try a different search term"
+                    },
+                ))
                 .into_any_element();
         }
 
@@ -1414,9 +1411,7 @@ impl QuicklinksManageView {
     /// Renders an icon based on the QuickLinkIcon type.
     fn render_icon(icon: &QuickLinkIcon, _colors: &ManageColors) -> impl IntoElement {
         match icon {
-            QuickLinkIcon::Emoji(emoji) => {
-                div().text_lg().child(emoji.clone()).into_any_element()
-            }
+            QuickLinkIcon::Emoji(emoji) => div().text_lg().child(emoji.clone()).into_any_element(),
             QuickLinkIcon::Default => div().text_lg().child("🌐").into_any_element(),
             QuickLinkIcon::SystemIcon(name) => {
                 // Use emoji fallback for system icons
@@ -1430,11 +1425,11 @@ impl QuicklinksManageView {
                     _ => "🔗",
                 };
                 div().text_lg().child(emoji).into_any_element()
-            }
+            },
             QuickLinkIcon::Favicon(_path) | QuickLinkIcon::CustomImage(_path) => {
                 // TODO: Load image from path
                 div().text_lg().child("🌐").into_any_element()
-            }
+            },
         }
     }
 
@@ -1747,7 +1742,11 @@ impl QuicklinksManageView {
     }
 
     /// Renders the delete confirmation dialog.
-    fn render_delete_confirmation(&self, colors: &ManageColors, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render_delete_confirmation(
+        &self,
+        colors: &ManageColors,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let surface = colors.surface_elevated;
         let text_color = colors.text;
         let text_muted = colors.text_muted;
@@ -1777,12 +1776,9 @@ impl QuicklinksManageView {
                             .text_color(text_color)
                             .child("Delete Quick Link?"),
                     )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(text_muted)
-                            .child("This action cannot be undone. The quick link will be permanently removed."),
-                    )
+                    .child(div().text_sm().text_color(text_muted).child(
+                        "This action cannot be undone. The quick link will be permanently removed.",
+                    ))
                     .child(
                         div()
                             .flex()
@@ -1816,7 +1812,9 @@ impl QuicklinksManageView {
                                     .on_click(cx.listener(|this, _, cx| {
                                         this.delete_selected(cx);
                                     }))
-                                    .child(div().text_sm().text_color(gpui::white()).child("Delete")),
+                                    .child(
+                                        div().text_sm().text_color(gpui::white()).child("Delete"),
+                                    ),
                             ),
                     ),
             )
@@ -1894,7 +1892,11 @@ impl Render for QuicklinksManageView {
 
 impl QuicklinksManageView {
     /// Renders the inline edit modal.
-    fn render_edit_modal(&self, colors: &ManageColors, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render_edit_modal(
+        &self,
+        colors: &ManageColors,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let Some(editing) = &self.editing else {
             return div().into_any_element();
         };
@@ -1974,17 +1976,13 @@ impl QuicklinksManageView {
                                             .rounded(px(2.0)),
                                     )
                                     .child(
-                                        div()
-                                            .text_color(text_muted)
-                                            .child(placeholder.to_string()),
+                                        div().text_color(text_muted).child(placeholder.to_string()),
                                     )
                                 })
                                 .when(is_empty && !is_focused, |el| {
                                     // Empty field without focus: show placeholder
                                     el.child(
-                                        div()
-                                            .text_color(text_muted)
-                                            .child(placeholder.to_string()),
+                                        div().text_color(text_muted).child(placeholder.to_string()),
                                     )
                                 })
                                 .when(!is_empty, |el| {
@@ -2106,7 +2104,12 @@ fn truncate_url(url: &str, max_len: usize) -> String {
 }
 
 /// Renders a keyboard shortcut hint.
-fn render_shortcut(key: &'static str, label: &'static str, bg: Hsla, text: Hsla) -> impl IntoElement {
+fn render_shortcut(
+    key: &'static str,
+    label: &'static str,
+    bg: Hsla,
+    text: Hsla,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -2137,9 +2140,15 @@ mod tests {
 
     #[test]
     fn test_truncate_url() {
-        assert_eq!(truncate_url("https://example.com", 50), "https://example.com");
         assert_eq!(
-            truncate_url("https://very-long-url-that-should-be-truncated.example.com/path/to/resource", 30),
+            truncate_url("https://example.com", 50),
+            "https://example.com"
+        );
+        assert_eq!(
+            truncate_url(
+                "https://very-long-url-that-should-be-truncated.example.com/path/to/resource",
+                30
+            ),
             "https://very-long-url-that-sho..."
         );
     }
@@ -2180,7 +2189,7 @@ mod tests {
     fn test_on_change_callback_optional_none() {
         // Test that Option<Box<dyn Fn() + Send + 'static>> handles None correctly
         let callback: Option<Box<dyn Fn() + Send + 'static>> = None;
-        
+
         // Verify if-let pattern works correctly (matches notify_change implementation)
         if let Some(cb) = &callback {
             cb();

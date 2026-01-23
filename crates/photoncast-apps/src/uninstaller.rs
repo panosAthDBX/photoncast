@@ -192,7 +192,7 @@ fn move_to_trash(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bundle::{is_system_app_by_bundle_id, is_protected_app, format_size};
+    use crate::bundle::{format_size, is_protected_app, is_system_app_by_bundle_id};
     use crate::models::{Application, RelatedFileCategory};
     use std::path::PathBuf;
 
@@ -273,7 +273,9 @@ mod tests {
         let containers = result.unwrap();
         // Result may be empty or contain matches if there happen to be
         // group containers with similar names
-        assert!(containers.iter().all(|c| c.category == RelatedFileCategory::GroupContainers));
+        assert!(containers
+            .iter()
+            .all(|c| c.category == RelatedFileCategory::GroupContainers));
     }
 
     #[test]
@@ -357,21 +359,40 @@ mod tests {
 
         for category in &categories {
             let display_name = category.display_name();
-            assert!(!display_name.is_empty(), "Category {:?} has empty display name", category);
+            assert!(
+                !display_name.is_empty(),
+                "Category {:?} has empty display name",
+                category
+            );
         }
 
         // Verify specific display names for new categories
         assert_eq!(RelatedFileCategory::Cookies.display_name(), "Cookies");
         assert_eq!(RelatedFileCategory::WebKit.display_name(), "WebKit Data");
-        assert_eq!(RelatedFileCategory::HTTPStorages.display_name(), "HTTP Storages");
-        assert_eq!(RelatedFileCategory::GroupContainers.display_name(), "Group Containers");
+        assert_eq!(
+            RelatedFileCategory::HTTPStorages.display_name(),
+            "HTTP Storages"
+        );
+        assert_eq!(
+            RelatedFileCategory::GroupContainers.display_name(),
+            "Group Containers"
+        );
 
         // Verify existing categories still have correct names
-        assert_eq!(RelatedFileCategory::ApplicationSupport.display_name(), "Application Support");
-        assert_eq!(RelatedFileCategory::Preferences.display_name(), "Preferences");
+        assert_eq!(
+            RelatedFileCategory::ApplicationSupport.display_name(),
+            "Application Support"
+        );
+        assert_eq!(
+            RelatedFileCategory::Preferences.display_name(),
+            "Preferences"
+        );
         assert_eq!(RelatedFileCategory::Caches.display_name(), "Caches");
         assert_eq!(RelatedFileCategory::Logs.display_name(), "Logs");
-        assert_eq!(RelatedFileCategory::SavedState.display_name(), "Saved Application State");
+        assert_eq!(
+            RelatedFileCategory::SavedState.display_name(),
+            "Saved Application State"
+        );
         assert_eq!(RelatedFileCategory::Containers.display_name(), "Containers");
     }
 
@@ -428,7 +449,7 @@ mod tests {
 
         let selected = get_selected_files(&preview);
         assert_eq!(selected.len(), 3, "All 3 files should be selected");
-        
+
         let size = calculate_selected_size(&preview);
         assert_eq!(size, 1600, "Size should include all files");
     }
@@ -469,7 +490,7 @@ mod tests {
 
         let selected = get_selected_files(&preview);
         assert_eq!(selected.len(), 0, "No files should be selected");
-        
+
         let size = calculate_selected_size(&preview);
         assert_eq!(size, 1000, "Size should only include app");
     }

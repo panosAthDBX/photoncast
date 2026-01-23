@@ -268,56 +268,94 @@ impl LayoutCalculator {
     fn frame_left(x: f64, y: f64, w: f64, h: f64) -> CGRect {
         CGRect::new(
             &core_graphics::geometry::CGPoint { x, y },
-            &core_graphics::geometry::CGSize { width: w, height: h },
+            &core_graphics::geometry::CGSize {
+                width: w,
+                height: h,
+            },
         )
     }
 
-    // Helper: Create frame aligned to the right edge  
+    // Helper: Create frame aligned to the right edge
     fn frame_right(x: f64, y: f64, total_width: f64, w: f64, h: f64) -> CGRect {
         CGRect::new(
-            &core_graphics::geometry::CGPoint { x: x + total_width - w, y },
-            &core_graphics::geometry::CGSize { width: w, height: h },
+            &core_graphics::geometry::CGPoint {
+                x: x + total_width - w,
+                y,
+            },
+            &core_graphics::geometry::CGSize {
+                width: w,
+                height: h,
+            },
         )
     }
 
     // Helper: Create frame aligned to the bottom edge
     fn frame_bottom(x: f64, y: f64, total_height: f64, w: f64, h: f64) -> CGRect {
         CGRect::new(
-            &core_graphics::geometry::CGPoint { x, y: y + total_height - h },
-            &core_graphics::geometry::CGSize { width: w, height: h },
+            &core_graphics::geometry::CGPoint {
+                x,
+                y: y + total_height - h,
+            },
+            &core_graphics::geometry::CGSize {
+                width: w,
+                height: h,
+            },
         )
     }
 
     // Helper: Create frame at bottom-right corner
-    fn frame_bottom_right(x: f64, y: f64, total_width: f64, total_height: f64, w: f64, h: f64) -> CGRect {
+    fn frame_bottom_right(
+        x: f64,
+        y: f64,
+        total_width: f64,
+        total_height: f64,
+        w: f64,
+        h: f64,
+    ) -> CGRect {
         CGRect::new(
-            &core_graphics::geometry::CGPoint { 
-                x: x + total_width - w, 
-                y: y + total_height - h 
+            &core_graphics::geometry::CGPoint {
+                x: x + total_width - w,
+                y: y + total_height - h,
             },
-            &core_graphics::geometry::CGSize { width: w, height: h },
+            &core_graphics::geometry::CGSize {
+                width: w,
+                height: h,
+            },
         )
     }
 
     // Helper: Create centered frame
-    fn frame_centered(x: f64, y: f64, total_width: f64, total_height: f64, w: f64, h: f64) -> CGRect {
+    fn frame_centered(
+        x: f64,
+        y: f64,
+        total_width: f64,
+        total_height: f64,
+        w: f64,
+        h: f64,
+    ) -> CGRect {
         CGRect::new(
-            &core_graphics::geometry::CGPoint { 
-                x: x + (total_width - w) / 2.0, 
-                y: y + (total_height - h) / 2.0 
+            &core_graphics::geometry::CGPoint {
+                x: x + (total_width - w) / 2.0,
+                y: y + (total_height - h) / 2.0,
             },
-            &core_graphics::geometry::CGSize { width: w, height: h },
+            &core_graphics::geometry::CGSize {
+                width: w,
+                height: h,
+            },
         )
     }
 
     // Helper: Create horizontally centered frame (full height)
     fn frame_centered_horizontal(x: f64, y: f64, total_width: f64, w: f64, h: f64) -> CGRect {
         CGRect::new(
-            &core_graphics::geometry::CGPoint { 
-                x: x + (total_width - w) / 2.0, 
-                y 
+            &core_graphics::geometry::CGPoint {
+                x: x + (total_width - w) / 2.0,
+                y,
             },
-            &core_graphics::geometry::CGSize { width: w, height: h },
+            &core_graphics::geometry::CGSize {
+                width: w,
+                height: h,
+            },
         )
     }
 
@@ -392,32 +430,20 @@ impl LayoutCalculator {
             },
 
             // Quarters
-            WindowLayout::TopLeft => {
-                Self::frame_left(x, y, width / 2.0, height / 2.0)
-            },
-            WindowLayout::TopRight => {
-                Self::frame_right(x, y, width, width / 2.0, height / 2.0)
-            },
-            WindowLayout::BottomLeft => {
-                Self::frame_bottom(x, y, height, width / 2.0, height / 2.0)
-            },
+            WindowLayout::TopLeft => Self::frame_left(x, y, width / 2.0, height / 2.0),
+            WindowLayout::TopRight => Self::frame_right(x, y, width, width / 2.0, height / 2.0),
+            WindowLayout::BottomLeft => Self::frame_bottom(x, y, height, width / 2.0, height / 2.0),
             WindowLayout::BottomRight => {
                 Self::frame_bottom_right(x, y, width, height, width / 2.0, height / 2.0)
             },
 
             // Thirds
-            WindowLayout::FirstThird => {
-                Self::frame_left(x, y, width / 3.0, height)
-            },
+            WindowLayout::FirstThird => Self::frame_left(x, y, width / 3.0, height),
             WindowLayout::CenterThird => {
                 Self::frame_centered_horizontal(x, y, width, width / 3.0, height)
             },
-            WindowLayout::LastThird => {
-                Self::frame_right(x, y, width, width / 3.0, height)
-            },
-            WindowLayout::FirstTwoThirds => {
-                Self::frame_left(x, y, width * 2.0 / 3.0, height)
-            },
+            WindowLayout::LastThird => Self::frame_right(x, y, width, width / 3.0, height),
+            WindowLayout::FirstTwoThirds => Self::frame_left(x, y, width * 2.0 / 3.0, height),
             WindowLayout::LastTwoThirds => {
                 Self::frame_right(x, y, width, width * 2.0 / 3.0, height)
             },
@@ -440,8 +466,10 @@ impl LayoutCalculator {
                 // Fill screen with configurable margin
                 let margin = self.almost_maximize_margin;
                 Self::frame_left(
-                    x + margin, y + margin,
-                    width - 2.0 * margin, height - 2.0 * margin
+                    x + margin,
+                    y + margin,
+                    width - 2.0 * margin,
+                    height - 2.0 * margin,
                 )
             },
             WindowLayout::CenterHalf => {
@@ -686,7 +714,8 @@ mod tests {
             },
         );
 
-        let frame = calc.calculate_frame(WindowLayout::CenterTwoThirds, screen, CycleState::Initial);
+        let frame =
+            calc.calculate_frame(WindowLayout::CenterTwoThirds, screen, CycleState::Initial);
         // Should be 66% width, centered
         assert!((frame.size.width - 1280.0).abs() < 0.1);
     }
@@ -783,18 +812,33 @@ mod tests {
     fn test_new_layout_ids() {
         assert_eq!(WindowLayout::AlmostMaximize.id(), "window_almost_maximize");
         assert_eq!(WindowLayout::CenterHalf.id(), "window_center_half");
-        assert_eq!(WindowLayout::CenterTwoThirds.id(), "window_center_two_thirds");
+        assert_eq!(
+            WindowLayout::CenterTwoThirds.id(),
+            "window_center_two_thirds"
+        );
         assert_eq!(WindowLayout::ReasonableSize.id(), "window_reasonable_size");
         assert_eq!(WindowLayout::MakeSmaller.id(), "window_make_smaller");
         assert_eq!(WindowLayout::MakeLarger.id(), "window_make_larger");
-        assert_eq!(WindowLayout::ToggleFullscreen.id(), "window_toggle_fullscreen");
+        assert_eq!(
+            WindowLayout::ToggleFullscreen.id(),
+            "window_toggle_fullscreen"
+        );
     }
 
     #[test]
     fn test_new_layout_from_id() {
-        assert_eq!(WindowLayout::from_id("window_almost_maximize"), Some(WindowLayout::AlmostMaximize));
-        assert_eq!(WindowLayout::from_id("window_center_half"), Some(WindowLayout::CenterHalf));
-        assert_eq!(WindowLayout::from_id("window_toggle_fullscreen"), Some(WindowLayout::ToggleFullscreen));
+        assert_eq!(
+            WindowLayout::from_id("window_almost_maximize"),
+            Some(WindowLayout::AlmostMaximize)
+        );
+        assert_eq!(
+            WindowLayout::from_id("window_center_half"),
+            Some(WindowLayout::CenterHalf)
+        );
+        assert_eq!(
+            WindowLayout::from_id("window_toggle_fullscreen"),
+            Some(WindowLayout::ToggleFullscreen)
+        );
         assert_eq!(WindowLayout::from_id("invalid_id"), None);
     }
 }

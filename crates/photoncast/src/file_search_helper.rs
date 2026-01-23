@@ -14,8 +14,8 @@ use rayon::prelude::*;
 
 use photoncast_core::platform::spotlight::{FileKind, FileResult};
 use photoncast_core::search::spotlight::{
-    CustomScopeConfig, LiveFileIndex, SpotlightSearchOptions, SpotlightSearchService,
-    SpotlightResult,
+    CustomScopeConfig, LiveFileIndex, SpotlightResult, SpotlightSearchOptions,
+    SpotlightSearchService,
 };
 
 // =============================================================================
@@ -29,13 +29,13 @@ static LIVE_INDEX: Lazy<LiveFileIndex> = Lazy::new(|| {
     let config = photoncast_core::app::config_file::load_config().unwrap_or_default();
     let search_scopes = config.file_search.search_scopes.clone();
     let custom_scopes = load_custom_scopes_from_config();
-    
+
     tracing::debug!(
         "Initializing live index with {} search scopes, {} custom scopes",
         search_scopes.len(),
         custom_scopes.len()
     );
-    
+
     let index = LiveFileIndex::with_custom_scopes(search_scopes, custom_scopes);
     index.start();
     index
@@ -44,8 +44,10 @@ static LIVE_INDEX: Lazy<LiveFileIndex> = Lazy::new(|| {
 /// Loads custom search scopes from the app config.
 fn load_custom_scopes_from_config() -> Vec<CustomScopeConfig> {
     let config = photoncast_core::app::config_file::load_config().unwrap_or_default();
-    
-    config.file_search.custom_scopes
+
+    config
+        .file_search
+        .custom_scopes
         .into_iter()
         .map(|scope| CustomScopeConfig {
             path: scope.resolved_path(),
@@ -79,13 +81,13 @@ pub fn reload_live_index() {
     let config = photoncast_core::app::config_file::load_config().unwrap_or_default();
     let search_scopes = config.file_search.search_scopes.clone();
     let custom_scopes = load_custom_scopes_from_config();
-    
+
     tracing::debug!(
         "Reloading live index with {} search scopes, {} custom scopes",
         search_scopes.len(),
         custom_scopes.len()
     );
-    
+
     LIVE_INDEX.reload(search_scopes, custom_scopes);
 }
 
@@ -192,7 +194,7 @@ pub fn spotlight_search(query: &str, max_results: usize) -> Vec<FileResult> {
                 .take(max_results)
                 .map(|r| spotlight_result_to_file_result(&r))
                 .collect()
-        }
+        },
         Err(e) => {
             tracing::warn!("Native Spotlight search failed: {e}, falling back to mdfind");
             let scope = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
@@ -205,7 +207,7 @@ pub fn spotlight_search(query: &str, max_results: usize) -> Vec<FileResult> {
                 .collect();
             let files_with_time = fetch_metadata_parallel(filtered_paths, max_results);
             to_file_results(files_with_time)
-        }
+        },
     }
 }
 
@@ -226,10 +228,7 @@ pub fn spotlight_recent_files(_days: u32, max_results: usize) -> Vec<FileResult>
     if LIVE_INDEX.is_ready() {
         let recent = LIVE_INDEX.get_recent_files(max_results);
         if !recent.is_empty() {
-            tracing::debug!(
-                "Live index returned {} recent files",
-                recent.len()
-            );
+            tracing::debug!("Live index returned {} recent files", recent.len());
             return recent
                 .into_iter()
                 .map(|r| spotlight_result_to_file_result(&r))
@@ -241,28 +240,28 @@ pub fn spotlight_recent_files(_days: u32, max_results: usize) -> Vec<FileResult>
     tracing::debug!("Live index not ready, falling back to mdfind for recent files");
     let mdfind_query = format!("kMDItemFSContentChangeDate >= $time.today(-{})", _days);
     let scope = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    
+
     // Get paths from mdfind (fast for time-based queries)
     // Request more results since we'll filter many out
     let paths = mdfind_paths_internal(&mdfind_query, &scope, max_results * 10);
-    
+
     if paths.is_empty() {
         return Vec::new();
     }
-    
+
     // Filter to only interesting files (apply same whitelist as live index)
     let filtered_paths: Vec<PathBuf> = paths
         .into_iter()
         .filter(|p| is_interesting_file(p))
         .collect();
-    
+
     // Use parallel metadata fetching for performance
     let files_with_time = fetch_metadata_parallel(filtered_paths, max_results);
     to_file_results(files_with_time)
 }
 
 /// Fetches recent files of a specific type using the live index.
-/// 
+///
 /// This function looks through ALL files in the live index and filters
 /// them by type, ensuring we return up to `max_results` files of the
 /// requested type (not just the top N files filtered).
@@ -278,25 +277,25 @@ pub fn spotlight_recent_files_filtered(
     max_results: usize,
 ) -> Vec<FileResult> {
     use crate::file_search_view::FileTypeFilter;
-    
+
     // If filter is All, just use the regular function
     if filter == FileTypeFilter::All {
         return spotlight_recent_files(7, max_results);
     }
-    
+
     // For specific filters, look through ALL files in the index (not just top N)
     // This ensures we find files matching the filter even if they're not the most recent overall
     if LIVE_INDEX.is_ready() {
         // Get ALL files from the index, sorted by recency
         // We need to look through all files to find ones matching the specific type
         let all_files = LIVE_INDEX.get_all_files(10000); // Get up to 10k files
-        
+
         tracing::debug!(
             "[FilterDebug] Got {} files from index for {:?} filter",
             all_files.len(),
             filter
         );
-        
+
         // Convert and filter, collecting only matching files up to max_results
         let filtered: Vec<FileResult> = all_files
             .into_iter()
@@ -304,31 +303,31 @@ pub fn spotlight_recent_files_filtered(
             .filter(|f| filter.matches(f.kind, &f.path))
             .take(max_results)
             .collect();
-        
+
         tracing::debug!(
             "[FilterDebug] spotlight_recent_files_filtered: {:?} returned {} files",
             filter,
             filtered.len()
         );
-        
+
         // Log first few matching files for debugging
         if !filtered.is_empty() {
             for (i, f) in filtered.iter().take(3).enumerate() {
-                tracing::debug!(
-                    "[FilterDebug]   [{}] {:?} {}",
-                    i, f.kind, f.path.display()
-                );
+                tracing::debug!("[FilterDebug]   [{}] {:?} {}", i, f.kind, f.path.display());
             }
         }
-        
+
         return filtered;
     }
-    
+
     // Fallback: use mdfind with type-specific query
-    tracing::debug!("Live index not ready, using mdfind fallback for {:?}", filter);
+    tracing::debug!(
+        "Live index not ready, using mdfind fallback for {:?}",
+        filter
+    );
     let mdfind_query = filter.mdfind_query();
     let scope = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    
+
     let paths = mdfind_paths_internal(mdfind_query, &scope, max_results * 2);
     let files_with_time = fetch_metadata_parallel(paths, max_results);
     to_file_results(files_with_time)
@@ -404,59 +403,65 @@ pub fn to_file_results(files_with_time: Vec<(PathBuf, SystemTime)>) -> Vec<FileR
 /// Only actual user files - documents, images, videos, audio. NO code files.
 const INTERESTING_EXTENSIONS: &[&str] = &[
     // Documents
-    "pdf", "doc", "docx", "odt", "rtf", "txt", "pages", "numbers", "key",
-    "xls", "xlsx", "csv", "ppt", "pptx",
-    // Images
-    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "svg",
-    "heic", "heif", "raw", "cr2", "nef", "arw", "dng", "psd",
-    // Videos
-    "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-    // Audio
-    "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "aiff",
-    // Archives
-    "zip", "7z", "rar", "dmg",
-    // E-books
-    "epub", "mobi",
-    // macOS apps
+    "pdf", "doc", "docx", "odt", "rtf", "txt", "pages", "numbers", "key", "xls", "xlsx", "csv",
+    "ppt", "pptx", // Images
+    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "svg", "heic", "heif", "raw", "cr2",
+    "nef", "arw", "dng", "psd", // Videos
+    "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", // Audio
+    "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "aiff", // Archives
+    "zip", "7z", "rar", "dmg", // E-books
+    "epub", "mobi", // macOS apps
     "app",
 ];
 
 /// Directories to exclude from results.
 const EXCLUDED_DIRS: &[&str] = &[
-    "Library", "Caches", "Cache", ".Trash", "node_modules", ".git", "target",
-    "__pycache__", ".venv", "DerivedData", "Cookies", "Application Support",
-    "Containers", "WebKit", ".npm", ".cargo", ".rustup",
+    "Library",
+    "Caches",
+    "Cache",
+    ".Trash",
+    "node_modules",
+    ".git",
+    "target",
+    "__pycache__",
+    ".venv",
+    "DerivedData",
+    "Cookies",
+    "Application Support",
+    "Containers",
+    "WebKit",
+    ".npm",
+    ".cargo",
+    ".rustup",
 ];
 
 /// Checks if a file path is "interesting" (human-readable, not system junk).
 fn is_interesting_file(path: &PathBuf) -> bool {
     let path_str = path.to_string_lossy();
-    
+
     // Exclude system directories
     for dir in EXCLUDED_DIRS {
         if path_str.contains(&format!("/{}/", dir)) {
             return false;
         }
     }
-    
+
     // Check filename
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
         // Exclude hidden files
         if name.starts_with('.') {
             return false;
         }
-        
+
         // Check extension whitelist
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             let ext_lower = ext.to_lowercase();
             return INTERESTING_EXTENSIONS.contains(&ext_lower.as_str());
         }
     }
-    
+
     false
 }
-
-
 
 // =============================================================================
 // Legacy mdfind Functions (Fallback for time-based queries)
@@ -480,12 +485,10 @@ fn mdfind_paths_internal(query: &str, scope: &PathBuf, limit: usize) -> Vec<Path
                 .take(limit)
                 .map(PathBuf::from)
                 .collect()
-        }
+        },
         _ => vec![],
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

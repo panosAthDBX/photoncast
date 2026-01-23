@@ -56,7 +56,6 @@ use photoncast_clipboard::ui::{
     ClipboardHistoryView, CopyClipboardItem, DeleteClipboardItem, PasteAsPlainText,
     TogglePinClipboardItem,
 };
-use photoncast_quicklinks::ui::{ArgumentInputEvent, ArgumentInputView, CreateQuicklinkView, QuicklinksManageView};
 use photoncast_clipboard::{ClipboardConfig, ClipboardMonitor, ClipboardStorage};
 use photoncast_core::app::config::{Config, ThemeSetting};
 use photoncast_core::platform::accessibility::{
@@ -66,6 +65,9 @@ use photoncast_core::platform::appearance::flavor_from_window_appearance;
 use photoncast_core::platform::hotkey::is_spotlight_enabled;
 use photoncast_core::platform::LoginItemManager;
 use photoncast_core::theme::PhotonTheme;
+use photoncast_quicklinks::ui::{
+    ArgumentInputEvent, ArgumentInputView, CreateQuicklinkView, QuicklinksManageView,
+};
 use platform::{create_menu_bar_item, MenuBarActionKind};
 use preferences_window::PreferencesWindow;
 
@@ -335,7 +337,7 @@ fn main() {
             let app_manager =
                 photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default());
             let calendar_command = photoncast_calendar::CalendarCommand::with_default_config();
-            
+
             // Timer polling setup (runs on main thread, executes actions in background)
             let timer_manager = launcher_state_for_events.timer_manager();
             let timer_event_tx = event_tx.clone();
@@ -357,7 +359,7 @@ fn main() {
                             let mgr = timer_manager.read().await;
                             mgr.check_expired().await
                         });
-                        
+
                         // If expired, execute action in background thread (no rusqlite crossing)
                         if let Ok(Some(action)) = expired_action {
                             let tx = timer_event_tx.clone();
@@ -365,12 +367,17 @@ fn main() {
                             std::thread::spawn(move || {
                                 if let Ok(rt) = tokio::runtime::Runtime::new() {
                                     rt.block_on(async {
-                                        if let Err(e) = photoncast_timer::TimerScheduler::execute_action(action).await {
+                                        if let Err(e) =
+                                            photoncast_timer::TimerScheduler::execute_action(action)
+                                                .await
+                                        {
                                             error!("Timer action failed: {}", e);
                                         }
                                     });
                                 }
-                                let _ = tx.send(AppEvent::TimerExpired { action: action_name });
+                                let _ = tx.send(AppEvent::TimerExpired {
+                                    action: action_name,
+                                });
                             });
                         }
                     }
@@ -380,7 +387,7 @@ fn main() {
                 match event_rx.try_recv() {
                     Ok(AppEvent::ToggleLauncher) => {
                         debug!("Toggle launcher requested - capturing frontmost window NOW");
-                        
+
                         // Capture frontmost app AND window BEFORE Photoncast becomes active
                         // This is used for window management commands to target the correct window
                         let (previous_app, previous_window_title) = get_frontmost_window_info();
@@ -389,13 +396,16 @@ fn main() {
                             previous_app,
                             previous_window_title
                         );
-                        
+
                         // Try to activate existing window or create new one
                         let _ = cx.update(|cx| {
                             // Try to update existing window
                             let window_exists = current_handle.as_ref().is_some_and(|h| {
                                 h.update(cx, |view, cx| {
-                                    view.set_previous_frontmost_window(previous_app.clone(), previous_window_title.clone());
+                                    view.set_previous_frontmost_window(
+                                        previous_app.clone(),
+                                        previous_window_title.clone(),
+                                    );
                                     view.toggle(cx);
                                     cx.activate(true);
                                     cx.activate_window();
@@ -408,11 +418,14 @@ fn main() {
                                 // Window was closed, open a new one
                                 current_handle =
                                     open_launcher_window(cx, &launcher_state_for_events);
-                                
+
                                 // Set the captured frontmost window on the new window
                                 if let Some(ref h) = current_handle {
                                     let _ = h.update(cx, |view, _cx| {
-                                        view.set_previous_frontmost_window(previous_app.clone(), previous_window_title.clone());
+                                        view.set_previous_frontmost_window(
+                                            previous_app.clone(),
+                                            previous_window_title.clone(),
+                                        );
                                     });
                                 }
                             }
@@ -626,9 +639,11 @@ fn main() {
 
                             // Create new window if needed
                             if create_quicklink_handle.is_none() {
-                                if let Some(handle) =
-                                    open_create_quicklink_window(cx, quicklinks_storage.clone(), &launcher_state_for_events)
-                                {
+                                if let Some(handle) = open_create_quicklink_window(
+                                    cx,
+                                    quicklinks_storage.clone(),
+                                    &launcher_state_for_events,
+                                ) {
                                     let _ = handle.update(cx, |_, cx| {
                                         cx.activate(true);
                                         cx.activate_window();
@@ -739,7 +754,9 @@ fn main() {
                             let storage = quicklinks_storage.clone();
                             let _ = cx.update(|cx| {
                                 if let Ok(links) = quicklinks_runtime.block_on(storage.load_all()) {
-                                    if let Some(link) = links.into_iter().find(|l| l.id.as_str() == id) {
+                                    if let Some(link) =
+                                        links.into_iter().find(|l| l.id.as_str() == id)
+                                    {
                                         if let Some(handle) = open_argument_input_window(cx, link) {
                                             let _ = handle.update(cx, |_, cx| {
                                                 cx.activate(true);
@@ -751,7 +768,8 @@ fn main() {
                             });
                         } else {
                             info!("Execute quicklink: {}", final_url);
-                            if let Err(e) = photoncast_core::platform::launch::open_url(&final_url) {
+                            if let Err(e) = photoncast_core::platform::launch::open_url(&final_url)
+                            {
                                 error!("Failed to open quicklink URL: {}", e);
                             }
                         }
@@ -768,7 +786,11 @@ fn main() {
                         // Timer action already executed in background thread
                         // This event is just for logging/UI notification if needed
                     },
-                    Ok(AppEvent::ExecuteWindowCommand { command_id, target_bundle_id, target_window_title }) => {
+                    Ok(AppEvent::ExecuteWindowCommand {
+                        command_id,
+                        target_bundle_id,
+                        target_window_title,
+                    }) => {
                         info!("Window command requested: {}", command_id);
                         // Execute window command outside of any GPUI window context
                         // to avoid reentrancy panics when macOS sends windowDidMove notifications
@@ -814,21 +836,29 @@ fn poll_until_app_frontmost(
     let start = std::time::Instant::now();
     let timeout = std::time::Duration::from_millis(timeout_ms);
     let interval = std::time::Duration::from_millis(poll_interval_ms);
-    
+
     while start.elapsed() < timeout {
         let is_frontmost = WINDOW_MANAGER.with(|m| {
-            m.borrow().get_frontmost_bundle_id()
+            m.borrow()
+                .get_frontmost_bundle_id()
                 .map(|f| f == target_bundle_id)
                 .unwrap_or(false)
         });
         if is_frontmost {
-            tracing::debug!("App {} became frontmost after {:?}", target_bundle_id, start.elapsed());
+            tracing::debug!(
+                "App {} became frontmost after {:?}",
+                target_bundle_id,
+                start.elapsed()
+            );
             return true;
         }
         std::thread::sleep(interval);
     }
-    
-    tracing::warn!("Timeout waiting for app {} to become frontmost", target_bundle_id);
+
+    tracing::warn!(
+        "Timeout waiting for app {} to become frontmost",
+        target_bundle_id
+    );
     false
 }
 
@@ -843,45 +873,52 @@ fn poll_until_window_frontmost(
     let start = std::time::Instant::now();
     let timeout = std::time::Duration::from_millis(timeout_ms);
     let interval = std::time::Duration::from_millis(poll_interval_ms);
-    
+
     while start.elapsed() < timeout {
         if let Some(window_info) = photoncast_window::get_frontmost_window_via_cgwindowlist() {
             let current_bundle = photoncast_window::get_bundle_id_for_pid(window_info.owner_pid);
-            
+
             // Check if bundle ID matches (if we have an expected one)
             let bundle_matches = match (expected_bundle_id, &current_bundle) {
                 (Some(expected), Some(current)) => expected == current,
                 (None, _) => true, // No expectation, always matches
                 (Some(_), None) => false,
             };
-            
+
             // Check if title matches (if we have an expected one)
             let title_matches = match expected_title {
                 Some(expected) => window_info.title == expected,
                 None => true, // No expectation, always matches
             };
-            
+
             if bundle_matches && title_matches {
                 tracing::debug!(
                     "Window became frontmost after {:?}: bundle={:?}, title={}",
-                    start.elapsed(), current_bundle, window_info.title
+                    start.elapsed(),
+                    current_bundle,
+                    window_info.title
                 );
                 return true;
             }
         }
         std::thread::sleep(interval);
     }
-    
+
     tracing::warn!(
         "Timeout waiting for window to become frontmost: bundle={:?}, title={:?}",
-        expected_bundle_id, expected_title
+        expected_bundle_id,
+        expected_title
     );
     false
 }
 
 /// Executes a window management command outside of GPUI window context.
 /// This avoids reentrancy panics when moving windows triggers windowDidMove notifications.
-fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, target_window_title: Option<String>) {
+fn execute_window_command(
+    command_id: &str,
+    target_bundle_id: Option<String>,
+    target_window_title: Option<String>,
+) {
     // Load user config for window management
     let wm_config = photoncast_core::app::config_file::load_config()
         .map(|c| c.window_management)
@@ -925,19 +962,27 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
     // Get the ACTUAL frontmost window using CGWindowList (excludes Photoncast)
     // This is more reliable than using the stale previous_frontmost_app value
     // because the user might have switched apps while the launcher was open
-    let (actual_bundle_id, actual_title) = if let Some(window_info) = photoncast_window::get_frontmost_window_via_cgwindowlist() {
+    let (actual_bundle_id, actual_title) = if let Some(window_info) =
+        photoncast_window::get_frontmost_window_via_cgwindowlist()
+    {
         let bundle_id = photoncast_window::get_bundle_id_for_pid(window_info.owner_pid);
-        let title = if window_info.title.is_empty() { None } else { Some(window_info.title) };
+        let title = if window_info.title.is_empty() {
+            None
+        } else {
+            Some(window_info.title)
+        };
         tracing::debug!(
             "CGWindowList at execution: bundle_id={:?}, title={:?}, owner={}",
-            bundle_id, title, window_info.owner_name
+            bundle_id,
+            title,
+            window_info.owner_name
         );
         (bundle_id, title)
     } else {
         tracing::warn!("CGWindowList returned no windows at execution time, using passed target");
         (target_bundle_id.clone(), target_window_title.clone())
     };
-    
+
     // Prefer the CGWindowList result, fall back to passed target if CGWindowList failed
     let effective_bundle_id = actual_bundle_id.or(target_bundle_id);
     let effective_title = actual_title.or(target_window_title);
@@ -954,7 +999,7 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
                 Err(e) => {
                     tracing::error!("No target app found: {}", e);
                     return;
-                }
+                },
             }
         } else {
             tracing::info!("Window command targeting app: {}", bundle_id);
@@ -966,14 +1011,14 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
             Ok(bundle_id) => {
                 tracing::info!("Window command targeting app: {}", bundle_id);
                 bundle_id
-            }
+            },
             Err(e) => {
                 tracing::error!("No target app found for window command: {} - aborting", e);
                 return;
-            }
+            },
         }
     };
-    
+
     // Poll until app activation completes (max 150ms, poll every 10ms)
     poll_until_app_frontmost(&target_app, 150, 10);
 
@@ -984,11 +1029,11 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
             Ok(()) => {
                 tracing::info!("Focused window by title: '{}'", title);
                 true
-            }
+            },
             Err(e) => {
                 tracing::warn!("Could not focus window '{}': {}", title, e);
                 false
-            }
+            },
         }
     } else {
         false
@@ -999,14 +1044,14 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         match WINDOW_MANAGER.with(|m| m.borrow_mut().focus_first_non_launcher_window()) {
             Ok(()) => {
                 tracing::info!("Focused first non-launcher window");
-            }
+            },
             Err(e) => {
                 tracing::warn!("Could not focus non-launcher window: {}", e);
                 // Continue anyway - we'll operate on whatever window is frontmost
-            }
+            },
         }
     }
-    
+
     // Poll until window focus completes (max 100ms, poll every 10ms)
     poll_until_window_frontmost(
         effective_bundle_id.as_deref(),
@@ -1020,24 +1065,24 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
         match command_id {
             "window_move_next_display" => {
                 manager.move_to_display(photoncast_window::DisplayDirection::Next)
-            }
+            },
             "window_move_previous_display" => {
                 manager.move_to_display(photoncast_window::DisplayDirection::Previous)
-            }
+            },
             "window_move_display_1" => {
                 manager.move_to_display(photoncast_window::DisplayDirection::Index(0))
-            }
+            },
             "window_move_display_2" => {
                 manager.move_to_display(photoncast_window::DisplayDirection::Index(1))
-            }
+            },
             "window_move_display_3" => {
                 manager.move_to_display(photoncast_window::DisplayDirection::Index(2))
-            }
+            },
             _ => {
                 let layout = photoncast_window::WindowLayout::from_id(command_id)
                     .unwrap_or(photoncast_window::WindowLayout::LeftHalf);
                 manager.apply_layout(layout)
-            }
+            },
         }
     });
 
@@ -1048,7 +1093,7 @@ fn execute_window_command(command_id: &str, target_bundle_id: Option<String>, ta
 
 /// Gets the bundle ID and window title of the frontmost application.
 /// This is called before Photoncast activates to remember which window was active.
-/// 
+///
 /// Uses CGWindowListCopyWindowInfo which doesn't require Accessibility permissions
 /// and returns windows in front-to-back z-order, so we get the actual frontmost
 /// window even if another app is about to become active.
@@ -1064,29 +1109,31 @@ fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
         } else {
             Some(window_info.title)
         };
-        
+
         tracing::debug!(
             "CGWindowList: bundle_id={:?}, title={:?}, owner={}",
-            bundle_id, title, window_info.owner_name
+            bundle_id,
+            title,
+            window_info.owner_name
         );
-        
+
         return (bundle_id, title);
     }
-    
+
     // Fallback to NSWorkspace if CGWindowList fails
     tracing::warn!("CGWindowList returned no windows, falling back to NSWorkspace");
     use objc2_app_kit::NSWorkspace;
-    
+
     let workspace = NSWorkspace::sharedWorkspace();
     let app = match workspace.frontmostApplication() {
         Some(a) => a,
         None => return (None, None),
     };
     let bundle_id = app.bundleIdentifier().map(|s| s.to_string());
-    
+
     // Try to get the frontmost window title using Accessibility API
     let window_title = get_frontmost_window_title();
-    
+
     (bundle_id, window_title)
 }
 
@@ -1095,12 +1142,12 @@ fn get_frontmost_window_title() -> Option<String> {
     // Use the singleton window manager to get the frontmost window
     WINDOW_MANAGER.with(|m| {
         let mut manager = m.borrow_mut();
-        
+
         // Check permission first
         if !manager.has_accessibility_permission() {
             return None;
         }
-        
+
         // Get frontmost window
         match manager.get_frontmost_window_info() {
             Ok(info) => Some(info.title),
@@ -1134,8 +1181,8 @@ fn setup_appearance_observation(
                                 "System appearance changed: {:?} -> {:?}",
                                 theme.flavor, new_flavor
                             );
-                            let new_theme = PhotonTheme::new(new_flavor, theme.accent)
-                                .with_auto_sync(true);
+                            let new_theme =
+                                PhotonTheme::new(new_flavor, theme.accent).with_auto_sync(true);
                             cx.set_global(new_theme);
                             cx.refresh();
                         }
@@ -1410,15 +1457,13 @@ fn open_create_quicklink_window(
                     match event {
                         CreateQuicklinkEvent::Created(link) => {
                             info!("Creating quicklink: {}", link.name);
-                            let rt = tokio::runtime::Handle::try_current()
-                                .ok()
-                                .or_else(|| {
-                                    tokio::runtime::Runtime::new().ok().map(|rt| {
-                                        let handle = rt.handle().clone();
-                                        std::mem::forget(rt);
-                                        handle
-                                    })
-                                });
+                            let rt = tokio::runtime::Handle::try_current().ok().or_else(|| {
+                                tokio::runtime::Runtime::new().ok().map(|rt| {
+                                    let handle = rt.handle().clone();
+                                    std::mem::forget(rt);
+                                    handle
+                                })
+                            });
                             if let Some(handle) = rt {
                                 let storage = storage_clone.clone();
                                 let link = link.clone();
@@ -1433,18 +1478,16 @@ fn open_create_quicklink_window(
                             // Invalidate quicklinks cache so new quicklink appears in search
                             launcher_state.invalidate_quicklinks_cache();
                             cx.remove_window();
-                        }
+                        },
                         CreateQuicklinkEvent::Updated(link) => {
                             info!("Updating quicklink: {}", link.name);
-                            let rt = tokio::runtime::Handle::try_current()
-                                .ok()
-                                .or_else(|| {
-                                    tokio::runtime::Runtime::new().ok().map(|rt| {
-                                        let handle = rt.handle().clone();
-                                        std::mem::forget(rt);
-                                        handle
-                                    })
-                                });
+                            let rt = tokio::runtime::Handle::try_current().ok().or_else(|| {
+                                tokio::runtime::Runtime::new().ok().map(|rt| {
+                                    let handle = rt.handle().clone();
+                                    std::mem::forget(rt);
+                                    handle
+                                })
+                            });
                             if let Some(handle) = rt {
                                 let storage = storage_clone.clone();
                                 let link = link.clone();
@@ -1459,10 +1502,10 @@ fn open_create_quicklink_window(
                             // Invalidate quicklinks cache so updated quicklink appears in search
                             launcher_state.invalidate_quicklinks_cache();
                             cx.remove_window();
-                        }
+                        },
                         CreateQuicklinkEvent::Cancelled => {
                             // Window already closed by cancel()
-                        }
+                        },
                     }
                 });
                 view
@@ -1530,19 +1573,17 @@ fn open_argument_input_window(
             cx.activate(true);
             cx.new_view(|cx| {
                 let mut view = ArgumentInputView::new(quicklink.clone(), cx);
-                view.on_event(|event, cx| {
-                    match event {
-                        ArgumentInputEvent::Submitted { final_url, .. } => {
-                            info!("Opening quicklink URL: {}", final_url);
-                            if let Err(e) = photoncast_core::platform::launch::open_url(&final_url) {
-                                error!("Failed to open quicklink URL: {}", e);
-                            }
-                            cx.remove_window();
+                view.on_event(|event, cx| match event {
+                    ArgumentInputEvent::Submitted { final_url, .. } => {
+                        info!("Opening quicklink URL: {}", final_url);
+                        if let Err(e) = photoncast_core::platform::launch::open_url(&final_url) {
+                            error!("Failed to open quicklink URL: {}", e);
                         }
-                        ArgumentInputEvent::Cancelled => {
-                            cx.remove_window();
-                        }
-                    }
+                        cx.remove_window();
+                    },
+                    ArgumentInputEvent::Cancelled => {
+                        cx.remove_window();
+                    },
                 });
                 view
             })
@@ -1551,11 +1592,11 @@ fn open_argument_input_window(
         Ok(handle) => {
             info!("Argument input window opened");
             Some(handle)
-        }
+        },
         Err(e) => {
             error!("Failed to open argument input window: {}", e);
             None
-        }
+        },
     }
 }
 
@@ -1610,9 +1651,12 @@ fn open_manage_quicklinks_window(
             cx.activate(true);
             cx.new_view(|cx| {
                 let mut view = QuicklinksManageView::new(cx);
-                view.set_storage(storage.clone(), std::sync::Arc::new(
-                    tokio::runtime::Runtime::new().expect("Failed to create runtime")
-                ));
+                view.set_storage(
+                    storage.clone(),
+                    std::sync::Arc::new(
+                        tokio::runtime::Runtime::new().expect("Failed to create runtime"),
+                    ),
+                );
                 view.set_quicklinks(links.clone(), cx);
                 if show_library {
                     view.toggle_library(cx);

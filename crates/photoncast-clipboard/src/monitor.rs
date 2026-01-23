@@ -192,7 +192,7 @@ impl ClipboardMonitor {
 
         // Store the item
         self.storage.store_async(item.clone()).await?;
-        
+
         // If it's a URL, fetch metadata in background and update stored item
         if let ClipboardContentType::Link { ref url, .. } = item.content_type {
             let fetcher = Arc::clone(&self.url_fetcher);
@@ -206,17 +206,20 @@ impl ClipboardMonitor {
                     Ok(metadata) => {
                         debug!("Fetched URL metadata: title={:?}", metadata.title);
                         // Update the stored item with the fetched metadata
-                        if let Err(e) = storage.update_url_metadata_async(
-                            item_id,
-                            metadata.title,
-                            metadata.favicon_path,
-                        ).await {
+                        if let Err(e) = storage
+                            .update_url_metadata_async(
+                                item_id,
+                                metadata.title,
+                                metadata.favicon_path,
+                            )
+                            .await
+                        {
                             warn!("Failed to update URL metadata: {}", e);
                         }
-                    }
+                    },
                     Err(e) => {
                         debug!("Failed to fetch URL metadata for {}: {}", url_clone, e);
-                    }
+                    },
                 }
             });
         }

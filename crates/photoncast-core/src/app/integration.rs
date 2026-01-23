@@ -118,7 +118,8 @@ impl PhotonCastApp {
         let mut search_engine = SearchEngine::with_config(search_config);
 
         // Register all search providers (Task 3.10.1)
-        let quicklinks_provider = Self::register_providers(&mut search_engine, Arc::clone(&app_index), &config);
+        let quicklinks_provider =
+            Self::register_providers(&mut search_engine, Arc::clone(&app_index), &config);
 
         Self {
             search_engine,

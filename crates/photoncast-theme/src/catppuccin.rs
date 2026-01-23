@@ -88,7 +88,6 @@ impl AccentColor {
             Self::Lavender => "Lavender",
         }
     }
-
 }
 
 impl std::str::FromStr for AccentColor {

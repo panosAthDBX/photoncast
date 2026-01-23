@@ -66,22 +66,20 @@ pub use query::{
 
 // Re-export service types (macOS only)
 #[cfg(target_os = "macos")]
-pub use service::{
-    SearchServiceError, SpotlightSearchOptions, SpotlightSearchService,
-};
+pub use service::{SearchServiceError, SpotlightSearchOptions, SpotlightSearchService};
 
 // Re-export prefetch types (macOS only)
 #[cfg(target_os = "macos")]
 pub use prefetch::{
-    start_background_prefetch, start_background_prefetch_with_service,
-    CancellationToken, PrefetchConfig, PrefetchStatus, SpotlightPrefetcher,
+    start_background_prefetch, start_background_prefetch_with_service, CancellationToken,
+    PrefetchConfig, PrefetchStatus, SpotlightPrefetcher,
 };
 
 // Re-export live index types (macOS only)
 #[cfg(target_os = "macos")]
 pub use live_index::{
-    start_live_index, CustomScopeConfig, LiveFileIndex, LiveIndexStats, LiveIndexStatus,
-    primary_scopes,
+    primary_scopes, start_live_index, CustomScopeConfig, LiveFileIndex, LiveIndexStats,
+    LiveIndexStatus,
 };
 
 // Re-export result types for all platforms

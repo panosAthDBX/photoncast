@@ -108,9 +108,10 @@ impl EventKitManager {
 
         let store = self.get_or_create_store();
         let (tx, rx) = mpsc::channel();
-        let handler = StackBlock::new(move |granted: objc2::runtime::Bool, _error: *mut NSError| {
-            let _ = tx.send(granted.as_bool());
-        });
+        let handler =
+            StackBlock::new(move |granted: objc2::runtime::Bool, _error: *mut NSError| {
+                let _ = tx.send(granted.as_bool());
+            });
         #[allow(deprecated)]
         unsafe {
             store.requestAccessToEntityType_completion(

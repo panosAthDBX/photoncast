@@ -35,8 +35,9 @@ pub fn get_running_apps() -> Result<Vec<RunningApp>> {
             |s: objc2::rc::Retained<NSString>| s.to_string(),
         );
 
-        let bundle_id =
-            app.bundleIdentifier().map(|s: objc2::rc::Retained<NSString>| s.to_string());
+        let bundle_id = app
+            .bundleIdentifier()
+            .map(|s: objc2::rc::Retained<NSString>| s.to_string());
 
         let is_responding = !app.isTerminated();
 
@@ -126,14 +127,20 @@ fn get_app_launch_time(app: &NSRunningApplication) -> DateTime<Utc> {
             let timestamp = date.timeIntervalSince1970();
             #[allow(clippy::cast_possible_truncation)]
             let secs = timestamp as i64;
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                clippy::cast_precision_loss
+            )]
             let nanos = ((timestamp - secs as f64) * 1_000_000_000.0) as u32;
-            Utc.timestamp_opt(secs, nanos).single().unwrap_or_else(Utc::now)
-        }
+            Utc.timestamp_opt(secs, nanos)
+                .single()
+                .unwrap_or_else(Utc::now)
+        },
         None => {
             // Fallback to current time if launch date not available
             Utc::now()
-        }
+        },
     }
 }
 
@@ -337,7 +344,7 @@ pub fn is_app_responding(pid: i32) -> bool {
             tracing::warn!("Failed to spawn osascript for PID {}: {}", pid, e);
             // Fall back - if process exists in NSRunningApplication, assume responding
             return true;
-        }
+        },
     };
 
     // Wait for the process with manual timeout
@@ -360,15 +367,11 @@ pub fn is_app_responding(pid: i32) -> bool {
                         tracing::debug!("PID {} is not responding (AppleScript timed out)", pid);
                         return false;
                     }
-                    tracing::debug!(
-                        "Apple Events check failed for PID {}: {}",
-                        pid,
-                        buf.trim()
-                    );
+                    tracing::debug!("Apple Events check failed for PID {}: {}", pid, buf.trim());
                 }
                 // Other errors - assume responding if process exists
                 return true;
-            }
+            },
             Ok(None) => {
                 // Process still running, check timeout
                 if start.elapsed() > timeout {
@@ -378,11 +381,11 @@ pub fn is_app_responding(pid: i32) -> bool {
                 }
                 // Sleep briefly before checking again
                 std::thread::sleep(Duration::from_millis(50));
-            }
+            },
             Err(e) => {
                 tracing::warn!("Error waiting for osascript: {}", e);
                 return true; // Assume responding on error
-            }
+            },
         }
     }
 }
@@ -403,7 +406,7 @@ pub fn is_app_responding(pid: i32) -> bool {
             Err(e) => {
                 tracing::warn!("Failed to check process {}: {}", pid, e);
                 false
-            }
+            },
         }
     }
     #[cfg(not(unix))]
@@ -472,7 +475,11 @@ pub fn quit_app_with_timeout(pid: i32) -> ActionResult<bool> {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    tracing::info!("Sending quit request to PID {} with {}s timeout", pid, QUIT_TIMEOUT_SECS);
+    tracing::info!(
+        "Sending quit request to PID {} with {}s timeout",
+        pid,
+        QUIT_TIMEOUT_SECS
+    );
 
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
 
@@ -488,7 +495,10 @@ pub fn quit_app_with_timeout(pid: i32) -> ActionResult<bool> {
     if !success {
         return Err(ActionError::OperationFailed {
             operation: "quit".to_string(),
-            reason: format!("Failed to send terminate request to PID {} - app may not support graceful quit", pid),
+            reason: format!(
+                "Failed to send terminate request to PID {} - app may not support graceful quit",
+                pid
+            ),
         });
     }
 
@@ -507,7 +517,11 @@ pub fn quit_app_with_timeout(pid: i32) -> ActionResult<bool> {
         thread::sleep(poll_interval);
     }
 
-    tracing::warn!("PID {} did not quit within {} seconds", pid, QUIT_TIMEOUT_SECS);
+    tracing::warn!(
+        "PID {} did not quit within {} seconds",
+        pid,
+        QUIT_TIMEOUT_SECS
+    );
     Ok(false)
 }
 
@@ -538,19 +552,26 @@ pub fn quit_app_with_timeout(pid: i32) -> ActionResult<bool> {
                 Ok(()) => {
                     // Process still exists
                     thread::sleep(poll_interval);
-                }
+                },
                 Err(nix::errno::Errno::ESRCH) => {
                     // Process no longer exists
                     tracing::info!("PID {} quit successfully in {:?}", pid, start.elapsed());
                     return Ok(true);
-                }
+                },
                 Err(e) => {
-                    return Err(ActionError::Process(format!("Error checking process: {}", e)));
-                }
+                    return Err(ActionError::Process(format!(
+                        "Error checking process: {}",
+                        e
+                    )));
+                },
             }
         }
 
-        tracing::warn!("PID {} did not quit within {} seconds", pid, QUIT_TIMEOUT_SECS);
+        tracing::warn!(
+            "PID {} did not quit within {} seconds",
+            pid,
+            QUIT_TIMEOUT_SECS
+        );
         Ok(false)
     }
 
@@ -660,7 +681,10 @@ pub fn force_quit_app_action(pid: i32) -> ActionResult<()> {
         }
     } else {
         // App not in NSRunningApplication, try SIGKILL directly
-        tracing::warn!("App PID {} not found via NSRunningApplication, using SIGKILL", pid);
+        tracing::warn!(
+            "App PID {} not found via NSRunningApplication, using SIGKILL",
+            pid
+        );
         send_sigkill_action(pid)
     }
 }
@@ -733,7 +757,10 @@ mod tests {
         // For a non-existent process (PID -1), is_app_responding returns false,
         // so should_confirm_force_quit should return false (no confirmation needed)
         let result = should_confirm_force_quit(-1);
-        assert!(!result, "Non-existent process should not require confirmation");
+        assert!(
+            !result,
+            "Non-existent process should not require confirmation"
+        );
 
         // For the current process, behavior depends on platform:
         // - On macOS: test process may not be in NSRunningApplication
@@ -755,7 +782,7 @@ mod tests {
         match err {
             ActionError::AppNotRunning { bundle_id } => {
                 assert_eq!(bundle_id, "com.nonexistent.app.that.does.not.exist");
-            }
+            },
             _ => panic!("Expected AppNotRunning error, got: {:?}", err),
         }
     }

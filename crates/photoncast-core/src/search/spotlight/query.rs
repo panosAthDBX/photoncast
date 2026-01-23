@@ -41,9 +41,8 @@ use objc2::runtime::AnyObject;
 #[allow(deprecated)]
 use objc2::{class, msg_send, msg_send_id};
 use objc2_foundation::{
-    NSArray, NSMetadataItem, NSMetadataQuery,
-    NSMetadataQueryDidFinishGatheringNotification, NSNotification, NSNotificationCenter,
-    NSPredicate, NSString, NSURL,
+    NSArray, NSMetadataItem, NSMetadataQuery, NSMetadataQueryDidFinishGatheringNotification,
+    NSNotification, NSNotificationCenter, NSPredicate, NSString, NSURL,
 };
 use thiserror::Error;
 
@@ -218,8 +217,8 @@ impl MetadataQueryWrapper {
 
     /// Executes the query synchronously with a timeout.
     ///
-    /// This uses `CFRunLoopRunInMode()` with a flag set by the notification 
-    /// callback. This is the canonical way to perform synchronous Spotlight 
+    /// This uses `CFRunLoopRunInMode()` with a flag set by the notification
+    /// callback. This is the canonical way to perform synchronous Spotlight
     /// queries while respecting timeouts.
     ///
     /// # Arguments
@@ -233,10 +232,10 @@ impl MetadataQueryWrapper {
         // Thread-safe flag to track completion
         let finished = Arc::new(AtomicBool::new(false));
         let finished_for_callback = finished.clone();
-        
+
         // Capture the current run loop for stopping from the callback
         let current_run_loop = unsafe { CFRunLoopGetCurrent() };
-        
+
         // Create a block that sets the flag and stops the run loop
         let block = RcBlock::new(move |_notification: NonNull<NSNotification>| {
             finished_for_callback.store(true, Ordering::SeqCst);
@@ -278,7 +277,7 @@ impl MetadataQueryWrapper {
 
         // Run the run loop in intervals until finished or timeout
         // CFRunLoopRunInMode returns when:
-        // - A source is handled (kCFRunLoopRunHandledSource) 
+        // - A source is handled (kCFRunLoopRunHandledSource)
         // - The timeout expires (kCFRunLoopRunTimedOut)
         // - CFRunLoopStop is called (kCFRunLoopRunStopped)
         // - No sources exist (kCFRunLoopRunFinished)
@@ -369,7 +368,8 @@ impl MetadataQueryWrapper {
         // Cast the untyped NSArray to NSArray<NSMetadataItem>
         // Safety: NSMetadataQuery.results() returns NSMetadataItem objects
         let typed_results: &NSArray<NSMetadataItem> = unsafe {
-            &*(std::ptr::from_ref::<NSArray>(&results) as *const NSArray<NSMetadataItem>)
+            let ptr: *const NSArray = &*results;
+            &*(ptr as *const NSArray<NSMetadataItem>)
         };
         let spotlight_results = MetadataExtractor::extract_batch(typed_results);
 
@@ -478,14 +478,14 @@ mod tests {
             Ok(results) => {
                 // Success is fine, results may be empty or populated
                 let _ = results;
-            }
+            },
             Err(SpotlightError::Timeout(_)) => {
                 // Timeout is expected with short timeout
-            }
+            },
             Err(e) => {
                 // Other errors are acceptable for this test
                 let _ = e;
-            }
+            },
         }
     }
 }

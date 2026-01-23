@@ -208,11 +208,11 @@ impl IgnorePattern {
                         // * matches anything except /
                         result.push('*');
                     }
-                }
+                },
                 '?' => {
                     // ? matches any single character except /
                     result.push('?');
-                }
+                },
                 '[' => {
                     // Character class - copy as-is
                     result.push('[');
@@ -230,17 +230,17 @@ impl IgnorePattern {
                             reason: "unclosed character class".to_string(),
                         });
                     }
-                }
+                },
                 '\\' => {
                     // Escape next character
                     if let Some(next) = chars.next() {
                         result.push('\\');
                         result.push(next);
                     }
-                }
+                },
                 _ => {
                     result.push(c);
-                }
+                },
             }
         }
 
@@ -500,7 +500,7 @@ impl IgnorePatternSet {
                 Ok(pattern) => patterns.push(pattern),
                 Err(IgnoreError::InvalidPattern { .. }) => {
                     // Skip invalid patterns but continue parsing
-                }
+                },
                 Err(e) => return Err(e),
             }
         }
@@ -652,8 +652,8 @@ impl IgnoreMatcher {
                             .insert(dir.to_path_buf(), Arc::new(pattern_set));
                         // Only use the first existing ignore file per directory
                         break;
-                    }
-                    _ => {} // Skip empty files or unreadable files
+                    },
+                    _ => {}, // Skip empty files or unreadable files
                 }
             }
         }
@@ -1026,8 +1026,7 @@ mod tests {
 !important.log
 build/
 ";
-        let set =
-            IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
+        let set = IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
         assert_eq!(set.len(), 3);
     }
 
@@ -1041,16 +1040,14 @@ build/
 
 *.txt
 ";
-        let set =
-            IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
+        let set = IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
         assert_eq!(set.len(), 2);
     }
 
     #[test]
     fn test_pattern_set_is_ignored() {
         let content = "*.log";
-        let set =
-            IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
+        let set = IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
 
         assert_eq!(set.is_ignored(Path::new("debug.log"), false), Some(true));
         assert_eq!(set.is_ignored(Path::new("debug.txt"), false), None);
@@ -1062,8 +1059,7 @@ build/
 *.log
 !important.log
 ";
-        let set =
-            IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
+        let set = IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
 
         assert_eq!(set.is_ignored(Path::new("debug.log"), false), Some(true));
         assert_eq!(
@@ -1079,8 +1075,7 @@ build/
 !debug.log
 *.log
 ";
-        let set =
-            IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
+        let set = IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
 
         // Last *.log wins
         assert_eq!(set.is_ignored(Path::new("debug.log"), false), Some(true));
@@ -1150,8 +1145,7 @@ build/
     #[test]
     fn test_matcher_global_patterns() {
         let matcher = IgnoreMatcher::new();
-        let global =
-            IgnorePatternSet::from_string("*.tmp", PathBuf::from("/"), None).unwrap();
+        let global = IgnorePatternSet::from_string("*.tmp", PathBuf::from("/"), None).unwrap();
         matcher.set_global_patterns(global);
 
         assert!(matcher.is_ignored(Path::new("/any/path/file.tmp"), false));
@@ -1276,10 +1270,8 @@ build/
 
     #[test]
     fn test_pattern_for_file_fallback() {
-        let pattern = pattern_for_file(
-            Path::new("/different/path/file.txt"),
-            Path::new("/project"),
-        );
+        let pattern =
+            pattern_for_file(Path::new("/different/path/file.txt"), Path::new("/project"));
         assert_eq!(pattern, "file.txt");
     }
 
@@ -1336,8 +1328,7 @@ build/
     #[test]
     fn test_pattern_set_handles_crlf() {
         let content = "*.log\r\n*.txt\r\n";
-        let set =
-            IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
+        let set = IgnorePatternSet::from_string(content, PathBuf::from("/project"), None).unwrap();
         assert_eq!(set.len(), 2);
     }
 

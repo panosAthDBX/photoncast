@@ -37,15 +37,13 @@ pub struct RunningApplication {
 }
 
 /// Auto quit settings for an application.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AutoQuitSettings {
     /// Whether auto quit is enabled for this application.
     pub enabled: bool,
     /// Idle time in seconds before auto quit triggers.
     pub idle_seconds: Option<u64>,
 }
-
 
 /// Combined application information with its running state and settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]

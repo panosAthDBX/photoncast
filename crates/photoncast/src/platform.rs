@@ -67,7 +67,7 @@ mod macos {
     /// Uses dispatch_async to defer the resize outside of GPUI's event loop.
     pub fn resize_window(new_width: f64, new_height: f64) {
         use dispatch::Queue;
-        
+
         // Use dispatch_async to schedule resize on next run loop iteration
         // This avoids RefCell borrow conflicts with GPUI's window management
         Queue::main().exec_async(move || {

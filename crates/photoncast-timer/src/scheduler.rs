@@ -304,12 +304,14 @@ impl TimerScheduler {
     pub async fn execute_action(action: TimerAction) -> Result<()> {
         /// Timeout for system commands (30 seconds should be more than enough)
         const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
-        
+
         info!("Executing timer action: {}", action.display_name());
 
         let mut command = match action {
             TimerAction::Sleep => Command::new("pmset"),
-            TimerAction::Shutdown | TimerAction::Restart | TimerAction::Lock => Command::new("osascript"),
+            TimerAction::Shutdown | TimerAction::Restart | TimerAction::Lock => {
+                Command::new("osascript")
+            },
         };
 
         match action {
@@ -330,9 +332,12 @@ impl TimerScheduler {
 
         let output = tokio::time::timeout(COMMAND_TIMEOUT, command.output())
             .await
-            .map_err(|_| TimerError::Execution(format!(
-                "Command timed out after {}s", COMMAND_TIMEOUT.as_secs()
-            )))?
+            .map_err(|_| {
+                TimerError::Execution(format!(
+                    "Command timed out after {}s",
+                    COMMAND_TIMEOUT.as_secs()
+                ))
+            })?
             .map_err(|e| TimerError::Execution(format!("Failed to execute command: {e}")))?;
 
         if !output.status.success() {
@@ -437,7 +442,7 @@ mod tests {
             TimerAction::Restart,
             TimerAction::Lock,
         ];
-        
+
         for action in actions {
             assert!(!action.display_name().is_empty());
             assert!(!action.icon().is_empty());
@@ -450,7 +455,7 @@ mod tests {
         let action = TimerAction::Sleep;
         let json = serde_json::to_string(&action).unwrap();
         assert_eq!(json, "\"sleep\"");
-        
+
         let deserialized: TimerAction = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, action);
     }
@@ -463,12 +468,10 @@ mod tests {
             Utc::now() - chrono::Duration::seconds(10),
         );
         assert!(expired_timer.is_expired());
-        
+
         // Test with future time (not expired)
-        let future_timer = ActiveTimer::new(
-            TimerAction::Sleep,
-            Utc::now() + chrono::Duration::hours(1),
-        );
+        let future_timer =
+            ActiveTimer::new(TimerAction::Sleep, Utc::now() + chrono::Duration::hours(1));
         assert!(!future_timer.is_expired());
     }
 
@@ -478,7 +481,7 @@ mod tests {
             TimerAction::Sleep,
             Utc::now() + chrono::Duration::seconds(60),
         );
-        
+
         let remaining = timer.remaining();
         // Should be close to 60 seconds (within 2 seconds tolerance for test execution)
         assert!(remaining.num_seconds() >= 58 && remaining.num_seconds() <= 62);
@@ -491,10 +494,10 @@ mod tests {
     async fn test_execute_action_error_handling() {
         // This test verifies that our error handling works correctly
         // by checking that the function signature and error types are correct.
-        // 
+        //
         // Actual system command tests should be done in integration tests
         // with appropriate sandboxing/mocking.
-        
+
         // Verify that TimerError::Execution can be created
         let error = TimerError::Execution("test error".to_string());
         assert!(error.to_string().contains("test error"));

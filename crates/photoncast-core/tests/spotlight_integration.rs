@@ -93,13 +93,13 @@ fn test_spotlight_service_search_returns_results() {
                 assert!(!result.path.as_os_str().is_empty());
                 assert!(!result.display_name.is_empty());
             }
-        }
+        },
         Err(SearchServiceError::Spotlight(SpotlightError::Timeout(_))) => {
             // Timeout is acceptable in CI environments
-        }
+        },
         Err(e) => {
             panic!("Unexpected error: {:?}", e);
-        }
+        },
     }
 }
 
@@ -129,13 +129,13 @@ fn test_spotlight_service_search_with_extension_filter() {
                     assert_eq!(ext, "app", "Expected .app extension, got .{}", ext);
                 }
             }
-        }
+        },
         Err(SearchServiceError::Spotlight(SpotlightError::Timeout(_))) => {
             // Timeout is acceptable
-        }
+        },
         Err(e) => {
             panic!("Unexpected error: {:?}", e);
-        }
+        },
     }
 }
 
@@ -164,13 +164,13 @@ fn test_spotlight_service_search_in_directory() {
                     result.path.display()
                 );
             }
-        }
+        },
         Err(SearchServiceError::Spotlight(SpotlightError::Timeout(_))) => {
             // Timeout is acceptable
-        }
+        },
         Err(e) => {
             panic!("Unexpected error: {:?}", e);
-        }
+        },
     }
 }
 
@@ -182,7 +182,7 @@ fn test_spotlight_service_timeout_handling() {
     let options = SpotlightSearchOptions {
         max_results: 1000,
         timeout: Duration::from_millis(1), // Extremely short timeout
-        primary_scopes: vec![],             // Search everywhere
+        primary_scopes: vec![],            // Search everywhere
         use_cache: false,
         ..Default::default()
     };
@@ -446,13 +446,13 @@ fn test_metadata_query_execute_sync() {
             for result in results {
                 assert!(!result.path.as_os_str().is_empty());
             }
-        }
+        },
         Err(SpotlightError::Timeout(_)) => {
             // Timeout is acceptable in some environments
-        }
+        },
         Err(e) => {
             panic!("Unexpected error: {:?}", e);
-        }
+        },
     }
 }
 
@@ -496,11 +496,11 @@ fn test_file_query_to_spotlight_search() {
 
         // Should not panic
         match result {
-            Ok(_) | Err(SearchServiceError::Spotlight(SpotlightError::Timeout(_))) => {}
+            Ok(_) | Err(SearchServiceError::Spotlight(SpotlightError::Timeout(_))) => {},
             Err(e) => {
                 // Some queries might fail, but shouldn't crash
                 eprintln!("Query {:?} failed with: {:?}", file_query.terms, e);
-            }
+            },
         }
     }
 }
@@ -615,7 +615,11 @@ fn test_performance_vs_mdfind_cli() {
     // Time mdfind CLI
     let mdfind_start = Instant::now();
     let mdfind_output = Command::new("mdfind")
-        .args(["-onlyin", "/Applications", &format!("kMDItemDisplayName == '*{}*'c", query)])
+        .args([
+            "-onlyin",
+            "/Applications",
+            &format!("kMDItemDisplayName == '*{}*'c", query),
+        ])
         .output();
     let mdfind_elapsed = mdfind_start.elapsed();
     let mdfind_count = mdfind_output
@@ -623,15 +627,21 @@ fn test_performance_vs_mdfind_cli() {
         .unwrap_or(0);
 
     println!("Performance Comparison (Safari in /Applications):");
-    println!("  Native Spotlight: {:?} ({} results)", native_elapsed, native_count);
-    println!("  mdfind CLI:       {:?} ({} results)", mdfind_elapsed, mdfind_count);
+    println!(
+        "  Native Spotlight: {:?} ({} results)",
+        native_elapsed, native_count
+    );
+    println!(
+        "  mdfind CLI:       {:?} ({} results)",
+        mdfind_elapsed, mdfind_count
+    );
 
     // Native should be competitive with mdfind (within 2x)
     // Note: First native call may be slower due to setup
     if native_count > 0 && mdfind_count > 0 {
         let ratio = native_elapsed.as_secs_f64() / mdfind_elapsed.as_secs_f64();
         println!("  Ratio (native/mdfind): {:.2}x", ratio);
-        
+
         // Native shouldn't be more than 5x slower than mdfind
         assert!(
             ratio < 5.0,
@@ -743,11 +753,7 @@ fn test_performance_throughput() {
     println!("  Throughput: {:.0} queries/second", qps);
 
     // Cached queries should achieve at least 100 queries/second
-    assert!(
-        qps > 100.0,
-        "Throughput too low: {:.0} queries/second",
-        qps
-    );
+    assert!(qps > 100.0, "Throughput too low: {:.0} queries/second", qps);
 }
 
 /// Performance test: Timeout accuracy (should not hang)
@@ -828,7 +834,11 @@ fn test_performance_rapid_sequential_queries() {
     for (query, elapsed) in &timings {
         println!("  '{}': {:?}", query, elapsed);
     }
-    println!("  Total time for {} queries: {:?}", query_prefixes.len(), total_elapsed);
+    println!(
+        "  Total time for {} queries: {:?}",
+        query_prefixes.len(),
+        total_elapsed
+    );
 
     // All queries combined should complete within reasonable time
     assert!(
@@ -877,9 +887,9 @@ fn test_performance_large_result_set() {
                     time_per_result
                 );
             }
-        }
+        },
         Err(e) => {
             println!("Large result set query failed: {:?}", e);
-        }
+        },
     }
 }

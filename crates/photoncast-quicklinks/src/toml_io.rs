@@ -69,8 +69,14 @@ mod tests {
         assert_eq!(loaded.links.len(), 2);
         assert_eq!(loaded.links[0].name, "GitHub");
         assert_eq!(loaded.links[0].alias, Some("gh".to_string()));
-        assert_eq!(loaded.links[1].link, "https://google.com/search?q={argument}");
-        assert_eq!(loaded.links[1].open_with, Some("com.apple.Safari".to_string()));
+        assert_eq!(
+            loaded.links[1].link,
+            "https://google.com/search?q={argument}"
+        );
+        assert_eq!(
+            loaded.links[1].open_with,
+            Some("com.apple.Safari".to_string())
+        );
         assert_eq!(loaded.links[1].hotkey, Some("cmd+shift+g".to_string()));
     }
 }

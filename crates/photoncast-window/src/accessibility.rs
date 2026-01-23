@@ -17,19 +17,19 @@ use core_foundation::boolean::CFBoolean;
 #[cfg(target_os = "macos")]
 use core_foundation::dictionary::CFDictionary;
 #[cfg(target_os = "macos")]
+use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetValueAtIndex};
+#[cfg(target_os = "macos")]
 use core_foundation_sys::base::{CFRelease, CFRetain, CFTypeRef};
+#[cfg(target_os = "macos")]
+use core_foundation_sys::dictionary::CFDictionaryGetValueIfPresent;
+#[cfg(target_os = "macos")]
+use core_foundation_sys::dictionary::CFDictionaryRef;
+#[cfg(target_os = "macos")]
+use core_foundation_sys::number::{kCFNumberSInt32Type, CFNumberGetValue};
 #[cfg(target_os = "macos")]
 use core_foundation_sys::string::{
     kCFStringEncodingUTF8, CFStringCreateWithCString, CFStringGetCString, CFStringRef,
 };
-#[cfg(target_os = "macos")]
-use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetValueAtIndex};
-#[cfg(target_os = "macos")]
-use core_foundation_sys::dictionary::CFDictionaryGetValueIfPresent;
-#[cfg(target_os = "macos")]
-use core_foundation_sys::number::{kCFNumberSInt32Type, CFNumberGetValue};
-#[cfg(target_os = "macos")]
-use core_foundation_sys::dictionary::CFDictionaryRef;
 #[cfg(target_os = "macos")]
 use core_graphics::geometry::{CGPoint, CGSize};
 #[cfg(target_os = "macos")]
@@ -249,14 +249,15 @@ impl AccessibilityManager {
             tracing::debug!("NSWorkspace.frontmostApplication() returned None");
             WindowError::WindowNotFound
         })?;
-        
-        let name = app.localizedName()
+
+        let name = app
+            .localizedName()
             .map_or_else(|| "<no name>".to_string(), |n| n.to_string());
-        
+
         if let Some(bundle_id) = app.bundleIdentifier() {
             return Ok(bundle_id.to_string());
         }
-        
+
         tracing::debug!("Frontmost app '{}' has no bundle ID", name);
         Err(WindowError::WindowNotFound)
     }
@@ -280,8 +281,10 @@ impl AccessibilityManager {
             if let Some(app_bundle_id) = app.bundleIdentifier() {
                 if app_bundle_id.to_string() == bundle_id {
                     #[allow(deprecated)]
-                    let activated = 
-                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty());
+                    let activated =
+                        app.activateWithOptions(
+                            objc2_app_kit::NSApplicationActivationOptions::empty(),
+                        );
                     if activated {
                         tracing::debug!("Activated app: {}", bundle_id);
                         return Ok(());
@@ -326,8 +329,10 @@ impl AccessibilityManager {
                 let bundle_str = app_bundle_id.to_string();
                 if bundle_str != except_bundle_id && !bundle_str.contains("photoncast") {
                     #[allow(deprecated)]
-                    let activated = 
-                        app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty());
+                    let activated =
+                        app.activateWithOptions(
+                            objc2_app_kit::NSApplicationActivationOptions::empty(),
+                        );
                     if activated {
                         tracing::debug!("Activated app: {}", bundle_str);
                         return Ok(bundle_str);
@@ -352,16 +357,16 @@ impl AccessibilityManager {
         }
 
         let system_wide = unsafe { AXUIElementCreateSystemWide() };
-        
+
         // Use inner function to ensure cleanup happens on all paths
         let result = self.get_frontmost_window_inner(system_wide);
-        
+
         // Always release system_wide
         unsafe { CFRelease(system_wide.cast()) };
-        
+
         result
     }
-    
+
     #[cfg(target_os = "macos")]
     fn get_frontmost_window_inner(&mut self, system_wide: AXUIElementRef) -> Result<WindowInfo> {
         // Get focused application
@@ -374,17 +379,17 @@ impl AccessibilityManager {
         };
 
         // Get focused window (clean up focused_app_ref on error)
-        let window_ref = match unsafe {
-            get_ax_attribute(focused_app_ref as AXUIElementRef, AX_FOCUSED_WINDOW)
-        } {
-            Ok(w) => w,
-            Err(e) => {
-                unsafe { CFRelease(focused_app_ref) };
-                return Err(WindowError::AccessibilityError {
-                    message: format!("Failed to get focused window: {e}"),
-                });
-            }
-        };
+        let window_ref =
+            match unsafe { get_ax_attribute(focused_app_ref as AXUIElementRef, AX_FOCUSED_WINDOW) }
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    unsafe { CFRelease(focused_app_ref) };
+                    return Err(WindowError::AccessibilityError {
+                        message: format!("Failed to get focused window: {e}"),
+                    });
+                },
+            };
 
         // Get window title
         let title = unsafe {
@@ -410,9 +415,9 @@ impl AccessibilityManager {
                     // Don't release window_ref here - it wasn't retained yet
                 }
                 return Err(e);
-            }
+            },
         };
-        
+
         let size = match Self::get_size_from_ref(window_ref as AXUIElementRef) {
             Ok(s) => s,
             Err(e) => {
@@ -420,9 +425,9 @@ impl AccessibilityManager {
                     CFRelease(focused_app_ref);
                 }
                 return Err(e);
-            }
+            },
         };
-        
+
         let frame = CGRect::new(&position, &size);
         let element_ref = window_ref as usize;
 
@@ -460,7 +465,10 @@ impl AccessibilityManager {
         // Validate the element is still accessible by trying to get its position
         // If this fails, the window has likely been closed
         if Self::get_position_from_ref(element).is_err() {
-            tracing::debug!("Cached element {} is stale, removing from cache", element_ref);
+            tracing::debug!(
+                "Cached element {} is stale, removing from cache",
+                element_ref
+            );
             if let Some(stale_element) = self.element_cache.remove(&element_ref) {
                 unsafe { CFRelease(stale_element.cast()) };
             }
@@ -753,7 +761,10 @@ impl AccessibilityManager {
         };
 
         if result != 0 {
-            tracing::warn!("AXRaise failed with error {}, window may not be raised", result);
+            tracing::warn!(
+                "AXRaise failed with error {}, window may not be raised",
+                result
+            );
         }
 
         tracing::debug!("Focused window: '{}'", window.title);
@@ -774,20 +785,21 @@ impl AccessibilityManager {
         }
 
         let windows = self.list_windows()?;
-        
+
         // Find a window that doesn't look like the launcher terminal
         let window = windows
             .into_iter()
             .find(|w| {
                 let title_lower = w.title.to_lowercase();
                 // Exclude windows that look like they're running the launcher
-                !title_lower.contains("cargo run") 
+                !title_lower.contains("cargo run")
                     && !title_lower.contains("photoncast")
                     && !title_lower.contains("cargo build")
                     && !title_lower.contains("cargo test")
             })
             .ok_or_else(|| WindowError::AccessibilityError {
-                message: "No suitable window found (all windows appear to be launcher terminals)".to_string(),
+                message: "No suitable window found (all windows appear to be launcher terminals)"
+                    .to_string(),
             })?;
 
         // Raise the window
@@ -799,7 +811,10 @@ impl AccessibilityManager {
         };
 
         if result != 0 {
-            tracing::warn!("AXRaise failed with error {}, window may not be raised", result);
+            tracing::warn!(
+                "AXRaise failed with error {}, window may not be raised",
+                result
+            );
         }
 
         tracing::info!("Focused non-launcher window: '{}'", window.title);
@@ -888,7 +903,7 @@ impl AccessibilityManager {
                 .get(&window.element_ref)
                 .copied()
                 .ok_or(WindowError::WindowNotFound)?;
-            
+
             let value = unsafe {
                 get_ax_attribute(fs_element, AX_FULLSCREEN).map_err(|e| {
                     WindowError::AccessibilityError {
@@ -896,7 +911,8 @@ impl AccessibilityManager {
                     }
                 })?
             };
-            let fullscreen = unsafe { core_foundation_sys::number::CFBooleanGetValue(value.cast()) };
+            let fullscreen =
+                unsafe { core_foundation_sys::number::CFBooleanGetValue(value.cast()) };
             unsafe { CFRelease(value) };
             fullscreen
         };
@@ -940,33 +956,42 @@ impl AccessibilityManager {
 #[cfg(target_os = "macos")]
 pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
     use core_foundation::string::CFString;
-    
-    let options = K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
+
+    let options =
+        K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
     let window_list = unsafe { CGWindowListCopyWindowInfo(options, K_CG_NULL_WINDOW_ID) };
-    
+
     if window_list.is_null() {
         tracing::debug!("CGWindowListCopyWindowInfo returned null");
         return None;
     }
-    
+
     let count = unsafe { CFArrayGetCount(window_list) };
     tracing::debug!("CGWindowList returned {} windows", count);
-    
+
     // Window list is in front-to-back order, so first normal window is frontmost
     for i in 0..count {
         let dict = unsafe { CFArrayGetValueAtIndex(window_list, i) as CFDictionaryRef };
         if dict.is_null() {
             continue;
         }
-        
+
         // Get window layer - we only want normal windows (layer 0)
         let layer_key = CFString::new("kCGWindowLayer");
         let mut layer_value: *const c_void = std::ptr::null();
         let layer = if unsafe {
             CFDictionaryGetValueIfPresent(dict, layer_key.as_CFTypeRef().cast(), &mut layer_value)
-        } != 0 && !layer_value.is_null() {
+        } != 0
+            && !layer_value.is_null()
+        {
             let mut val: i32 = 0;
-            if unsafe { CFNumberGetValue(layer_value.cast(), kCFNumberSInt32Type, std::ptr::addr_of_mut!(val).cast::<c_void>()) } {
+            if unsafe {
+                CFNumberGetValue(
+                    layer_value.cast(),
+                    kCFNumberSInt32Type,
+                    std::ptr::addr_of_mut!(val).cast::<c_void>(),
+                )
+            } {
                 val
             } else {
                 continue;
@@ -974,47 +999,59 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
         } else {
             continue;
         };
-        
+
         // Skip non-normal windows (menu bar, dock, etc have layer != 0)
         if layer != 0 {
             continue;
         }
-        
+
         // Get owner name
         let owner_key = CFString::new("kCGWindowOwnerName");
         let mut owner_value: *const c_void = std::ptr::null();
         let owner_name = if unsafe {
             CFDictionaryGetValueIfPresent(dict, owner_key.as_CFTypeRef().cast(), &mut owner_value)
-        } != 0 && !owner_value.is_null() {
+        } != 0
+            && !owner_value.is_null()
+        {
             cfstring_to_string(owner_value as CFStringRef).unwrap_or_default()
         } else {
             String::new()
         };
-        
+
         // Skip windows from Photoncast itself
         if owner_name.to_lowercase().contains("photoncast") {
             continue;
         }
-        
+
         // Get window title
         let title_key = CFString::new("kCGWindowName");
         let mut title_value: *const c_void = std::ptr::null();
         let title = if unsafe {
             CFDictionaryGetValueIfPresent(dict, title_key.as_CFTypeRef().cast(), &mut title_value)
-        } != 0 && !title_value.is_null() {
+        } != 0
+            && !title_value.is_null()
+        {
             cfstring_to_string(title_value as CFStringRef).unwrap_or_default()
         } else {
             String::new()
         };
-        
+
         // Get owner PID
         let pid_key = CFString::new("kCGWindowOwnerPID");
         let mut pid_value: *const c_void = std::ptr::null();
         let owner_pid = if unsafe {
             CFDictionaryGetValueIfPresent(dict, pid_key.as_CFTypeRef().cast(), &mut pid_value)
-        } != 0 && !pid_value.is_null() {
+        } != 0
+            && !pid_value.is_null()
+        {
             let mut val: i32 = 0;
-            if unsafe { CFNumberGetValue(pid_value.cast(), kCFNumberSInt32Type, std::ptr::addr_of_mut!(val).cast::<c_void>()) } {
+            if unsafe {
+                CFNumberGetValue(
+                    pid_value.cast(),
+                    kCFNumberSInt32Type,
+                    std::ptr::addr_of_mut!(val).cast::<c_void>(),
+                )
+            } {
                 val
             } else {
                 0
@@ -1022,14 +1059,17 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
         } else {
             0
         };
-        
+
         unsafe { CFRelease(window_list.cast()) };
-        
+
         tracing::debug!(
             "CGWindowList frontmost: owner='{}', title='{}', pid={}, layer={}",
-            owner_name, title, owner_pid, layer
+            owner_name,
+            title,
+            owner_pid,
+            layer
         );
-        
+
         return Some(CGWindowInfo {
             title,
             owner_name,
@@ -1037,7 +1077,7 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
             layer,
         });
     }
-    
+
     unsafe { CFRelease(window_list.cast()) };
     None
 }
@@ -1046,9 +1086,9 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
 #[cfg(target_os = "macos")]
 pub fn get_bundle_id_for_pid(pid: i32) -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
-    
+
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
-    
+
     app.and_then(|a| a.bundleIdentifier().map(|s| s.to_string()))
 }
 

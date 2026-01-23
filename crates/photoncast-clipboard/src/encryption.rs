@@ -155,7 +155,7 @@ impl EncryptionManager {
 }
 
 /// Derives a 256-bit key from input data using argon2 with a secure random salt.
-/// 
+///
 /// The salt is retrieved from (or generated and stored in) the macOS Keychain.
 #[cfg(not(test))]
 fn derive_key(input: &[u8]) -> Result<[u8; 32]> {
@@ -193,14 +193,14 @@ fn get_or_create_salt() -> Result<Vec<u8>> {
     if let Some(salt) = get_salt_from_keychain()? {
         return Ok(salt);
     }
-    
+
     // Generate new random salt
     let mut salt = vec![0u8; SALT_SIZE];
     rand::thread_rng().fill_bytes(&mut salt);
-    
+
     // Store in Keychain for future use
     store_salt_in_keychain(&salt)?;
-    
+
     tracing::info!("Generated and stored new encryption salt in Keychain");
     Ok(salt)
 }
@@ -210,27 +210,29 @@ fn get_or_create_salt() -> Result<Vec<u8>> {
 #[cfg(target_os = "macos")]
 fn get_salt_from_keychain() -> Result<Option<Vec<u8>>> {
     use std::process::Command;
-    
+
     let output = Command::new("security")
         .args([
             "find-generic-password",
-            "-s", KEYCHAIN_SERVICE,
-            "-a", KEYCHAIN_ACCOUNT,
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            KEYCHAIN_ACCOUNT,
             "-w", // Output password only
         ])
         .output()
         .map_err(|e| ClipboardError::encryption(format!("failed to access Keychain: {}", e)))?;
-    
+
     if !output.status.success() {
         // Item not found is expected on first run
         return Ok(None);
     }
-    
+
     let salt_hex = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if salt_hex.is_empty() {
         return Ok(None);
     }
-    
+
     // Decode hex-encoded salt
     hex::decode(&salt_hex)
         .map(Some)
@@ -242,26 +244,32 @@ fn get_salt_from_keychain() -> Result<Option<Vec<u8>>> {
 #[cfg(target_os = "macos")]
 fn store_salt_in_keychain(salt: &[u8]) -> Result<()> {
     use std::process::Command;
-    
+
     // Encode salt as hex for safe storage
     let salt_hex = hex::encode(salt);
-    
+
     let output = Command::new("security")
         .args([
             "add-generic-password",
-            "-s", KEYCHAIN_SERVICE,
-            "-a", KEYCHAIN_ACCOUNT,
-            "-w", &salt_hex,
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            KEYCHAIN_ACCOUNT,
+            "-w",
+            &salt_hex,
             "-U", // Update if exists
         ])
         .output()
         .map_err(|e| ClipboardError::encryption(format!("failed to store in Keychain: {}", e)))?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(ClipboardError::encryption(format!("Keychain storage failed: {}", stderr)));
+        return Err(ClipboardError::encryption(format!(
+            "Keychain storage failed: {}",
+            stderr
+        )));
     }
-    
+
     Ok(())
 }
 

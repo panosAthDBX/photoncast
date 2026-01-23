@@ -68,7 +68,6 @@ pub enum QuickLinkIcon {
     Default,
 }
 
-
 impl QuickLinkIcon {
     /// Parses icon from a string representation.
     ///
@@ -470,7 +469,10 @@ mod tests {
         );
 
         // Default
-        assert_eq!(QuickLinkIcon::from_string("default"), QuickLinkIcon::Default);
+        assert_eq!(
+            QuickLinkIcon::from_string("default"),
+            QuickLinkIcon::Default
+        );
         assert_eq!(QuickLinkIcon::from_string(""), QuickLinkIcon::Default);
     }
 

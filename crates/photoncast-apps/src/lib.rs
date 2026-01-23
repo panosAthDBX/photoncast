@@ -46,23 +46,23 @@ pub use actions::{
 };
 pub use auto_quit::{
     get_suggested_app_name, is_suggested_auto_quit_app, suggested_auto_quit_apps,
-    AutoQuitAppConfig, AutoQuitConfig, AutoQuitManager, SUGGESTED_AUTO_QUIT_APPS,
-    DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES,
+    AutoQuitAppConfig, AutoQuitConfig, AutoQuitManager, DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES,
+    SUGGESTED_AUTO_QUIT_APPS,
 };
 pub use bundle::{format_size, is_protected_app, is_system_app, is_system_app_by_bundle_id};
-pub use scanner::find_group_containers;
-pub use uninstaller::{calculate_selected_size, get_selected_files, uninstall_selected};
-pub use process::{
-    force_quit_app_action, get_frontmost_app_bundle_id, get_running_apps_detailed,
-    is_app_responding, is_app_running, quit_app_by_bundle_id, quit_app_with_timeout,
-    should_confirm_force_quit,
-};
 pub use config::{AppSleepConfig, AppSleepOverride, AppsConfig};
 pub use error::{AppError, Result};
 pub use models::{
     Application, RelatedFile, RelatedFileCategory, RunningApp, RunningApplication, UninstallPreview,
 };
+pub use process::{
+    force_quit_app_action, get_frontmost_app_bundle_id, get_running_apps_detailed,
+    is_app_responding, is_app_running, quit_app_by_bundle_id, quit_app_with_timeout,
+    should_confirm_force_quit,
+};
+pub use scanner::find_group_containers;
 pub use sleep::AppSleepManager;
+pub use uninstaller::{calculate_selected_size, get_selected_files, uninstall_selected};
 
 /// The main app manager.
 ///

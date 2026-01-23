@@ -253,7 +253,7 @@ fn scan_location(
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
             // Skip directories we don't have permission to read
             return Ok(());
-        }
+        },
         Err(e) => return Err(e.into()),
     };
 

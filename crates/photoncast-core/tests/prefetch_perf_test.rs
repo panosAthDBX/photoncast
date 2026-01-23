@@ -42,7 +42,11 @@ fn compare_prefetch_performance() {
     let cold_time = cold_start.elapsed();
     let cold_per_query = cold_time / queries.len() as u32;
 
-    println!("  Total time for {} queries: {:?}", queries.len(), cold_time);
+    println!(
+        "  Total time for {} queries: {:?}",
+        queries.len(),
+        cold_time
+    );
     println!("  Average per query: {:?}\n", cold_per_query);
 
     // =========================================================================
@@ -74,7 +78,11 @@ fn compare_prefetch_performance() {
     let cache_time = cache_start.elapsed();
     let cache_per_query = cache_time / (100 * queries.len() as u32);
 
-    println!("  Total time for {} queries (100 iterations): {:?}", queries.len(), cache_time);
+    println!(
+        "  Total time for {} queries (100 iterations): {:?}",
+        queries.len(),
+        cache_time
+    );
     println!("  Average per query (cache hit): {:?}", cache_per_query);
     let speedup = cold_per_query.as_nanos() as f64 / cache_per_query.as_nanos() as f64;
     println!("  Speedup vs cold: {:.0}x\n", speedup);
@@ -93,7 +101,10 @@ fn compare_prefetch_performance() {
         run_on_battery: true, // Force run even on battery for test
         ..Default::default()
     };
-    let prefetcher = Arc::new(SpotlightPrefetcher::with_config(Arc::clone(&service), config));
+    let prefetcher = Arc::new(SpotlightPrefetcher::with_config(
+        Arc::clone(&service),
+        config,
+    ));
 
     // Trigger prefetch
     let prefetch_start = Instant::now();
@@ -123,7 +134,10 @@ fn compare_prefetch_performance() {
 
     let recent_files = prefetcher.get_recent_files();
     println!("  Recent files prefetched: {}", recent_files.len());
-    println!("  Instant access time (1000 iterations): {:?}", instant_time);
+    println!(
+        "  Instant access time (1000 iterations): {:?}",
+        instant_time
+    );
     println!("  Average per access: {:?}", instant_per_access);
 
     // Now search with warmed cache from prefetch
@@ -134,7 +148,10 @@ fn compare_prefetch_performance() {
     let warm_time = warm_start.elapsed();
     let warm_per_query = warm_time / queries.len() as u32;
 
-    println!("  Search with warmed cache: {:?} ({:?} per query)\n", warm_time, warm_per_query);
+    println!(
+        "  Search with warmed cache: {:?} ({:?} per query)\n",
+        warm_time, warm_per_query
+    );
 
     // =========================================================================
     // Test 4: Live Index (Spotlight-monitored, in-memory search)
@@ -172,7 +189,11 @@ fn compare_prefetch_performance() {
         live_search_time = live_query_start.elapsed();
         live_per_query = live_search_time / (1000 * queries.len() as u32);
 
-        println!("  Search time (1000 x {} queries): {:?}", queries.len(), live_search_time);
+        println!(
+            "  Search time (1000 x {} queries): {:?}",
+            queries.len(),
+            live_search_time
+        );
         println!("  Average per query: {:?}\n", live_per_query);
     } else {
         println!("  Live index not ready, skipping search benchmark\n");
@@ -189,7 +210,10 @@ fn compare_prefetch_performance() {
     println!("{}", "=".repeat(70));
     println!("  Cold query (no cache):        {:>12?}", cold_per_query);
     println!("  Cache hit:                    {:>12?}", cache_per_query);
-    println!("  Instant prefetch access:      {:>12?}", instant_per_access);
+    println!(
+        "  Instant prefetch access:      {:>12?}",
+        instant_per_access
+    );
     if live_per_query > Duration::ZERO {
         println!("  Live index search:            {:>12?}", live_per_query);
     }
@@ -207,9 +231,15 @@ fn compare_prefetch_performance() {
     }
     println!();
     println!("  USE CASE: When user opens file search modal:");
-    println!("    - Show prefetched recent files INSTANTLY ({:?})", instant_per_access);
+    println!(
+        "    - Show prefetched recent files INSTANTLY ({:?})",
+        instant_per_access
+    );
     if live_per_query > Duration::ZERO {
-        println!("    - Live index search: {:?} per query (in-memory filtering)", live_per_query);
+        println!(
+            "    - Live index search: {:?} per query (in-memory filtering)",
+            live_per_query
+        );
     }
     println!("    - Fallback to cache: {:?} per query", cache_per_query);
     println!("{}\n", "=".repeat(70));

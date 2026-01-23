@@ -263,7 +263,11 @@ impl LauncherSharedState {
                 UsageTracker::new(db)
             },
             Err(e) => {
-                tracing::warn!("Failed to open database at {:?}: {}, falling back to in-memory", db_path, e);
+                tracing::warn!(
+                    "Failed to open database at {:?}: {}, falling back to in-memory",
+                    db_path,
+                    e
+                );
                 // Single fallback attempt - if in-memory fails, panic is acceptable
                 // since we can't function without any database at all
                 let fallback_db = Database::open_in_memory()
@@ -283,7 +287,10 @@ impl LauncherSharedState {
         let command_executor = Arc::new(CommandExecutor::new());
         let calculator_command = Arc::new(RwLock::new(CalculatorCommand::new()));
         let calculator_runtime = Arc::new(tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-            tracing::error!("Failed to create calculator runtime: {}, trying current-thread", e);
+            tracing::error!(
+                "Failed to create calculator runtime: {}, trying current-thread",
+                e
+            );
             // Single fallback - current-thread runtime as last resort
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -295,12 +302,18 @@ impl LauncherSharedState {
             // Try primary path first, then fallback to /tmp
             let rt = tokio::runtime::Runtime::new()
                 .expect("Critical: cannot create tokio runtime for timer");
-            
+
             rt.block_on(TimerManager::new(timer_db_path.clone()))
                 .unwrap_or_else(|e| {
-                    tracing::warn!("Failed to open timer db at {:?}: {}, using /tmp fallback", timer_db_path, e);
-                    rt.block_on(TimerManager::new(std::path::PathBuf::from("/tmp/photoncast_timer.db")))
-                        .expect("Critical: cannot initialize timer manager even with fallback path")
+                    tracing::warn!(
+                        "Failed to open timer db at {:?}: {}, using /tmp fallback",
+                        timer_db_path,
+                        e
+                    );
+                    rt.block_on(TimerManager::new(std::path::PathBuf::from(
+                        "/tmp/photoncast_timer.db",
+                    )))
+                    .expect("Critical: cannot initialize timer manager even with fallback path")
                 })
         }));
         let app_manager = Arc::new(AppManager::new(AppsConfig::default()));
@@ -472,7 +485,8 @@ impl LauncherWindow {
             auto_quit_settings_app: None,
             auto_quit_settings_index: 0,
             auto_quit_manager: Arc::new(RwLock::new(
-                AutoQuitManager::load().unwrap_or_else(|_| AutoQuitManager::new(AutoQuitConfig::default()))
+                AutoQuitManager::load()
+                    .unwrap_or_else(|_| AutoQuitManager::new(AutoQuitConfig::default())),
             )),
             // Task 7.7: Manage Auto Quits
             manage_auto_quits_mode: false,
@@ -1120,7 +1134,9 @@ impl LauncherWindow {
                     // Window layout icons - special
                     "maximize-2" => "⬜".into(),
                     "minimize-2" => "🔽".into(),
-                    "align-center" | "align-center-vertical" | "align-center-horizontal" => "⬛".into(),
+                    "align-center" | "align-center-vertical" | "align-center-horizontal" => {
+                        "⬛".into()
+                    },
                     "square" => "◻️".into(),
                     "scaling" => "📐".into(),
                     "undo-2" => "↩️".into(),
@@ -1217,19 +1233,23 @@ impl LauncherWindow {
                 let r = r as f32 / 255.0;
                 let g = g as f32 / 255.0;
                 let b = b as f32 / 255.0;
-                
+
                 // Convert RGB to HSL
                 let max = r.max(g).max(b);
                 let min = r.min(g).min(b);
                 let l = (max + min) / 2.0;
-                
+
                 if (max - min).abs() < f32::EPSILON {
                     return hsla(0.0, 0.0, l, 1.0);
                 }
-                
+
                 let d = max - min;
-                let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
-                
+                let s = if l > 0.5 {
+                    d / (2.0 - max - min)
+                } else {
+                    d / (max + min)
+                };
+
                 let h = if (max - r).abs() < f32::EPSILON {
                     ((g - b) / d + if g < b { 6.0 } else { 0.0 }) / 6.0
                 } else if (max - g).abs() < f32::EPSILON {
@@ -1237,7 +1257,7 @@ impl LauncherWindow {
                 } else {
                     ((r - g) / d + 4.0) / 6.0
                 };
-                
+
                 return hsla(h, s, l, 1.0);
             }
         }
@@ -1384,7 +1404,10 @@ impl LauncherWindow {
 
     /// Loads suggestions (frequently used apps).
     fn load_suggestions(&mut self, cx: &mut ViewContext<Self>) {
-        tracing::debug!("load_suggestions: index_initialized={}", self.index_initialized);
+        tracing::debug!(
+            "load_suggestions: index_initialized={}",
+            self.index_initialized
+        );
         // Only load if index is ready
         if !self.index_initialized {
             tracing::debug!("Skipping suggestions - index not initialized");
@@ -1393,7 +1416,11 @@ impl LauncherWindow {
 
         // Try to get frecency-based suggestions (recently/frequently used apps)
         let frecent_bundle_ids = self.app_launcher.get_top_apps_by_frecency(6);
-        tracing::debug!("Frecency returned {} apps: {:?}", frecent_bundle_ids.len(), frecent_bundle_ids);
+        tracing::debug!(
+            "Frecency returned {} apps: {:?}",
+            frecent_bundle_ids.len(),
+            frecent_bundle_ids
+        );
 
         if !frecent_bundle_ids.is_empty() {
             // Look up each app by bundle ID directly from index
@@ -1423,7 +1450,10 @@ impl LauncherWindow {
                     })
                 })
                 .collect();
-            tracing::debug!("Loaded {} frecency-based suggestions", self.suggestions.len());
+            tracing::debug!(
+                "Loaded {} frecency-based suggestions",
+                self.suggestions.len()
+            );
         } else {
             // Fallback: search for common apps if no usage data yet
             tracing::debug!("No frecency data, falling back to search-based suggestions");
@@ -1642,14 +1672,17 @@ impl LauncherWindow {
         tracing::debug!("toggle() called, visible was {}", self.visible);
         self.visible = !self.visible;
         if self.visible {
-            tracing::debug!("toggle: showing window, calling fetch_next_meeting and load_suggestions");
+            tracing::debug!(
+                "toggle: showing window, calling fetch_next_meeting and load_suggestions"
+            );
             self.reset_query();
             self.selected_index = 0;
             self.previous_selected_index = None;
             // Select meeting by default if available, otherwise first result
             self.meeting_selected = self.next_meeting.is_some();
             // Reset scroll position
-            self.results_scroll_handle.set_offset(gpui::Point::default());
+            self.results_scroll_handle
+                .set_offset(gpui::Point::default());
             cx.focus(&self.focus_handle);
             self.start_appear_animation(cx);
             self.fetch_next_meeting(cx);
@@ -1691,7 +1724,11 @@ impl LauncherWindow {
 
     /// Sets the bundle ID and window title that was frontmost before Photoncast opened.
     /// Used for window management commands to target the correct window.
-    pub fn set_previous_frontmost_window(&mut self, bundle_id: Option<String>, window_title: Option<String>) {
+    pub fn set_previous_frontmost_window(
+        &mut self,
+        bundle_id: Option<String>,
+        window_title: Option<String>,
+    ) {
         self.previous_frontmost_app = bundle_id;
         self.previous_frontmost_window_title = window_title;
     }
@@ -1752,7 +1789,10 @@ impl LauncherWindow {
 
                     // Check if this is a "show timer" query - fetch active timer async
                     let query_lower = self.query.to_lowercase();
-                    if query_lower.contains("show") || query_lower.contains("status") || query_lower.contains("active timer") {
+                    if query_lower.contains("show")
+                        || query_lower.contains("status")
+                        || query_lower.contains("active timer")
+                    {
                         self.fetch_active_timer_result(cx);
                     }
 
@@ -1823,37 +1863,52 @@ impl LauncherWindow {
 
             // Execute the actual search using native SpotlightSearchService
             // (SpotlightSearchService has built-in caching)
-            let search_results: Vec<SearchResult> =
-                cx.background_executor()
-                    .spawn(async move {
-                        // Use native Spotlight search
-                        let file_results = spotlight_search(&query, MAX_VISIBLE_RESULTS);
-                        
-                        // Convert FileResult to SearchResult for UI
-                        file_results
-                            .into_iter()
-                            .map(|file| {
-                                let path = file.path.clone();
-                                let name = file.name.clone();
-                                let subtitle = path.parent().map(|p| p.display().to_string()).unwrap_or_default();
-                                let is_dir = path.is_dir();
-                                let is_app = path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
-                                let result_type = if is_app { CoreResultType::Application } else if is_dir { CoreResultType::Folder } else { CoreResultType::File };
+            let search_results: Vec<SearchResult> = cx
+                .background_executor()
+                .spawn(async move {
+                    // Use native Spotlight search
+                    let file_results = spotlight_search(&query, MAX_VISIBLE_RESULTS);
 
-                                SearchResult {
-                                    id: photoncast_core::search::SearchResultId::new(format!("file:{}", path.display())),
-                                    title: name,
-                                    subtitle,
-                                    icon: IconSource::FileIcon { path: path.clone() },
-                                    result_type,
-                                    score: 0.0,
-                                    match_indices: vec![],
-                                    action: SearchAction::OpenFile { path },
-                                }
-                            })
-                            .collect()
-                    })
-                    .await;
+                    // Convert FileResult to SearchResult for UI
+                    file_results
+                        .into_iter()
+                        .map(|file| {
+                            let path = file.path.clone();
+                            let name = file.name.clone();
+                            let subtitle = path
+                                .parent()
+                                .map(|p| p.display().to_string())
+                                .unwrap_or_default();
+                            let is_dir = path.is_dir();
+                            let is_app = path
+                                .extension()
+                                .and_then(|ext| ext.to_str())
+                                .is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
+                            let result_type = if is_app {
+                                CoreResultType::Application
+                            } else if is_dir {
+                                CoreResultType::Folder
+                            } else {
+                                CoreResultType::File
+                            };
+
+                            SearchResult {
+                                id: photoncast_core::search::SearchResultId::new(format!(
+                                    "file:{}",
+                                    path.display()
+                                )),
+                                title: name,
+                                subtitle,
+                                icon: IconSource::FileIcon { path: path.clone() },
+                                result_type,
+                                score: 0.0,
+                                match_indices: vec![],
+                                action: SearchAction::OpenFile { path },
+                            }
+                        })
+                        .collect()
+                })
+                .await;
 
             // Update UI with results (if this search is still valid)
             let _ = this.update(&mut cx, |view, cx| {
@@ -1872,12 +1927,12 @@ impl LauncherWindow {
     /// Fetches active timer and adds it to results if found
     fn fetch_active_timer_result(&mut self, cx: &mut ViewContext<Self>) {
         let timer_manager = Arc::clone(&self.timer_manager);
-        
+
         cx.spawn(|this, mut cx| async move {
             let manager = timer_manager.read().await;
             let timer_result = manager.get_timer().await;
             drop(manager);
-            
+
             if let Ok(Some(timer)) = timer_result {
                 let action_name = match timer.action {
                     photoncast_timer::scheduler::TimerAction::Sleep => "Sleep",
@@ -1885,24 +1940,29 @@ impl LauncherWindow {
                     photoncast_timer::scheduler::TimerAction::Restart => "Restart",
                     photoncast_timer::scheduler::TimerAction::Lock => "Lock",
                 };
-                
+
                 let time_str = timer.countdown_string();
-                
+
                 let search_result = SearchResult {
                     id: SearchResultId::new("active_timer"),
                     title: format!("Active Timer: {}", action_name),
                     subtitle: format!("{} - Press Enter to cancel", time_str),
-                    icon: IconSource::SystemIcon { name: "clock".to_string() },
+                    icon: IconSource::SystemIcon {
+                        name: "clock".to_string(),
+                    },
                     result_type: photoncast_core::search::ResultType::SystemCommand,
                     score: 15000.0, // Very high score to show at top
                     match_indices: vec![],
-                    action: SearchAction::OpenSleepTimer { expression: "cancel".to_string() },
+                    action: SearchAction::OpenSleepTimer {
+                        expression: "cancel".to_string(),
+                    },
                 };
-                
+
                 let _ = this.update(&mut cx, |view, cx| {
                     // Insert active timer at the beginning of results
                     view.core_results.insert(0, search_result.clone());
-                    view.results.insert(0, Self::search_result_to_result_item(&search_result));
+                    view.results
+                        .insert(0, Self::search_result_to_result_item(&search_result));
                     cx.notify();
                 });
             }
@@ -1998,7 +2058,6 @@ impl LauncherWindow {
             self.results
                 .push(Self::search_result_to_result_item(result));
         }
-
     }
 
     // Action handlers
@@ -2066,7 +2125,7 @@ impl LauncherWindow {
             file_search_view.update(cx, |view, cx| view.navigate_next(cx));
             return;
         }
-        
+
         // If auto-quit settings is open, navigate within it
         // Options: 0 = toggle, 1-7 = timeout options (1, 2, 3, 5, 10, 15, 30 minutes)
         if self.auto_quit_settings_app.is_some() {
@@ -2143,7 +2202,7 @@ impl LauncherWindow {
             file_search_view.update(cx, |view, cx| view.navigate_previous(cx));
             return;
         }
-        
+
         // If auto-quit settings is open, navigate within it
         if self.auto_quit_settings_app.is_some() {
             let option_count = 8; // toggle + 7 timeout options
@@ -2230,7 +2289,10 @@ impl LauncherWindow {
             let selected_path = file_search_view.update(cx, |view, cx| {
                 if view.actions_menu_open {
                     // Execute the selected action
-                    if let Some(&(_, _, action_id)) = crate::file_search_view::FileSearchView::FILE_ACTIONS.get(view.actions_menu_index) {
+                    if let Some(&(_, _, action_id)) =
+                        crate::file_search_view::FileSearchView::FILE_ACTIONS
+                            .get(view.actions_menu_index)
+                    {
                         view.execute_action(action_id, cx);
                     }
                     None
@@ -2245,17 +2307,15 @@ impl LauncherWindow {
                     view.selected_file().map(|f| f.path.clone())
                 }
             });
-            
+
             // Open the file with default application
             if let Some(path) = selected_path {
-                let _ = std::process::Command::new("open")
-                    .arg(&path)
-                    .spawn();
+                let _ = std::process::Command::new("open").arg(&path).spawn();
                 self.hide(cx);
             }
             return;
         }
-        
+
         // If uninstall preview is showing, perform the uninstall
         if self.uninstall_preview.is_some() {
             self.perform_uninstall(cx);
@@ -2313,9 +2373,18 @@ impl LauncherWindow {
                     // No conference link - open in Calendar app
                     tracing::info!("Opening meeting in Calendar: {}", meeting.title);
                     let calendar_url = format!("ical://ekevent/{}", meeting.id);
-                    if let Err(e) = std::process::Command::new("open").arg(&calendar_url).spawn() {
-                        tracing::warn!("Failed to open event directly: {}, opening Calendar app", e);
-                        let _ = std::process::Command::new("open").arg("-a").arg("Calendar").spawn();
+                    if let Err(e) = std::process::Command::new("open")
+                        .arg(&calendar_url)
+                        .spawn()
+                    {
+                        tracing::warn!(
+                            "Failed to open event directly: {}, opening Calendar app",
+                            e
+                        );
+                        let _ = std::process::Command::new("open")
+                            .arg("-a")
+                            .arg("Calendar")
+                            .spawn();
                     }
                     self.hide(cx);
                     return;
@@ -2479,7 +2548,7 @@ impl LauncherWindow {
                     let expression_value = expression.clone();
                     let is_cancel = expression_value == "cancel";
                     let is_status = expression_value == "status" || expression_value == "show";
-                    
+
                     if is_status {
                         // For status, refresh the search to show active timer inline
                         self.on_query_change(self.query.clone(), cx);
@@ -2514,7 +2583,7 @@ impl LauncherWindow {
                 SearchAction::ExecuteWindowCommand { command_id } => {
                     // Hide first to avoid reentrancy issues with GPUI
                     self.hide(cx);
-                    
+
                     // Send event to main event loop which processes it outside GPUI window context
                     // This avoids reentrancy panics when macOS sends windowDidMove notifications
                     // Include the previous frontmost app and window title so we target the correct window
@@ -2609,7 +2678,7 @@ impl LauncherWindow {
             self.hide(cx);
             return;
         }
-        
+
         // If uninstall preview is showing, close it first
         if self.uninstall_preview.is_some() {
             self.cancel_uninstall_preview(cx);
@@ -2667,7 +2736,7 @@ impl LauncherWindow {
     fn quick_select(&mut self, index: usize, cx: &mut ViewContext<Self>) {
         // Check if meeting widget is visible (query empty + meeting exists)
         let has_meeting = self.query.is_empty() && self.next_meeting.is_some();
-        
+
         if has_meeting {
             if index == 0 {
                 // Cmd+1 selects the meeting
@@ -2716,16 +2785,33 @@ impl LauncherWindow {
 
         // Observe the file search view for should_close, needs_refetch, query_changed, and action flags
         cx.observe(&file_search_view, |this, view, cx| {
-            let (should_close, needs_refetch, query_changed, filter, query,
-                 wants_reveal, wants_quick_look, wants_actions, wants_open, selected_path) = {
+            let (
+                should_close,
+                needs_refetch,
+                query_changed,
+                filter,
+                query,
+                wants_reveal,
+                wants_quick_look,
+                wants_actions,
+                wants_open,
+                selected_path,
+            ) = {
                 let v = view.read(cx);
                 (
-                    v.should_close, v.needs_refetch, v.query_changed, v.filter, v.query.clone(),
-                    v.wants_reveal_in_finder, v.wants_quick_look, v.wants_actions_menu, v.wants_open_file,
-                    v.selected_file().map(|f| f.path.clone())
+                    v.should_close,
+                    v.needs_refetch,
+                    v.query_changed,
+                    v.filter,
+                    v.query.clone(),
+                    v.wants_reveal_in_finder,
+                    v.wants_quick_look,
+                    v.wants_actions_menu,
+                    v.wants_open_file,
+                    v.selected_file().map(|f| f.path.clone()),
                 )
             };
-            
+
             if should_close {
                 // Hide the entire launcher window
                 this.hide(cx);
@@ -2775,36 +2861,39 @@ impl LauncherWindow {
                 });
                 return;
             }
-            
+
             // Handle query change - trigger search
             if query_changed {
-                use crate::file_search_helper::{spotlight_search, spotlight_recent_files_filtered};
-                
+                use crate::file_search_helper::{
+                    spotlight_recent_files_filtered, spotlight_search,
+                };
+
                 let view_handle = view.downgrade();
                 let query_str = query.to_string();
                 let filter_for_search = filter;
-                
+
                 // Clear the flag first
                 view.update(cx, |v, _| {
                     v.query_changed = false;
                 });
-                
+
                 // If in browsing mode, don't trigger Spotlight search - browsing handles its own results
-                let is_browsing = view.read(cx).section_mode == crate::file_search_view::SectionMode::Browsing;
+                let is_browsing =
+                    view.read(cx).section_mode == crate::file_search_view::SectionMode::Browsing;
                 if is_browsing {
                     return;
                 }
-                
+
                 // If query is empty, reload recent files (filtered if a filter is active)
                 if query_str.is_empty() {
                     cx.spawn(|_this, mut cx| async move {
                         // Use filtered fetch to respect current filter
-                        let recent_files = cx
-                            .background_executor()
-                            .spawn(async move {
-                                spotlight_recent_files_filtered(filter_for_search, 50)
-                            })
-                            .await;
+                        let recent_files =
+                            cx.background_executor()
+                                .spawn(async move {
+                                    spotlight_recent_files_filtered(filter_for_search, 50)
+                                })
+                                .await;
 
                         if let Some(view) = view_handle.upgrade() {
                             let _ = view.update(&mut cx, |view, cx| {
@@ -2824,21 +2913,21 @@ impl LauncherWindow {
                         v.loading = true;
                         cx.notify();
                     });
-                    
+
                     cx.spawn(|_this, mut cx| async move {
                         // Use native Spotlight search (has built-in caching)
                         let search_results = cx
                             .background_executor()
-                            .spawn(async move {
-                                spotlight_search(&query_str, 50)
-                            })
+                            .spawn(async move { spotlight_search(&query_str, 50) })
                             .await;
 
                         if let Some(view) = view_handle.upgrade() {
                             let _ = view.update(&mut cx, |view, cx| {
                                 // Apply filter to search results
                                 view.all_results = search_results;
-                                view.results = view.all_results.iter()
+                                view.results = view
+                                    .all_results
+                                    .iter()
                                     .filter(|f| filter_for_search.matches(f.kind, &f.path))
                                     .cloned()
                                     .collect();
@@ -2853,22 +2942,22 @@ impl LauncherWindow {
                 }
                 return;
             }
-            
+
             if needs_refetch {
                 use crate::file_search_helper::spotlight_recent_files_filtered;
-                
+
                 // Re-fetch files for the new filter type using native Spotlight
                 // Use the filtered fetch to get files of the specific type
                 let view_handle = view.downgrade();
                 let filter_for_closure = filter;
-                
+
                 cx.spawn(|_this, mut cx| async move {
                     // Fetch files matching the filter type directly
                     let recent_files = cx
                         .background_executor()
-                        .spawn(async move {
-                            spotlight_recent_files_filtered(filter_for_closure, 50)
-                        })
+                        .spawn(
+                            async move { spotlight_recent_files_filtered(filter_for_closure, 50) },
+                        )
                         .await;
 
                     if let Some(view) = view_handle.upgrade() {
@@ -2897,14 +2986,12 @@ impl LauncherWindow {
         let view_handle = file_search_view.downgrade();
         cx.spawn(|_this, mut cx| async move {
             use crate::file_search_helper::spotlight_recent_files;
-            
+
             // Use native Spotlight to fetch recent files (7 days, max 50 results)
             // SpotlightSearchService has built-in caching
             let recent_files = cx
                 .background_executor()
-                .spawn(async move {
-                    spotlight_recent_files(7, 50)
-                })
+                .spawn(async move { spotlight_recent_files(7, 50) })
                 .await;
 
             // Update the view with results
@@ -2920,7 +3007,7 @@ impl LauncherWindow {
         .detach();
 
         self.file_search_view = Some(file_search_view.clone());
-        
+
         // Focus the file search view after storing it
         cx.focus_view(&file_search_view);
         self.reset_query();
@@ -2933,10 +3020,10 @@ impl LauncherWindow {
         self.file_search_generation += 1;
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
-        
+
         // Resize window to fit file search view (deferred via dispatch_async)
         crate::platform::resize_window(LAUNCHER_WIDTH.0.into(), EXPANDED_HEIGHT.0.into());
-        
+
         cx.notify();
     }
 
@@ -3026,10 +3113,10 @@ impl LauncherWindow {
         self.file_search_generation += 1;
         self.calculator_result = None;
         self.calculator_generation = self.calculator_generation.saturating_add(1);
-        
+
         // Resize window back to normal (deferred via dispatch_async)
         crate::platform::resize_window(LAUNCHER_WIDTH.0.into(), LAUNCHER_HEIGHT.0.into());
-        
+
         cx.notify();
     }
 
@@ -3037,7 +3124,10 @@ impl LauncherWindow {
     fn reveal_in_finder(&mut self, _: &RevealInFinder, cx: &mut ViewContext<Self>) {
         // If file search view is active, reveal selected file
         if let Some(file_search_view) = &self.file_search_view {
-            let selected_path = file_search_view.read(cx).selected_file().map(|f| f.path.clone());
+            let selected_path = file_search_view
+                .read(cx)
+                .selected_file()
+                .map(|f| f.path.clone());
             if let Some(path) = selected_path {
                 tracing::info!("Reveal in Finder (file search): {}", path.display());
                 let _ = photoncast_apps::reveal_in_finder(&path);
@@ -3045,7 +3135,7 @@ impl LauncherWindow {
             }
             return;
         }
-        
+
         // Only active in file search mode with a selected file result
         if !matches!(self.search_mode, SearchMode::FileSearch) {
             return;
@@ -3082,7 +3172,10 @@ impl LauncherWindow {
     fn quick_look(&mut self, _: &QuickLook, cx: &mut ViewContext<Self>) {
         // If file search view is active, trigger Quick Look for selected file
         if let Some(file_search_view) = &self.file_search_view {
-            let selected_path = file_search_view.read(cx).selected_file().map(|f| f.path.clone());
+            let selected_path = file_search_view
+                .read(cx)
+                .selected_file()
+                .map(|f| f.path.clone());
             if let Some(path) = selected_path {
                 tracing::info!("Quick Look (file search): {}", path.display());
                 let _ = std::process::Command::new("qlmanage")
@@ -3092,7 +3185,7 @@ impl LauncherWindow {
             }
             return;
         }
-        
+
         // Only active in file search mode with a selected file result
         if !matches!(self.search_mode, SearchMode::FileSearch) {
             return;
@@ -3192,8 +3285,11 @@ impl LauncherWindow {
 
     /// Handles the Show Actions Menu action (Cmd+K).
     fn show_actions_menu(&mut self, _: &ShowActionsMenu, cx: &mut ViewContext<Self>) {
-        tracing::info!("show_actions_menu called, search_mode={:?}", std::mem::discriminant(&self.search_mode));
-        
+        tracing::info!(
+            "show_actions_menu called, search_mode={:?}",
+            std::mem::discriminant(&self.search_mode)
+        );
+
         // If file search view is active, trigger its actions menu
         if let Some(file_search_view) = &self.file_search_view {
             let has_selection = file_search_view.read(cx).selected_file().is_some();
@@ -3205,7 +3301,7 @@ impl LauncherWindow {
             }
             return;
         }
-        
+
         // Check if there's something to show actions for
         let has_items = if let SearchMode::Calendar { events, .. } = &self.search_mode {
             tracing::info!("Calendar mode with {} events", events.len());
@@ -3221,7 +3317,11 @@ impl LauncherWindow {
         }
 
         // Toggle actions menu
-        tracing::info!("Toggling actions menu: {} -> {}", self.show_actions_menu, !self.show_actions_menu);
+        tracing::info!(
+            "Toggling actions menu: {} -> {}",
+            self.show_actions_menu,
+            !self.show_actions_menu
+        );
         self.show_actions_menu = !self.show_actions_menu;
         self.actions_menu_index = 0; // Reset selection when opening
         cx.notify();
@@ -3254,7 +3354,9 @@ impl LauncherWindow {
         let selected_result = self.results.get(self.selected_index);
         let is_app = selected_result.is_some_and(|r| r.result_type == ResultType::Application);
         let app_bundle_id = selected_result.and_then(|r| r.bundle_id.clone());
-        let is_running = app_bundle_id.as_ref().is_some_and(|id| photoncast_apps::is_app_running(id));
+        let is_running = app_bundle_id
+            .as_ref()
+            .is_some_and(|id| photoncast_apps::is_app_running(id));
 
         if is_app {
             // App actions:
@@ -3289,11 +3391,15 @@ impl LauncherWindow {
             if self.selected_index < events.len() {
                 let event = events[self.selected_index].clone();
                 let has_conference = event.conference_url.is_some();
-                
+
                 // Action order: Join Meeting (if available), Copy Title, Copy Details, Open in Calendar
                 let action_idx = self.actions_menu_index;
-                let adjusted_idx = if has_conference { action_idx } else { action_idx + 1 };
-                
+                let adjusted_idx = if has_conference {
+                    action_idx
+                } else {
+                    action_idx + 1
+                };
+
                 match adjusted_idx {
                     0 => {
                         // Join Meeting
@@ -3315,11 +3421,16 @@ impl LauncherWindow {
                         let time_str = if event.is_all_day {
                             format!("{} (All day)", event.start.format("%A, %B %d, %Y"))
                         } else {
-                            format!("{} - {}", 
+                            format!(
+                                "{} - {}",
                                 event.start.format("%A, %B %d, %Y %H:%M"),
-                                event.end.format("%H:%M"))
+                                event.end.format("%H:%M")
+                            )
                         };
-                        let mut details = format!("{}\n{}\nCalendar: {}", event.title, time_str, event.calendar_name);
+                        let mut details = format!(
+                            "{}\n{}\nCalendar: {}",
+                            event.title, time_str, event.calendar_name
+                        );
                         if let Some(loc) = &event.location {
                             if !loc.is_empty() {
                                 details.push_str(&format!("\nLocation: {}", loc));
@@ -3335,10 +3446,19 @@ impl LauncherWindow {
                         // Open in Calendar
                         // Use the event ID to open in Calendar app
                         let calendar_url = format!("ical://ekevent/{}", event.id);
-                        if let Err(e) = std::process::Command::new("open").arg(&calendar_url).spawn() {
+                        if let Err(e) = std::process::Command::new("open")
+                            .arg(&calendar_url)
+                            .spawn()
+                        {
                             // Fallback: just open Calendar app
-                            tracing::warn!("Failed to open event directly: {}, opening Calendar app", e);
-                            let _ = std::process::Command::new("open").arg("-a").arg("Calendar").spawn();
+                            tracing::warn!(
+                                "Failed to open event directly: {}, opening Calendar app",
+                                e
+                            );
+                            let _ = std::process::Command::new("open")
+                                .arg("-a")
+                                .arg("Calendar")
+                                .spawn();
                         }
                     },
                     _ => {},
@@ -3363,7 +3483,9 @@ impl LauncherWindow {
         let is_app = selected_result.is_some_and(|r| r.result_type == ResultType::Application);
         let app_bundle_id = selected_result.and_then(|r| r.bundle_id.clone());
         let app_path = selected_result.and_then(|r| r.app_path.clone());
-        let is_running = app_bundle_id.as_ref().is_some_and(|id| photoncast_apps::is_app_running(id));
+        let is_running = app_bundle_id
+            .as_ref()
+            .is_some_and(|id| photoncast_apps::is_app_running(id));
 
         // Task 7.3: Handle app-specific actions
         if is_app {
@@ -3422,7 +3544,9 @@ impl LauncherWindow {
                     self.show_actions_menu = false;
                     if let Some(bundle_id) = &app_bundle_id {
                         let is_enabled = {
-                            self.auto_quit_manager.read().is_auto_quit_enabled(bundle_id)
+                            self.auto_quit_manager
+                                .read()
+                                .is_auto_quit_enabled(bundle_id)
                         };
                         if is_enabled {
                             // Disable directly
@@ -3435,7 +3559,8 @@ impl LauncherWindow {
                             self.show_toast("Auto Quit disabled".to_string(), cx);
                         } else {
                             // Show settings modal to configure timeout
-                            let app_name = selected_result.map(|r| r.title.clone()).unwrap_or_default();
+                            let app_name =
+                                selected_result.map(|r| r.title.clone()).unwrap_or_default();
                             self.show_auto_quit_settings(bundle_id, &app_name, cx);
                         }
                     }
@@ -3457,12 +3582,22 @@ impl LauncherWindow {
                     self.show_actions_menu = false;
                     if let Some(bundle_id) = &app_bundle_id {
                         // Get the PID for the bundle ID
-                        if let Ok(running_apps) = photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default()).get_running_apps() {
-                            if let Some(app) = running_apps.iter().find(|a| a.bundle_id.as_deref() == Some(bundle_id)) {
+                        if let Ok(running_apps) =
+                            photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default())
+                                .get_running_apps()
+                        {
+                            if let Some(app) = running_apps
+                                .iter()
+                                .find(|a| a.bundle_id.as_deref() == Some(bundle_id))
+                            {
                                 #[allow(clippy::cast_possible_wrap)]
                                 let pid = app.pid as i32;
                                 match photoncast_apps::force_quit_app_action(pid) {
-                                    Ok(()) => tracing::info!("Force quit app: {} (PID {})", bundle_id, pid),
+                                    Ok(()) => tracing::info!(
+                                        "Force quit app: {} (PID {})",
+                                        bundle_id,
+                                        pid
+                                    ),
                                     Err(e) => tracing::error!("Failed to force quit app: {}", e),
                                 }
                             }
@@ -3534,7 +3669,8 @@ impl LauncherWindow {
     fn next_group(&mut self, _: &NextGroup, cx: &mut ViewContext<Self>) {
         // If file search view is in browsing mode, use Tab to enter folder
         if let Some(file_search_view) = &self.file_search_view {
-            let is_browsing = file_search_view.read(cx).section_mode == crate::file_search_view::SectionMode::Browsing;
+            let is_browsing = file_search_view.read(cx).section_mode
+                == crate::file_search_view::SectionMode::Browsing;
             if is_browsing {
                 file_search_view.update(cx, |view, cx| {
                     view.browse_enter_folder(cx);
@@ -3542,7 +3678,7 @@ impl LauncherWindow {
                 return;
             }
         }
-        
+
         // Check if we should autocomplete a quicklink instead of navigating groups
         // This happens when: there's only 1 result OR the selected result is a quicklink that needs input
         if let Some(core_result) = self.core_results.get(self.selected_index) {
@@ -3550,11 +3686,16 @@ impl LauncherWindow {
                 if photoncast_quicklinks::placeholder::requires_user_input(url_template) {
                     // Only 1 result, or quicklink is selected - autocomplete it
                     if self.results.len() == 1 || self.selected_index == 0 {
-                        let autocomplete = if let Some(alias_match) = core_result.subtitle.strip_prefix('/') {
-                            alias_match.split(" · ").next().unwrap_or(&core_result.title).to_string()
-                        } else {
-                            core_result.title.clone()
-                        };
+                        let autocomplete =
+                            if let Some(alias_match) = core_result.subtitle.strip_prefix('/') {
+                                alias_match
+                                    .split(" · ")
+                                    .next()
+                                    .unwrap_or(&core_result.title)
+                                    .to_string()
+                            } else {
+                                core_result.title.clone()
+                            };
                         let new_query = format!("{} ", autocomplete);
                         self.cursor_position = new_query.chars().count();
                         self.selection_anchor = None;
@@ -3600,7 +3741,8 @@ impl LauncherWindow {
     fn previous_group(&mut self, _: &PreviousGroup, cx: &mut ViewContext<Self>) {
         // If file search view is in browsing mode, use Shift+Tab to go to parent directory
         if let Some(file_search_view) = &self.file_search_view {
-            let is_browsing = file_search_view.read(cx).section_mode == crate::file_search_view::SectionMode::Browsing;
+            let is_browsing = file_search_view.read(cx).section_mode
+                == crate::file_search_view::SectionMode::Browsing;
             if is_browsing {
                 file_search_view.update(cx, |view, cx| {
                     view.browse_go_back(cx);
@@ -3608,7 +3750,7 @@ impl LauncherWindow {
                 return;
             }
         }
-        
+
         if self.results.is_empty() {
             return;
         }
@@ -3793,11 +3935,15 @@ impl LauncherWindow {
             if let Some(core_result) = self.core_results.get(self.selected_index) {
                 if let SearchAction::ExecuteQuickLink { url_template, .. } = &core_result.action {
                     if photoncast_quicklinks::placeholder::requires_user_input(url_template) {
-                        let autocomplete = if let Some(alias_match) = core_result.subtitle.strip_prefix('/') {
-                            alias_match.split(" · ").next().unwrap_or(&core_result.title)
-                        } else {
-                            &core_result.title
-                        };
+                        let autocomplete =
+                            if let Some(alias_match) = core_result.subtitle.strip_prefix('/') {
+                                alias_match
+                                    .split(" · ")
+                                    .next()
+                                    .unwrap_or(&core_result.title)
+                            } else {
+                                &core_result.title
+                            };
                         let new_query = format!("{} ", autocomplete);
                         self.cursor_position = new_query.chars().count();
                         self.selection_anchor = None;
@@ -4060,7 +4206,11 @@ impl LauncherWindow {
     }
 
     /// Render the query text with cursor and selection highlighting
-    fn render_query_with_cursor(&self, colors: &LauncherColors, placeholder: &str) -> impl IntoElement {
+    fn render_query_with_cursor(
+        &self,
+        colors: &LauncherColors,
+        placeholder: &str,
+    ) -> impl IntoElement {
         let text_color = colors.text;
         let placeholder_color = colors.text_placeholder;
         let selection_bg = colors.accent.opacity(0.3);
@@ -4097,7 +4247,9 @@ impl LauncherWindow {
         }
 
         let chars: Vec<char> = self.query.chars().collect();
-        let (sel_start, sel_end) = self.selection_range().unwrap_or((self.cursor_position, self.cursor_position));
+        let (sel_start, sel_end) = self
+            .selection_range()
+            .unwrap_or((self.cursor_position, self.cursor_position));
 
         // Build the text parts: before selection, selection, after selection
         let before: String = chars[..sel_start].iter().collect();
@@ -4330,7 +4482,11 @@ impl LauncherWindow {
                 let time_str = if event.is_all_day {
                     "All day".to_string()
                 } else {
-                    format!("{} - {}", event.start.format("%H:%M"), event.end.format("%H:%M"))
+                    format!(
+                        "{} - {}",
+                        event.start.format("%H:%M"),
+                        event.end.format("%H:%M")
+                    )
                 };
 
                 // Calculate relative time
@@ -4503,8 +4659,8 @@ impl LauncherWindow {
             };
             let header_height = num_headers as f32 * 28.0;
             let items_height = events.len() as f32 * 56.0; // Slightly taller items
-            let total_height = (header_height + items_height)
-                .min((MAX_VISIBLE_RESULTS as f32 * 56.0) + 56.0);
+            let total_height =
+                (header_height + items_height).min((MAX_VISIBLE_RESULTS as f32 * 56.0) + 56.0);
 
             return div()
                 .id("results-list-calendar")
@@ -4526,7 +4682,7 @@ impl LauncherWindow {
 
         // Check if we're showing suggestions (query is empty)
         let is_suggestions = self.query.is_empty() && !self.suggestions.is_empty();
-        
+
         // Group results by type
         let mut current_type: Option<ResultType> = None;
         let mut elements: Vec<gpui::AnyElement> = Vec::new();
@@ -4536,14 +4692,11 @@ impl LauncherWindow {
             // Add group header when type changes
             if current_type != Some(result.result_type) {
                 current_type = Some(result.result_type);
-                
+
                 // Show "Suggestions" header instead of type when showing suggestions
                 if is_suggestions && !shown_suggestions_header {
                     shown_suggestions_header = true;
-                    elements.push(
-                        self.render_suggestions_header(&colors)
-                            .into_any_element(),
-                    );
+                    elements.push(self.render_suggestions_header(&colors).into_any_element());
                 } else if !is_suggestions {
                     elements.push(
                         self.render_group_header(result.result_type, &colors)
@@ -4581,7 +4734,11 @@ impl LauncherWindow {
     }
 
     /// Render a group header (e.g., "Apps", "Commands")
-    fn render_group_header(&self, result_type: ResultType, colors: &LauncherColors) -> impl IntoElement {
+    fn render_group_header(
+        &self,
+        result_type: ResultType,
+        colors: &LauncherColors,
+    ) -> impl IntoElement {
         div()
             .h(px(24.0))
             .w_full()
@@ -4619,12 +4776,14 @@ impl LauncherWindow {
         let icon_size = px(32.0);
 
         // Check if app is running and has auto-quit enabled
-        let is_running = result.bundle_id.as_ref().is_some_and(|id| {
-            photoncast_apps::is_app_running(id)
-        });
-        let has_auto_quit = result.bundle_id.as_ref().is_some_and(|id| {
-            self.auto_quit_manager.read().is_auto_quit_enabled(id)
-        });
+        let is_running = result
+            .bundle_id
+            .as_ref()
+            .is_some_and(|id| photoncast_apps::is_app_running(id));
+        let has_auto_quit = result
+            .bundle_id
+            .as_ref()
+            .is_some_and(|id| self.auto_quit_manager.read().is_auto_quit_enabled(id));
 
         div()
             .relative()
@@ -4737,7 +4896,9 @@ impl LauncherWindow {
                 div()
                     .text_size(px(12.0))
                     .text_color(colors.text_placeholder)
-                    .when(shortcut_num <= 9, |el| el.child(format!("⌘{}", shortcut_num)))
+                    .when(shortcut_num <= 9, |el| {
+                        el.child(format!("⌘{}", shortcut_num))
+                    })
             })
     }
 
@@ -4847,7 +5008,7 @@ impl LauncherWindow {
         // Check if meeting is happening now or starting soon (within 15 min)
         let is_urgent = time_until.num_minutes() <= 15;
         let is_selected = self.meeting_selected && self.query.is_empty();
-        
+
         let bg_color = if is_selected {
             colors.selection
         } else if is_urgent {
@@ -5244,22 +5405,23 @@ impl LauncherWindow {
     fn render_action_bar(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = get_launcher_colors(cx);
         // Determine primary action based on mode
-        let (primary_action, primary_shortcut) = if let SearchMode::Calendar { events, .. } = &self.search_mode {
-            if let Some(event) = events.get(self.selected_index) {
-                if event.conference_url.is_some() {
-                    ("Join Meeting", "↵")
+        let (primary_action, primary_shortcut) =
+            if let SearchMode::Calendar { events, .. } = &self.search_mode {
+                if let Some(event) = events.get(self.selected_index) {
+                    if event.conference_url.is_some() {
+                        ("Join Meeting", "↵")
+                    } else {
+                        ("Open in Calendar", "↵")
+                    }
                 } else {
-                    ("Open in Calendar", "↵")
+                    ("", "")
                 }
+            } else if !self.results.is_empty() {
+                ("Open", "↵")
             } else {
                 ("", "")
-            }
-        } else if !self.results.is_empty() {
-            ("Open", "↵")
-        } else {
-            ("", "")
-        };
-        
+            };
+
         let surface = colors.surface;
         let text_muted = colors.text_muted;
         let text_placeholder = colors.text_placeholder;
@@ -5356,7 +5518,9 @@ impl LauncherWindow {
 
         // For calendar mode, check if selected event has conference
         let has_conference = if let SearchMode::Calendar { events, .. } = &self.search_mode {
-            events.get(self.selected_index).is_some_and(|e| e.conference_url.is_some())
+            events
+                .get(self.selected_index)
+                .is_some_and(|e| e.conference_url.is_some())
         } else {
             false
         };
@@ -5365,10 +5529,12 @@ impl LauncherWindow {
         let selected_result = self.results.get(self.selected_index);
         let is_app = selected_result.is_some_and(|r| r.result_type == ResultType::Application);
         let app_bundle_id = selected_result.and_then(|r| r.bundle_id.clone());
-        let is_running = app_bundle_id.as_ref().is_some_and(|id| photoncast_apps::is_app_running(id));
-        let has_auto_quit = app_bundle_id.as_ref().is_some_and(|id| {
-            self.auto_quit_manager.read().is_auto_quit_enabled(id)
-        });
+        let is_running = app_bundle_id
+            .as_ref()
+            .is_some_and(|id| photoncast_apps::is_app_running(id));
+        let has_auto_quit = app_bundle_id
+            .as_ref()
+            .is_some_and(|id| self.auto_quit_manager.read().is_auto_quit_enabled(id));
 
         div()
             // Overlay background - position menu above action bar at bottom-right
@@ -5678,12 +5844,22 @@ impl LauncherWindow {
             if result.result_type == ResultType::Application {
                 if let Some(bundle_id) = &result.bundle_id {
                     if photoncast_apps::is_app_running(bundle_id) {
-                        if let Ok(running_apps) = photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default()).get_running_apps() {
-                            if let Some(app) = running_apps.iter().find(|a| a.bundle_id.as_deref() == Some(bundle_id)) {
+                        if let Ok(running_apps) =
+                            photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default())
+                                .get_running_apps()
+                        {
+                            if let Some(app) = running_apps
+                                .iter()
+                                .find(|a| a.bundle_id.as_deref() == Some(bundle_id))
+                            {
                                 #[allow(clippy::cast_possible_wrap)]
                                 let pid = app.pid as i32;
                                 match photoncast_apps::force_quit_app_action(pid) {
-                                    Ok(()) => tracing::info!("Force quit app: {} (PID {})", bundle_id, pid),
+                                    Ok(()) => tracing::info!(
+                                        "Force quit app: {} (PID {})",
+                                        bundle_id,
+                                        pid
+                                    ),
                                     Err(e) => tracing::error!("Failed to force quit app: {}", e),
                                 }
                             }
@@ -5723,7 +5899,7 @@ impl LauncherWindow {
                 None
             }
         });
-        
+
         if let Some(path) = app_path {
             // Show the uninstall preview dialog
             self.show_uninstall_preview(&path, cx);
@@ -5737,7 +5913,10 @@ impl LauncherWindow {
         if let Some(result) = self.results.get(self.selected_index).cloned() {
             if result.result_type == ResultType::Application {
                 if let Some(bundle_id) = &result.bundle_id {
-                    let is_enabled = self.auto_quit_manager.read().is_auto_quit_enabled(bundle_id);
+                    let is_enabled = self
+                        .auto_quit_manager
+                        .read()
+                        .is_auto_quit_enabled(bundle_id);
                     if is_enabled {
                         // If already enabled, disable it directly
                         let mut manager = self.auto_quit_manager.write();
@@ -5761,7 +5940,11 @@ impl LauncherWindow {
     // ========================================================================
 
     /// Shows the uninstall preview dialog for an app
-    pub fn show_uninstall_preview(&mut self, app_path: &std::path::Path, cx: &mut ViewContext<Self>) {
+    pub fn show_uninstall_preview(
+        &mut self,
+        app_path: &std::path::Path,
+        cx: &mut ViewContext<Self>,
+    ) {
         match self.app_manager.create_uninstall_preview(app_path) {
             Ok(preview) => {
                 tracing::info!("Created uninstall preview for: {}", preview.app.name);
@@ -5844,11 +6027,16 @@ impl LauncherWindow {
         let space_freed = preview.space_freed_formatted.clone();
 
         // Group files by category
-        let mut categories: std::collections::BTreeMap<&str, Vec<(usize, &photoncast_apps::RelatedFile)>> =
-            std::collections::BTreeMap::new();
+        let mut categories: std::collections::BTreeMap<
+            &str,
+            Vec<(usize, &photoncast_apps::RelatedFile)>,
+        > = std::collections::BTreeMap::new();
         for (idx, file) in preview.related_files.iter().enumerate() {
             let category_name = file.category.display_name();
-            categories.entry(category_name).or_default().push((idx, file));
+            categories
+                .entry(category_name)
+                .or_default()
+                .push((idx, file));
         }
 
         // Get icon path for the app
@@ -6154,7 +6342,12 @@ impl LauncherWindow {
     // ========================================================================
 
     /// Shows the auto quit settings panel for an app
-    pub fn show_auto_quit_settings(&mut self, bundle_id: &str, app_name: &str, cx: &mut ViewContext<Self>) {
+    pub fn show_auto_quit_settings(
+        &mut self,
+        bundle_id: &str,
+        app_name: &str,
+        cx: &mut ViewContext<Self>,
+    ) {
         self.auto_quit_settings_app = Some((bundle_id.to_string(), app_name.to_string()));
         self.auto_quit_settings_index = 0; // Reset selection to toggle option
         cx.notify();
@@ -6197,13 +6390,13 @@ impl LauncherWindow {
             0 => {
                 // Toggle auto quit
                 self.toggle_auto_quit_in_settings(cx);
-            }
+            },
             idx if (1..=7).contains(&idx) => {
                 // Set timeout (index 1 = 1 min, index 2 = 2 min, etc.)
                 let minutes = timeout_options[idx - 1];
                 self.set_auto_quit_timeout(minutes, cx);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -6217,7 +6410,9 @@ impl LauncherWindow {
         let colors = get_launcher_colors(cx);
         let manager = self.auto_quit_manager.read();
         let is_enabled = manager.is_auto_quit_enabled(bundle_id);
-        let current_timeout = manager.get_timeout_minutes(bundle_id).unwrap_or(DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES);
+        let current_timeout = manager
+            .get_timeout_minutes(bundle_id)
+            .unwrap_or(DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES);
         drop(manager);
 
         let timeout_options = [1, 2, 3, 5, 10, 15, 30];
@@ -6412,7 +6607,8 @@ impl LauncherWindow {
     fn disable_auto_quit_at_index(&mut self, index: usize, cx: &mut ViewContext<Self>) {
         let enabled_apps: Vec<_> = {
             let manager = self.auto_quit_manager.read();
-            manager.get_enabled_apps()
+            manager
+                .get_enabled_apps()
                 .iter()
                 .map(|(id, cfg)| (id.to_string(), cfg.timeout_minutes))
                 .collect()
@@ -6432,7 +6628,8 @@ impl LauncherWindow {
     fn render_manage_auto_quits(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = get_launcher_colors(cx);
         let manager = self.auto_quit_manager.read();
-        let enabled_apps: Vec<_> = manager.get_enabled_apps()
+        let enabled_apps: Vec<_> = manager
+            .get_enabled_apps()
             .iter()
             .map(|(id, cfg)| (id.to_string(), cfg.timeout_minutes))
             .collect();
@@ -6637,11 +6834,7 @@ impl LauncherWindow {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(
-                        div()
-                            .text_size(px(16.0))
-                            .child("✓"),
-                    )
+                    .child(div().text_size(px(16.0)).child("✓"))
                     .child(
                         div()
                             .text_size(px(13.0))
@@ -6656,20 +6849,20 @@ impl Render for LauncherWindow {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         // Get theme colors for the UI
         let colors = get_launcher_colors(cx);
-        
+
         // Calculate current animation opacity
         let opacity = self.current_opacity();
 
         // Clone pending confirmation for use in the closure
         let pending_dialog = self.pending_confirmation.as_ref().map(|(_, d)| d.clone());
-        
+
         // Pre-render components that need colors (for use in closures)
         let empty_state = self.render_empty_state(&colors);
         let no_results = self.render_no_results(&colors);
         let divider_color = colors.border;
 
         // Check if any overlay is active (need minimum height for overlays)
-        let has_overlay = self.show_actions_menu 
+        let has_overlay = self.show_actions_menu
             || self.auto_quit_settings_app.is_some()
             || self.uninstall_preview.is_some()
             || self.manage_auto_quits_mode

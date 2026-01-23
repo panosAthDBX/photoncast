@@ -60,8 +60,8 @@ pub use layout::{CycleState, LayoutCalculator, WindowLayout};
 
 #[cfg(target_os = "macos")]
 pub use accessibility::{
-    AccessibilityManager, CGWindowInfo, WindowInfo,
-    get_bundle_id_for_pid, get_frontmost_window_via_cgwindowlist,
+    get_bundle_id_for_pid, get_frontmost_window_via_cgwindowlist, AccessibilityManager,
+    CGWindowInfo, WindowInfo,
 };
 #[cfg(target_os = "macos")]
 pub use display::{DisplayDirection, DisplayInfo, DisplayManager};
@@ -168,7 +168,8 @@ impl WindowManager {
     /// Finds and activates the first visible app that isn't the given bundle ID.
     #[cfg(target_os = "macos")]
     pub fn activate_any_app_except(&self, except_bundle_id: &str) -> Result<String> {
-        self.accessibility_manager.activate_any_app_except(except_bundle_id)
+        self.accessibility_manager
+            .activate_any_app_except(except_bundle_id)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -191,7 +192,8 @@ impl WindowManager {
     /// Focuses the first window that doesn't look like a launcher terminal.
     #[cfg(target_os = "macos")]
     pub fn focus_first_non_launcher_window(&mut self) -> Result<()> {
-        self.accessibility_manager.focus_first_non_launcher_window()?;
+        self.accessibility_manager
+            .focus_first_non_launcher_window()?;
         Ok(())
     }
 
@@ -239,7 +241,11 @@ impl WindowManager {
 
         // If window is in fullscreen mode, exit fullscreen first
         // (otherwise resize operations will fail with kAXErrorCannotComplete)
-        if self.accessibility_manager.is_fullscreen(&window).unwrap_or(false) {
+        if self
+            .accessibility_manager
+            .is_fullscreen(&window)
+            .unwrap_or(false)
+        {
             tracing::debug!("Window is in fullscreen mode, exiting fullscreen first");
             self.accessibility_manager.toggle_fullscreen(&window)?;
             // Give macOS time to complete the fullscreen exit animation
@@ -331,7 +337,11 @@ impl WindowManager {
         let window = self.accessibility_manager.get_frontmost_window()?;
 
         // If window is in fullscreen mode, exit fullscreen first
-        if self.accessibility_manager.is_fullscreen(&window).unwrap_or(false) {
+        if self
+            .accessibility_manager
+            .is_fullscreen(&window)
+            .unwrap_or(false)
+        {
             tracing::debug!("Window is in fullscreen mode, exiting fullscreen first");
             self.accessibility_manager.toggle_fullscreen(&window)?;
             std::thread::sleep(std::time::Duration::from_millis(500));

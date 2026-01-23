@@ -590,7 +590,7 @@ impl ClipboardStorage {
 
         Ok(())
     }
-    
+
     /// Updates URL metadata (title and favicon path) for a URL item.
     pub fn update_url_metadata(
         &self,
@@ -599,7 +599,7 @@ impl ClipboardStorage {
         favicon_path: Option<&std::path::Path>,
     ) -> Result<bool> {
         let conn = self.conn.lock();
-        
+
         // Update the URL metadata using the existing columns
         let rows_affected = conn.execute(
             r"
@@ -614,10 +614,10 @@ impl ClipboardStorage {
                 id.as_str()
             ],
         )?;
-        
+
         Ok(rows_affected > 0)
     }
-    
+
     /// Async version of `update_url_metadata`.
     pub async fn update_url_metadata_async(
         &self,
@@ -627,12 +627,9 @@ impl ClipboardStorage {
     ) -> Result<bool> {
         let storage = self.clone();
         Self::run_blocking(move || {
-            storage.update_url_metadata(
-                &id,
-                title.as_deref(),
-                favicon_path.as_deref(),
-            )
-        }).await
+            storage.update_url_metadata(&id, title.as_deref(), favicon_path.as_deref())
+        })
+        .await
     }
 
     /// Returns the total number of items.

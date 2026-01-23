@@ -128,7 +128,7 @@ pub struct SpotlightResult {
     /// Content type UTI (e.g., "public.jpeg", "com.apple.application").
     pub content_type: Option<String>,
 
-    /// Content type inheritance tree (e.g., ["public.jpeg", "public.image", "public.data"]).
+    /// Content type inheritance tree (e.g., `["public.jpeg", "public.image", "public.data"]`).
     pub content_type_tree: Vec<String>,
 
     /// Last modification date.
@@ -296,7 +296,6 @@ impl MetadataExtractor {
     /// Returns `None` if the attribute is missing or not a number.
     #[must_use]
     pub fn get_number_attribute(item: &NSMetadataItem, key: &NSString) -> Option<i64> {
-
         let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value.and_then(|obj| {
@@ -311,7 +310,6 @@ impl MetadataExtractor {
     /// Returns `None` if the attribute is missing or not a date.
     #[must_use]
     pub fn get_date_attribute(item: &NSMetadataItem, key: &NSString) -> Option<SystemTime> {
-
         let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value.and_then(|obj| {
@@ -329,7 +327,6 @@ impl MetadataExtractor {
     /// Returns `None` if the attribute is missing or not a URL.
     #[must_use]
     pub fn get_url_attribute(item: &NSMetadataItem, key: &NSString) -> Option<PathBuf> {
-
         let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value.and_then(|obj| {
@@ -347,7 +344,6 @@ impl MetadataExtractor {
     /// Returns an empty vector if the attribute is missing or not an array.
     #[must_use]
     pub fn get_string_array_attribute(item: &NSMetadataItem, key: &NSString) -> Vec<String> {
-
         let value: Option<Retained<AnyObject>> = item.valueForAttribute(key);
 
         value

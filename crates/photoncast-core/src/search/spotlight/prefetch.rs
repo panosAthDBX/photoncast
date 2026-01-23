@@ -23,8 +23,8 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
-use super::service::{SpotlightSearchOptions, SpotlightSearchService};
 use super::result::SpotlightResult;
+use super::service::{SpotlightSearchOptions, SpotlightSearchService};
 
 /// Token for cancelling pre-fetch operations.
 #[derive(Clone)]
@@ -163,9 +163,8 @@ impl SpotlightPrefetcher {
         // Check throttling
         let now = Instant::now();
         let last_run_ms = self.last_run.load(Ordering::SeqCst);
-        let elapsed_since_last = Duration::from_millis(
-            now.elapsed().as_millis() as u64 - last_run_ms
-        );
+        let elapsed_since_last =
+            Duration::from_millis(now.elapsed().as_millis() as u64 - last_run_ms);
 
         if last_run_ms > 0 && elapsed_since_last < self.config.min_interval {
             // Return existing token if running, or a dummy cancelled token
@@ -220,12 +219,7 @@ impl SpotlightPrefetcher {
             }
 
             // Run pre-fetch queries
-            let success = run_prefetch_queries(
-                &service,
-                &config,
-                &token_clone,
-                &recent_files,
-            );
+            let success = run_prefetch_queries(&service, &config, &token_clone, &recent_files);
 
             // Update status
             {
@@ -339,16 +333,14 @@ fn is_on_battery() -> bool {
     use std::process::Command;
 
     // Use pmset to check power source
-    let output = Command::new("pmset")
-        .args(["-g", "batt"])
-        .output();
+    let output = Command::new("pmset").args(["-g", "batt"]).output();
 
     match output {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
             // If output contains "Battery Power", we're on battery
             stdout.contains("Battery Power")
-        }
+        },
         Err(_) => false, // Assume plugged in if we can't check
     }
 }
@@ -445,7 +437,7 @@ mod tests {
     fn test_prefetcher_cancel_before_start() {
         let service = Arc::new(SpotlightSearchService::new());
         let prefetcher = SpotlightPrefetcher::new(service);
-        
+
         // Cancel before starting should be safe
         prefetcher.cancel();
         assert_eq!(prefetcher.status(), PrefetchStatus::Idle);
@@ -461,8 +453,8 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_prefetcher_trigger_starts_running() {
-        use std::time::Duration;
         use std::thread;
+        use std::time::Duration;
 
         let service = Arc::new(SpotlightSearchService::new());
         let config = PrefetchConfig {
@@ -497,8 +489,8 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_prefetcher_cancellation() {
-        use std::time::Duration;
         use std::thread;
+        use std::time::Duration;
 
         let service = Arc::new(SpotlightSearchService::new());
         let config = PrefetchConfig {
@@ -522,8 +514,8 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_start_background_prefetch() {
-        use std::time::Duration;
         use std::thread;
+        use std::time::Duration;
 
         let prefetcher = start_background_prefetch();
 

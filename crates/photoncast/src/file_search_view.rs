@@ -98,67 +98,77 @@ impl FileTypeFilter {
     pub fn matches(&self, kind: FileKind, path: &std::path::Path) -> bool {
         match self {
             Self::All => true,
-            Self::Documents => matches!(kind, FileKind::Document)
-                || path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|ext| {
-                        matches!(
-                            ext.to_lowercase().as_str(),
-                            "pdf" | "doc"
-                                | "docx"
-                                | "txt"
-                                | "rtf"
-                                | "odt"
-                                | "pages"
-                                | "md"
-                                | "xls"
-                                | "xlsx"
-                                | "numbers"
-                                | "ppt"
-                                | "pptx"
-                                | "key"
-                        )
-                    }),
-            Self::Images => matches!(kind, FileKind::Image)
-                || path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|ext| {
-                        matches!(
-                            ext.to_lowercase().as_str(),
-                            "jpg" | "jpeg"
-                                | "png"
-                                | "gif"
-                                | "bmp"
-                                | "svg"
-                                | "webp"
-                                | "ico"
-                                | "tiff"
-                                | "heic"
-                                | "raw"
-                        )
-                    }),
-            Self::Videos => matches!(kind, FileKind::Video)
-                || path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|ext| {
-                        matches!(
-                            ext.to_lowercase().as_str(),
-                            "mp4" | "mov" | "avi" | "mkv" | "wmv" | "flv" | "webm" | "m4v"
-                        )
-                    }),
-            Self::Audio => matches!(kind, FileKind::Audio)
-                || path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|ext| {
-                        matches!(
-                            ext.to_lowercase().as_str(),
-                            "mp3" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "wma" | "aiff"
-                        )
-                    }),
+            Self::Documents => {
+                matches!(kind, FileKind::Document)
+                    || path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|ext| {
+                            matches!(
+                                ext.to_lowercase().as_str(),
+                                "pdf"
+                                    | "doc"
+                                    | "docx"
+                                    | "txt"
+                                    | "rtf"
+                                    | "odt"
+                                    | "pages"
+                                    | "md"
+                                    | "xls"
+                                    | "xlsx"
+                                    | "numbers"
+                                    | "ppt"
+                                    | "pptx"
+                                    | "key"
+                            )
+                        })
+            },
+            Self::Images => {
+                matches!(kind, FileKind::Image)
+                    || path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|ext| {
+                            matches!(
+                                ext.to_lowercase().as_str(),
+                                "jpg"
+                                    | "jpeg"
+                                    | "png"
+                                    | "gif"
+                                    | "bmp"
+                                    | "svg"
+                                    | "webp"
+                                    | "ico"
+                                    | "tiff"
+                                    | "heic"
+                                    | "raw"
+                            )
+                        })
+            },
+            Self::Videos => {
+                matches!(kind, FileKind::Video)
+                    || path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|ext| {
+                            matches!(
+                                ext.to_lowercase().as_str(),
+                                "mp4" | "mov" | "avi" | "mkv" | "wmv" | "flv" | "webm" | "m4v"
+                            )
+                        })
+            },
+            Self::Audio => {
+                matches!(kind, FileKind::Audio)
+                    || path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|ext| {
+                            matches!(
+                                ext.to_lowercase().as_str(),
+                                "mp3" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "wma" | "aiff"
+                            )
+                        })
+            },
             Self::Archives => path
                 .extension()
                 .and_then(|e| e.to_str())
@@ -236,10 +246,7 @@ impl FileSearchColors {
 }
 
 fn get_file_search_colors<V>(cx: &ViewContext<V>) -> FileSearchColors {
-    let theme = cx
-        .try_global::<PhotonTheme>()
-        .cloned()
-        .unwrap_or_default();
+    let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
     FileSearchColors::from_theme(&theme)
 }
 
@@ -638,10 +645,10 @@ impl FileSearchView {
             Ok(entries) => {
                 self.browse_entries = entries;
                 self.apply_browse_filter();
-            }
+            },
             Err(_) => {
                 self.browse_entries = Vec::new();
-            }
+            },
         }
     }
 
@@ -790,10 +797,7 @@ impl FileSearchView {
         if self.section_mode == SectionMode::Browsing {
             // Find the original entry that matches the selected result
             if let Some(selected) = self.results.get(self.selected_index) {
-                return self
-                    .browse_entries
-                    .iter()
-                    .find(|e| e.path == selected.path);
+                return self.browse_entries.iter().find(|e| e.path == selected.path);
             }
         }
         None
@@ -818,7 +822,7 @@ impl FileSearchView {
         self.filter = filter;
         self.dropdown_open = false;
         self.selected_index = 0;
-        
+
         // Signal that we need to re-fetch files for the new filter type
         // (when showing recent files, we want the most recent files of the filtered type)
         if filter_changed && self.section_mode == SectionMode::Recent {
@@ -830,7 +834,7 @@ impl FileSearchView {
             // For search mode or same filter, apply immediately
             self.apply_filter();
         }
-        
+
         cx.notify();
     }
 
@@ -838,14 +842,14 @@ impl FileSearchView {
     pub fn apply_filter(&mut self) {
         let filter = self.filter;
         let before_count = self.all_results.len();
-        
+
         self.results = self
             .all_results
             .iter()
             .filter(|file| filter.matches(file.kind, &file.path))
             .cloned()
             .collect();
-        
+
         tracing::debug!(
             "[Filter] {:?}: {} -> {} files",
             filter,
@@ -909,7 +913,7 @@ impl FileSearchView {
                         let chars: Vec<char> = self.query.chars().collect();
                         let before: String = chars[..self.cursor_position].iter().collect();
                         let after: String = chars[self.cursor_position..].iter().collect();
-                        
+
                         el.text_color(text_color)
                             .when(!before.is_empty(), |el| el.child(before))
                             .child(
@@ -994,10 +998,7 @@ impl FileSearchView {
             .unwrap_or_default();
 
         // Get relative date
-        let date_str = file
-            .modified
-            .map(format_relative_date)
-            .unwrap_or_default();
+        let date_str = file.modified.map(format_relative_date).unwrap_or_default();
 
         let selection_bg = colors.selection;
         let surface_hover = colors.surface_hover;
@@ -1112,10 +1113,35 @@ impl FileSearchView {
             .is_some_and(|ext| {
                 matches!(
                     ext.to_lowercase().as_str(),
-                    "txt" | "md" | "markdown" | "rs" | "js" | "ts" | "py" | "rb" | "go" 
-                    | "java" | "c" | "cpp" | "h" | "hpp" | "swift" | "kt" | "json" 
-                    | "yaml" | "yml" | "toml" | "xml" | "html" | "css" | "sh" | "bash"
-                    | "zsh" | "fish" | "log" | "csv"
+                    "txt"
+                        | "md"
+                        | "markdown"
+                        | "rs"
+                        | "js"
+                        | "ts"
+                        | "py"
+                        | "rb"
+                        | "go"
+                        | "java"
+                        | "c"
+                        | "cpp"
+                        | "h"
+                        | "hpp"
+                        | "swift"
+                        | "kt"
+                        | "json"
+                        | "yaml"
+                        | "yml"
+                        | "toml"
+                        | "xml"
+                        | "html"
+                        | "css"
+                        | "sh"
+                        | "bash"
+                        | "zsh"
+                        | "fish"
+                        | "log"
+                        | "csv"
                 )
             })
     }
@@ -1234,9 +1260,25 @@ impl FileSearchView {
         };
 
         // For PDFs and documents, show a hint
-        let hint = if file.path.extension().and_then(|e| e.to_str()).is_some_and(|ext| {
-            matches!(ext.to_lowercase().as_str(), "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "pages" | "numbers" | "key")
-        }) {
+        let hint = if file
+            .path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| {
+                matches!(
+                    ext.to_lowercase().as_str(),
+                    "pdf"
+                        | "doc"
+                        | "docx"
+                        | "xls"
+                        | "xlsx"
+                        | "ppt"
+                        | "pptx"
+                        | "pages"
+                        | "numbers"
+                        | "key"
+                )
+            }) {
             "Document - Press ⌘Y to preview"
         } else {
             "Press ⌘Y for Quick Look"
@@ -1358,7 +1400,7 @@ impl FileSearchView {
                 } else {
                     "Browsing".to_string()
                 }
-            }
+            },
         };
 
         div()
@@ -1586,7 +1628,11 @@ impl FileSearchView {
     }
 
     /// Render the filter dropdown (0.4)
-    fn render_filter_dropdown(&self, colors: &FileSearchColors, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render_filter_dropdown(
+        &self,
+        colors: &FileSearchColors,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let options = FileTypeFilter::all_options();
         let current_filter = self.filter;
         let dropdown_index = self.dropdown_index;
@@ -1652,7 +1698,11 @@ impl FileSearchView {
     ];
 
     /// Render the file actions menu (Cmd+K)
-    fn render_actions_menu(&self, colors: &FileSearchColors, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render_actions_menu(
+        &self,
+        colors: &FileSearchColors,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let text_color = colors.text;
         let text_muted = colors.text_muted;
         let surface_hover = colors.surface_hover;
@@ -1716,13 +1766,13 @@ impl FileSearchView {
                     cx.write_to_clipboard(ClipboardItem::new_string(path_str.clone()));
                     tracing::info!("Copied path to clipboard: {}", path_str);
                 }
-            }
+            },
             "copyname" => {
                 if let Some(file) = self.selected_file() {
                     cx.write_to_clipboard(ClipboardItem::new_string(file.name.clone()));
                     tracing::info!("Copied name to clipboard: {}", file.name);
                 }
-            }
+            },
             "copyfile" => {
                 if let Some(file) = self.selected_file() {
                     // Use NSPasteboard via AppleScript to copy file to clipboard
@@ -1747,18 +1797,18 @@ thePasteboard's writeObjects:{{theURL}}"#,
                     {
                         Ok(output) if output.status.success() => {
                             tracing::info!("Copied file to clipboard: {}", path.display());
-                        }
+                        },
                         Ok(output) => {
                             let stderr = String::from_utf8_lossy(&output.stderr);
                             tracing::error!("Failed to copy file: {}", stderr);
-                        }
+                        },
                         Err(e) => {
                             tracing::error!("Failed to run osascript: {}", e);
-                        }
+                        },
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
         cx.notify();
     }
@@ -1874,7 +1924,7 @@ impl Render for FileSearchView {
             .when_some(actions_menu, |el, menu| {
                 el.child(menu)
             })
-            // Note: keyboard events are forwarded from launcher, not handled here directly
+        // Note: keyboard events are forwarded from launcher, not handled here directly
     }
 }
 
@@ -1936,7 +1986,7 @@ impl FileSearchView {
                 } else {
                     self.select_next(cx);
                 }
-            }
+            },
             key if key == "up" => {
                 if self.actions_menu_open {
                     let count = Self::FILE_ACTIONS.len();
@@ -1957,11 +2007,13 @@ impl FileSearchView {
                 } else {
                     self.select_previous(cx);
                 }
-            }
+            },
             key if key == "enter" => {
                 if self.actions_menu_open {
                     // Execute the selected action
-                    if let Some(&(_, _, action_id)) = Self::FILE_ACTIONS.get(self.actions_menu_index) {
+                    if let Some(&(_, _, action_id)) =
+                        Self::FILE_ACTIONS.get(self.actions_menu_index)
+                    {
                         self.execute_action(action_id, cx);
                     }
                 } else if self.dropdown_open {
@@ -1974,7 +2026,7 @@ impl FileSearchView {
                     self.wants_open_file = true;
                     cx.notify();
                 }
-            }
+            },
             key if key == "escape" => {
                 if self.actions_menu_open {
                     self.actions_menu_open = false;
@@ -1991,11 +2043,11 @@ impl FileSearchView {
                     self.should_close = true;
                     cx.notify();
                 }
-            }
+            },
             key if key == "tab" => {
                 // Tab navigation is handled by NextGroup/PreviousGroup actions in launcher.rs
                 // which check for browsing mode and call browse_enter_folder/browse_go_back
-            }
+            },
             key if key == "backspace" => {
                 if !self.query.is_empty() {
                     let mut chars: Vec<char> = self.query.chars().collect();
@@ -2024,7 +2076,7 @@ impl FileSearchView {
                         cx.notify();
                     }
                 }
-            }
+            },
             key if key == "left" => {
                 // Left arrow: move cursor left
                 if modifiers.platform {
@@ -2033,7 +2085,7 @@ impl FileSearchView {
                     self.cursor_position -= 1;
                 }
                 cx.notify();
-            }
+            },
             key if key == "right" => {
                 // Right arrow: move cursor right
                 let len = self.query.chars().count();
@@ -2043,7 +2095,7 @@ impl FileSearchView {
                     self.cursor_position += 1;
                 }
                 cx.notify();
-            }
+            },
             key => {
                 // Ignore modifier combinations (except shift for uppercase)
                 if modifiers.platform || modifiers.control || modifiers.alt {
@@ -2081,7 +2133,7 @@ impl FileSearchView {
                     }
                     cx.notify();
                 }
-            }
+            },
         }
     }
 }

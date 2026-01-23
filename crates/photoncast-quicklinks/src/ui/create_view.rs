@@ -160,8 +160,8 @@ fn get_colors(cx: &ViewContext<CreateQuicklinkView>) -> CreateQuicklinkColors {
 
 /// Common emojis for quick selection.
 const COMMON_EMOJIS: &[&str] = &[
-    "🔍", "🌐", "📁", "📝", "📧", "📅", "💬", "🎵", "🎬", "📷", "🛒", "💻", "📱", "🎮", "📚",
-    "💡", "⚙️", "🔧", "🔒", "🔑", "⭐", "❤️", "🚀", "💰", "📊", "📈", "🏠", "🏢", "✈️", "🚗",
+    "🔍", "🌐", "📁", "📝", "📧", "📅", "💬", "🎵", "🎬", "📷", "🛒", "💻", "📱", "🎮", "📚", "💡",
+    "⚙️", "🔧", "🔒", "🔑", "⭐", "❤️", "🚀", "💰", "📊", "📈", "🏠", "🏢", "✈️", "🚗",
 ];
 
 // ============================================================================
@@ -392,7 +392,7 @@ impl CreateQuicklinkView {
             CreateQuicklinkFocus::Name => self.name_cursor = pos,
             CreateQuicklinkFocus::Link => self.link_cursor = pos,
             CreateQuicklinkFocus::Alias => self.alias_cursor = pos,
-            _ => {}
+            _ => {},
         }
     }
 
@@ -599,15 +599,15 @@ impl CreateQuicklinkView {
                     }
                     cx.notify();
                     return;
-                }
+                },
                 "down" => {
                     if self.app_picker_index + 1 < self.available_apps.len() {
                         self.app_picker_index += 1;
                     }
                     cx.notify();
                     return;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
@@ -620,29 +620,29 @@ impl CreateQuicklinkView {
                     }
                     cx.notify();
                     return;
-                }
+                },
                 "down" => {
                     if self.icon_picker_index + cols < COMMON_EMOJIS.len() {
                         self.icon_picker_index += cols;
                     }
                     cx.notify();
                     return;
-                }
+                },
                 "left" => {
                     if self.icon_picker_index > 0 {
                         self.icon_picker_index -= 1;
                     }
                     cx.notify();
                     return;
-                }
+                },
                 "right" => {
                     if self.icon_picker_index + 1 < COMMON_EMOJIS.len() {
                         self.icon_picker_index += 1;
                     }
                     cx.notify();
                     return;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
@@ -654,21 +654,23 @@ impl CreateQuicklinkView {
                     self.show_icon_picker = false;
                     cx.notify();
                     return;
-                }
+                },
                 CreateQuicklinkFocus::IconPicker => {
                     self.show_icon_picker = !self.show_icon_picker;
                     self.show_app_picker = false;
                     cx.notify();
                     return;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
         // Arrow keys for cursor movement in text fields
         if key == "left" {
             match self.focus {
-                CreateQuicklinkFocus::Name | CreateQuicklinkFocus::Link | CreateQuicklinkFocus::Alias => {
+                CreateQuicklinkFocus::Name
+                | CreateQuicklinkFocus::Link
+                | CreateQuicklinkFocus::Alias => {
                     let cursor = self.get_cursor_for_focus();
                     if cmd {
                         // Cmd+Left: Move to beginning
@@ -679,14 +681,16 @@ impl CreateQuicklinkView {
                     self.reset_cursor_blink();
                     cx.notify();
                     return;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
         if key == "right" {
             match self.focus {
-                CreateQuicklinkFocus::Name | CreateQuicklinkFocus::Link | CreateQuicklinkFocus::Alias => {
+                CreateQuicklinkFocus::Name
+                | CreateQuicklinkFocus::Link
+                | CreateQuicklinkFocus::Alias => {
                     let cursor = self.get_cursor_for_focus();
                     let len = self.get_text_for_focus().chars().count();
                     if cmd {
@@ -698,8 +702,8 @@ impl CreateQuicklinkView {
                     self.reset_cursor_blink();
                     cx.notify();
                     return;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
@@ -712,21 +716,21 @@ impl CreateQuicklinkView {
                     self.name_input = chars[cursor..].iter().collect();
                     self.name_cursor = 0;
                     self.name_error = None;
-                }
+                },
                 CreateQuicklinkFocus::Link => {
                     let cursor = self.link_cursor;
                     let chars: Vec<char> = self.link_input.chars().collect();
                     self.link_input = chars[cursor..].iter().collect();
                     self.link_cursor = 0;
                     self.link_error = None;
-                }
+                },
                 CreateQuicklinkFocus::Alias => {
                     let cursor = self.alias_cursor;
                     let chars: Vec<char> = self.alias_input.chars().collect();
                     self.alias_input = chars[cursor..].iter().collect();
                     self.alias_cursor = 0;
-                }
-                _ => {}
+                },
+                _ => {},
             }
             self.reset_cursor_blink();
             cx.notify();
@@ -744,7 +748,7 @@ impl CreateQuicklinkView {
                         self.name_cursor -= 1;
                         self.name_error = None;
                     }
-                }
+                },
                 CreateQuicklinkFocus::Link => {
                     if self.link_cursor > 0 {
                         let mut chars: Vec<char> = self.link_input.chars().collect();
@@ -753,7 +757,7 @@ impl CreateQuicklinkView {
                         self.link_cursor -= 1;
                         self.link_error = None;
                     }
-                }
+                },
                 CreateQuicklinkFocus::Alias => {
                     if self.alias_cursor > 0 {
                         let mut chars: Vec<char> = self.alias_input.chars().collect();
@@ -761,8 +765,8 @@ impl CreateQuicklinkView {
                         self.alias_input = chars.into_iter().collect();
                         self.alias_cursor -= 1;
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
             self.reset_cursor_blink();
             cx.notify();
@@ -783,7 +787,7 @@ impl CreateQuicklinkView {
                             self.name_cursor += text.chars().count();
                             self.name_input = new_text;
                             self.name_error = None;
-                        }
+                        },
                         CreateQuicklinkFocus::Link => {
                             let chars: Vec<char> = self.link_input.chars().collect();
                             let before: String = chars[..self.link_cursor].iter().collect();
@@ -792,7 +796,7 @@ impl CreateQuicklinkView {
                             self.link_cursor += text.chars().count();
                             self.link_input = new_text;
                             self.link_error = None;
-                        }
+                        },
                         CreateQuicklinkFocus::Alias => {
                             let chars: Vec<char> = self.alias_input.chars().collect();
                             let before: String = chars[..self.alias_cursor].iter().collect();
@@ -800,8 +804,8 @@ impl CreateQuicklinkView {
                             let new_text = format!("{}{}{}", before, text, after);
                             self.alias_cursor += text.chars().count();
                             self.alias_input = new_text;
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                     self.reset_cursor_blink();
                     cx.notify();
@@ -837,7 +841,7 @@ impl CreateQuicklinkView {
                 self.name_input = format!("{}{}{}", before, input_char, after);
                 self.name_cursor += char_len;
                 self.name_error = None;
-            }
+            },
             CreateQuicklinkFocus::Link => {
                 let chars: Vec<char> = self.link_input.chars().collect();
                 let before: String = chars[..self.link_cursor].iter().collect();
@@ -845,15 +849,15 @@ impl CreateQuicklinkView {
                 self.link_input = format!("{}{}{}", before, input_char, after);
                 self.link_cursor += char_len;
                 self.link_error = None;
-            }
+            },
             CreateQuicklinkFocus::Alias => {
                 let chars: Vec<char> = self.alias_input.chars().collect();
                 let before: String = chars[..self.alias_cursor].iter().collect();
                 let after: String = chars[self.alias_cursor..].iter().collect();
                 self.alias_input = format!("{}{}{}", before, input_char, after);
                 self.alias_cursor += char_len;
-            }
-            _ => {}
+            },
+            _ => {},
         }
         self.reset_cursor_blink();
         cx.notify();
@@ -1176,29 +1180,31 @@ impl CreateQuicklinkView {
                                         }))
                                         .child("Default Browser"),
                                 )
-                                .children(self.available_apps.iter().enumerate().map(|(i, app)| {
-                                    let is_selected = picker_index == i + 1;
-                                    let bundle_id = app.bundle_id.clone();
-                                    div()
-                                        .id(SharedString::from(format!("app-{}", i)))
-                                        .px(px(12.0))
-                                        .py(px(8.0))
-                                        .cursor_pointer()
-                                        .bg(if is_selected {
-                                            surface_selected
-                                        } else {
-                                            background
-                                        })
-                                        .hover(|s| s.bg(surface_hover))
-                                        .text_base()
-                                        .text_color(text_color)
-                                        .on_click(cx.listener(move |this, _, cx| {
-                                            this.selected_app = Some(bundle_id.clone());
-                                            this.show_app_picker = false;
-                                            cx.notify();
-                                        }))
-                                        .child(app.name.clone())
-                                })),
+                                .children(self.available_apps.iter().enumerate().map(
+                                    |(i, app)| {
+                                        let is_selected = picker_index == i + 1;
+                                        let bundle_id = app.bundle_id.clone();
+                                        div()
+                                            .id(SharedString::from(format!("app-{}", i)))
+                                            .px(px(12.0))
+                                            .py(px(8.0))
+                                            .cursor_pointer()
+                                            .bg(if is_selected {
+                                                surface_selected
+                                            } else {
+                                                background
+                                            })
+                                            .hover(|s| s.bg(surface_hover))
+                                            .text_base()
+                                            .text_color(text_color)
+                                            .on_click(cx.listener(move |this, _, cx| {
+                                                this.selected_app = Some(bundle_id.clone());
+                                                this.show_app_picker = false;
+                                                cx.notify();
+                                            }))
+                                            .child(app.name.clone())
+                                    },
+                                )),
                         )
                     }),
             )
@@ -1283,40 +1289,34 @@ impl CreateQuicklinkView {
                                 .rounded(px(8.0))
                                 .shadow_lg()
                                 .p(px(8.0))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_wrap()
-                                        .gap(px(4.0))
-                                        .children(COMMON_EMOJIS.iter().enumerate().map(
-                                            |(i, &emoji)| {
-                                                let is_selected = picker_index == i;
-                                                let emoji_str = emoji.to_string();
-                                                div()
-                                                    .id(SharedString::from(format!("emoji-{}", i)))
-                                                    .size(px(32.0))
-                                                    .rounded(px(4.0))
-                                                    .cursor_pointer()
-                                                    .bg(if is_selected {
-                                                        surface_selected
-                                                    } else {
-                                                        background
-                                                    })
-                                                    .hover(|s| s.bg(surface_hover))
-                                                    .flex()
-                                                    .items_center()
-                                                    .justify_center()
-                                                    .text_lg()
-                                                    .on_click(cx.listener(move |this, _, cx| {
-                                                        this.selected_icon =
-                                                            QuickLinkIcon::Emoji(emoji_str.clone());
-                                                        this.show_icon_picker = false;
-                                                        cx.notify();
-                                                    }))
-                                                    .child(emoji.to_string())
-                                            },
-                                        )),
-                                )
+                                .child(div().flex().flex_wrap().gap(px(4.0)).children(
+                                    COMMON_EMOJIS.iter().enumerate().map(|(i, &emoji)| {
+                                        let is_selected = picker_index == i;
+                                        let emoji_str = emoji.to_string();
+                                        div()
+                                            .id(SharedString::from(format!("emoji-{}", i)))
+                                            .size(px(32.0))
+                                            .rounded(px(4.0))
+                                            .cursor_pointer()
+                                            .bg(if is_selected {
+                                                surface_selected
+                                            } else {
+                                                background
+                                            })
+                                            .hover(|s| s.bg(surface_hover))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .text_lg()
+                                            .on_click(cx.listener(move |this, _, cx| {
+                                                this.selected_icon =
+                                                    QuickLinkIcon::Emoji(emoji_str.clone());
+                                                this.show_icon_picker = false;
+                                                cx.notify();
+                                            }))
+                                            .child(emoji.to_string())
+                                    }),
+                                ))
                                 .child(
                                     // Default option
                                     div()
@@ -1398,11 +1398,7 @@ impl CreateQuicklinkView {
         let background = colors.background;
 
         let is_editing = self.editing_id.is_some();
-        let submit_label = if is_editing {
-            "Save"
-        } else {
-            "Create"
-        };
+        let submit_label = if is_editing { "Save" } else { "Create" };
 
         div()
             .flex()
@@ -1555,7 +1551,9 @@ mod tests {
         assert!(CreateQuicklinkView::is_valid_link("https://example.com"));
         assert!(CreateQuicklinkView::is_valid_link("http://example.com"));
         assert!(CreateQuicklinkView::is_valid_link("file:///path/to/file"));
-        assert!(CreateQuicklinkView::is_valid_link("mailto:test@example.com"));
+        assert!(CreateQuicklinkView::is_valid_link(
+            "mailto:test@example.com"
+        ));
         assert!(CreateQuicklinkView::is_valid_link("/usr/local/bin"));
         assert!(CreateQuicklinkView::is_valid_link("~/Documents"));
         assert!(CreateQuicklinkView::is_valid_link("example.com"));
@@ -1567,7 +1565,10 @@ mod tests {
 
     #[test]
     fn test_focus_navigation() {
-        assert_eq!(CreateQuicklinkFocus::Name.next(), CreateQuicklinkFocus::Link);
+        assert_eq!(
+            CreateQuicklinkFocus::Name.next(),
+            CreateQuicklinkFocus::Link
+        );
         assert_eq!(
             CreateQuicklinkFocus::Link.next(),
             CreateQuicklinkFocus::Alias

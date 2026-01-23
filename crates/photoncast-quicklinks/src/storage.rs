@@ -97,7 +97,8 @@ impl QuickLinksStorage {
     /// Returns the number of quicklinks in storage.
     pub fn count(&self) -> Result<usize> {
         let conn = self.conn.lock();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM quick_links", [], |row| row.get(0))?;
+        let count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM quick_links", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
@@ -396,14 +397,16 @@ impl QuickLinksStorage {
     /// Convert QuickLinkIcon to database representation (icon_type, icon_value).
     fn icon_to_db(icon: &QuickLinkIcon) -> (String, Option<String>) {
         match icon {
-            QuickLinkIcon::Favicon(path) => {
-                ("favicon".to_string(), Some(path.to_string_lossy().to_string()))
-            }
+            QuickLinkIcon::Favicon(path) => (
+                "favicon".to_string(),
+                Some(path.to_string_lossy().to_string()),
+            ),
             QuickLinkIcon::Emoji(emoji) => ("emoji".to_string(), Some(emoji.clone())),
             QuickLinkIcon::SystemIcon(name) => ("system".to_string(), Some(name.clone())),
-            QuickLinkIcon::CustomImage(path) => {
-                ("custom".to_string(), Some(path.to_string_lossy().to_string()))
-            }
+            QuickLinkIcon::CustomImage(path) => (
+                "custom".to_string(),
+                Some(path.to_string_lossy().to_string()),
+            ),
             QuickLinkIcon::Default => ("default".to_string(), None),
         }
     }
@@ -411,14 +414,18 @@ impl QuickLinksStorage {
     /// Convert database representation to QuickLinkIcon.
     fn db_to_icon(icon_type: &str, icon_value: Option<&str>) -> QuickLinkIcon {
         match icon_type {
-            "favicon" => icon_value
-                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::Favicon(PathBuf::from(v))),
-            "emoji" => icon_value
-                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::Emoji(v.to_string())),
-            "system" => icon_value
-                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::SystemIcon(v.to_string())),
-            "custom" => icon_value
-                .map_or(QuickLinkIcon::Default, |v| QuickLinkIcon::CustomImage(PathBuf::from(v))),
+            "favicon" => icon_value.map_or(QuickLinkIcon::Default, |v| {
+                QuickLinkIcon::Favicon(PathBuf::from(v))
+            }),
+            "emoji" => icon_value.map_or(QuickLinkIcon::Default, |v| {
+                QuickLinkIcon::Emoji(v.to_string())
+            }),
+            "system" => icon_value.map_or(QuickLinkIcon::Default, |v| {
+                QuickLinkIcon::SystemIcon(v.to_string())
+            }),
+            "custom" => icon_value.map_or(QuickLinkIcon::Default, |v| {
+                QuickLinkIcon::CustomImage(PathBuf::from(v))
+            }),
             _ => QuickLinkIcon::Default,
         }
     }

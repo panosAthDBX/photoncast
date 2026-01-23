@@ -96,12 +96,12 @@ pub struct AutoQuitConfig {
     pub apps: HashMap<String, AutoQuitAppConfig>,
 }
 
-
 impl AutoQuitConfig {
     /// Returns the config file path.
     fn config_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| crate::error::AppError::ConfigError("Cannot find config directory".into()))?;
+        let config_dir = dirs::config_dir().ok_or_else(|| {
+            crate::error::AppError::ConfigError("Cannot find config directory".into())
+        })?;
         Ok(config_dir.join("photoncast").join("auto_quit.toml"))
     }
 
@@ -114,7 +114,7 @@ impl AutoQuitConfig {
     /// Returns an error if the file exists but cannot be read or parsed.
     pub fn load() -> Result<Self> {
         let path = Self::config_path()?;
-        
+
         if !path.exists() {
             return Ok(Self::default());
         }
@@ -139,7 +139,10 @@ impl AutoQuitConfig {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                crate::error::AppError::ConfigError(format!("Failed to create config directory: {}", e))
+                crate::error::AppError::ConfigError(format!(
+                    "Failed to create config directory: {}",
+                    e
+                ))
             })?;
         }
 
@@ -218,7 +221,7 @@ impl AutoQuitManager {
     pub fn load() -> Result<Self> {
         let config = AutoQuitConfig::load()?;
         let mut manager = Self::new(config);
-        
+
         // Initialize activity tracking for enabled apps that are currently running
         // This ensures auto-quit works after app restart
         if let Ok(running_apps) = crate::process::get_running_apps() {
@@ -226,17 +229,20 @@ impl AutoQuitManager {
                 .iter()
                 .filter_map(|app| app.bundle_id.as_ref().map(|id| id.to_lowercase()))
                 .collect();
-            
+
             let now = Instant::now();
             for (bundle_id, app_config) in &manager.config.apps {
                 if app_config.enabled && running_bundle_ids.contains(&bundle_id.to_lowercase()) {
                     // App is enabled and running - start tracking it
                     manager.activity_tracker.insert(bundle_id.clone(), now);
-                    tracing::debug!("Auto-quit: Initialized tracking for running app: {}", bundle_id);
+                    tracing::debug!(
+                        "Auto-quit: Initialized tracking for running app: {}",
+                        bundle_id
+                    );
                 }
             }
         }
-        
+
         Ok(manager)
     }
 
@@ -264,7 +270,8 @@ impl AutoQuitManager {
     ///
     /// This resets the idle timer for the app.
     pub fn on_app_activated(&mut self, bundle_id: &str) {
-        self.activity_tracker.insert(bundle_id.to_string(), Instant::now());
+        self.activity_tracker
+            .insert(bundle_id.to_string(), Instant::now());
 
         // Also update the persistent last_active time
         if let Some(app_config) = self.config.apps.get_mut(bundle_id) {
@@ -285,7 +292,7 @@ impl AutoQuitManager {
             Err(e) => {
                 tracing::warn!("Failed to get running apps for auto-quit check: {}", e);
                 return quit_apps;
-            }
+            },
         };
 
         // Build a map of bundle_id -> pid for quick lookup
@@ -338,7 +345,8 @@ impl AutoQuitManager {
         config.timeout_minutes = timeout_minutes;
 
         // Start tracking the app
-        self.activity_tracker.insert(bundle_id.to_string(), Instant::now());
+        self.activity_tracker
+            .insert(bundle_id.to_string(), Instant::now());
     }
 
     /// Disables auto-quit for an app.
@@ -370,9 +378,8 @@ impl AutoQuitManager {
 
     /// Cleans up tracking for apps that are no longer running.
     pub fn cleanup_stale_entries(&mut self, running_bundle_ids: &[&str]) {
-        self.activity_tracker.retain(|bundle_id, _| {
-            running_bundle_ids.contains(&bundle_id.as_str())
-        });
+        self.activity_tracker
+            .retain(|bundle_id, _| running_bundle_ids.contains(&bundle_id.as_str()));
     }
 
     /// Gets all apps with auto-quit enabled.
@@ -402,7 +409,10 @@ impl AutoQuitManager {
             // Only track if this app has auto-quit enabled
             if self.is_auto_quit_enabled(bundle_id) {
                 self.on_app_activated(bundle_id);
-                tracing::trace!("Auto-quit: Updated activity for frontmost app: {}", bundle_id);
+                tracing::trace!(
+                    "Auto-quit: Updated activity for frontmost app: {}",
+                    bundle_id
+                );
             }
         }
 
@@ -457,7 +467,11 @@ mod tests {
             );
 
             // Name should not be empty
-            assert!(!name.is_empty(), "Empty name found for bundle ID {}", bundle_id);
+            assert!(
+                !name.is_empty(),
+                "Empty name found for bundle ID {}",
+                bundle_id
+            );
         }
     }
 
@@ -560,8 +574,12 @@ mod tests {
         let mut manager = AutoQuitManager::new(config);
 
         // Add some tracked apps
-        manager.activity_tracker.insert("com.running.app".to_string(), Instant::now());
-        manager.activity_tracker.insert("com.stopped.app".to_string(), Instant::now());
+        manager
+            .activity_tracker
+            .insert("com.running.app".to_string(), Instant::now());
+        manager
+            .activity_tracker
+            .insert("com.stopped.app".to_string(), Instant::now());
 
         // Cleanup with only one running app
         manager.cleanup_stale_entries(&["com.running.app"]);
@@ -580,30 +598,40 @@ mod tests {
         // Enable auto-quit for a test app with 0 minute timeout (immediate)
         // Note: We cannot actually test the quit because it requires a running app,
         // but we can verify the timeout calculation logic works correctly.
-        
+
         // Test 1: App with 0 timeout should be considered immediately idle
         manager.enable_auto_quit("com.zero.timeout", 0);
-        
+
         // Manually set the last activity to an old time to simulate idle
         let old_instant = Instant::now() - Duration::from_secs(1);
-        manager.activity_tracker.insert("com.zero.timeout".to_string(), old_instant);
-        
+        manager
+            .activity_tracker
+            .insert("com.zero.timeout".to_string(), old_instant);
+
         // The timeout for 0 minutes is 0 seconds, so any elapsed time should exceed it
         let timeout = Duration::from_secs(0); // 0 minutes * 60
         let elapsed = Instant::now().duration_since(old_instant);
-        assert!(elapsed >= timeout, "Elapsed time should exceed 0-minute timeout");
+        assert!(
+            elapsed >= timeout,
+            "Elapsed time should exceed 0-minute timeout"
+        );
 
         // Test 2: App with regular timeout
         manager.enable_auto_quit("com.regular.timeout", 5); // 5 minutes
-        
+
         // Fresh activity - should not be idle
         let recent_instant = Instant::now();
-        manager.activity_tracker.insert("com.regular.timeout".to_string(), recent_instant);
-        
+        manager
+            .activity_tracker
+            .insert("com.regular.timeout".to_string(), recent_instant);
+
         let timeout = Duration::from_secs(5 * 60); // 5 minutes
         let elapsed = Instant::now().duration_since(recent_instant);
-        assert!(elapsed < timeout, "Fresh activity should not exceed 5-minute timeout");
-        
+        assert!(
+            elapsed < timeout,
+            "Fresh activity should not exceed 5-minute timeout"
+        );
+
         // Test 3: Verify the get_timeout_minutes function works correctly
         assert_eq!(manager.get_timeout_minutes("com.zero.timeout"), Some(0));
         assert_eq!(manager.get_timeout_minutes("com.regular.timeout"), Some(5));
@@ -616,25 +644,31 @@ mod tests {
         let mut manager = AutoQuitManager::new(config);
 
         let bundle_id = "com.test.tracking";
-        
+
         // Enable auto-quit
         manager.enable_auto_quit(bundle_id, 3);
-        
+
         // Initially should be tracked with recent timestamp
         assert!(manager.activity_tracker.contains_key(bundle_id));
-        
+
         // Call on_app_activated to update timestamp
         let before = *manager.activity_tracker.get(bundle_id).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
         manager.on_app_activated(bundle_id);
         let after = *manager.activity_tracker.get(bundle_id).unwrap();
-        
+
         // The timestamp should have been updated (after should be later than before)
-        assert!(after > before, "Activity timestamp should be updated on activation");
-        
+        assert!(
+            after > before,
+            "Activity timestamp should be updated on activation"
+        );
+
         // Verify the persistent config also gets updated
         let app_config = manager.config().apps.get(bundle_id).unwrap();
-        assert!(app_config.last_active.is_some(), "Persistent last_active should be set");
+        assert!(
+            app_config.last_active.is_some(),
+            "Persistent last_active should be set"
+        );
     }
 
     // =========================================================================
@@ -647,7 +681,7 @@ mod tests {
         let mut manager = AutoQuitManager::new(AutoQuitConfig::default());
 
         let bundle_id = "com.example.testapp";
-        
+
         // Before enabling, indicator should be false
         assert!(
             !manager.is_auto_quit_enabled(bundle_id),
@@ -656,7 +690,7 @@ mod tests {
 
         // Enable auto-quit
         manager.enable_auto_quit(bundle_id, 5);
-        
+
         // Now indicator should be true
         assert!(
             manager.is_auto_quit_enabled(bundle_id),
@@ -665,7 +699,7 @@ mod tests {
 
         // Disable auto-quit
         manager.disable_auto_quit(bundle_id);
-        
+
         // Indicator should be false again
         assert!(
             !manager.is_auto_quit_enabled(bundle_id),
@@ -697,7 +731,7 @@ mod tests {
     fn test_persistence_save_load_cycle() {
         // Test full save/load cycle through TOML serialization
         let mut config1 = AutoQuitConfig::default();
-        
+
         // Add multiple apps with different settings
         config1.apps.insert(
             "com.example.app1".to_string(),
@@ -718,7 +752,7 @@ mod tests {
 
         // Serialize to TOML (simulating save)
         let toml_content = toml::to_string_pretty(&config1).expect("Failed to serialize");
-        
+
         // Verify serialization contains expected data
         assert!(toml_content.contains("com.example.app1"));
         assert!(toml_content.contains("com.example.app2"));
@@ -776,8 +810,18 @@ mod tests {
         for i in 1..=10 {
             let bundle_id = format!("com.example.app{}", i);
             let app = loaded.apps.get(&bundle_id).expect("App should exist");
-            assert_eq!(app.enabled, i % 2 == 0, "Enabled state mismatch for {}", bundle_id);
-            assert_eq!(app.timeout_minutes, i * 2, "Timeout mismatch for {}", bundle_id);
+            assert_eq!(
+                app.enabled,
+                i % 2 == 0,
+                "Enabled state mismatch for {}",
+                bundle_id
+            );
+            assert_eq!(
+                app.timeout_minutes,
+                i * 2,
+                "Timeout mismatch for {}",
+                bundle_id
+            );
         }
     }
 
@@ -795,13 +839,20 @@ mod tests {
         let toml_content = toml::to_string_pretty(manager.config()).expect("Failed to serialize");
 
         // Create new manager from loaded config (simulating restart)
-        let loaded_config: AutoQuitConfig = toml::from_str(&toml_content).expect("Failed to deserialize");
+        let loaded_config: AutoQuitConfig =
+            toml::from_str(&toml_content).expect("Failed to deserialize");
         let loaded_manager = AutoQuitManager::new(loaded_config);
 
         // Verify settings persisted
         assert!(loaded_manager.is_auto_quit_enabled("com.test.app1"));
-        assert_eq!(loaded_manager.get_timeout_minutes("com.test.app1"), Some(10));
+        assert_eq!(
+            loaded_manager.get_timeout_minutes("com.test.app1"),
+            Some(10)
+        );
         assert!(loaded_manager.is_auto_quit_enabled("com.test.app2"));
-        assert_eq!(loaded_manager.get_timeout_minutes("com.test.app2"), Some(15));
+        assert_eq!(
+            loaded_manager.get_timeout_minutes("com.test.app2"),
+            Some(15)
+        );
     }
 }

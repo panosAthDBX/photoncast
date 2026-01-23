@@ -168,11 +168,19 @@ pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
 
 /// File extensions that should be excluded from search results by default.
 pub const DEFAULT_EXCLUDED_EXTENSIONS: &[&str] = &[
-    "o", "obj", "pyc", "pyo", "class", // Compiled
-    "dylib", "so", "dll",              // Libraries
-    "lock", "lockb",                   // Lock files
-    "log",                             // Logs
-    "sqlite-shm", "sqlite-wal",        // SQLite temp
+    "o",
+    "obj",
+    "pyc",
+    "pyo",
+    "class", // Compiled
+    "dylib",
+    "so",
+    "dll", // Libraries
+    "lock",
+    "lockb", // Lock files
+    "log",   // Logs
+    "sqlite-shm",
+    "sqlite-wal", // SQLite temp
 ];
 
 // =============================================================================
@@ -339,25 +347,62 @@ impl PredicateBuilder {
             // Archives (zip, dmg, etc.)
             format!(r#"{} == "{}""#, MD_ITEM_CONTENT_TYPE_TREE, UTI_ARCHIVE),
             // macOS apps
-            format!(r#"{} == "com.apple.application-bundle""#, MD_ITEM_CONTENT_TYPE),
+            format!(
+                r#"{} == "com.apple.application-bundle""#,
+                MD_ITEM_CONTENT_TYPE
+            ),
             // Office documents - specific types
-            format!(r#"{} == "org.openxmlformats.wordprocessingml.document""#, MD_ITEM_CONTENT_TYPE_TREE), // docx
-            format!(r#"{} == "com.microsoft.word.doc""#, MD_ITEM_CONTENT_TYPE_TREE), // doc
-            format!(r#"{} == "org.openxmlformats.spreadsheetml.sheet""#, MD_ITEM_CONTENT_TYPE_TREE), // xlsx
-            format!(r#"{} == "com.microsoft.excel.xls""#, MD_ITEM_CONTENT_TYPE_TREE), // xls
-            format!(r#"{} == "org.openxmlformats.presentationml.presentation""#, MD_ITEM_CONTENT_TYPE_TREE), // pptx
-            format!(r#"{} == "com.microsoft.powerpoint.ppt""#, MD_ITEM_CONTENT_TYPE_TREE), // ppt
-            format!(r#"{} == "com.apple.iwork.pages.sffpages""#, MD_ITEM_CONTENT_TYPE_TREE), // pages
-            format!(r#"{} == "com.apple.iwork.numbers.sffnumbers""#, MD_ITEM_CONTENT_TYPE_TREE), // numbers
-            format!(r#"{} == "com.apple.iwork.keynote.sffkey""#, MD_ITEM_CONTENT_TYPE_TREE), // keynote
-            format!(r#"{} == "public.comma-separated-values-text""#, MD_ITEM_CONTENT_TYPE_TREE), // csv
+            format!(
+                r#"{} == "org.openxmlformats.wordprocessingml.document""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // docx
+            format!(
+                r#"{} == "com.microsoft.word.doc""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // doc
+            format!(
+                r#"{} == "org.openxmlformats.spreadsheetml.sheet""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // xlsx
+            format!(
+                r#"{} == "com.microsoft.excel.xls""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // xls
+            format!(
+                r#"{} == "org.openxmlformats.presentationml.presentation""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // pptx
+            format!(
+                r#"{} == "com.microsoft.powerpoint.ppt""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // ppt
+            format!(
+                r#"{} == "com.apple.iwork.pages.sffpages""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // pages
+            format!(
+                r#"{} == "com.apple.iwork.numbers.sffnumbers""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // numbers
+            format!(
+                r#"{} == "com.apple.iwork.keynote.sffkey""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // keynote
+            format!(
+                r#"{} == "public.comma-separated-values-text""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // csv
             format!(r#"{} == "public.rtf""#, MD_ITEM_CONTENT_TYPE_TREE), // rtf
             // Ebooks
-            format!(r#"{} == "org.idpf.epub-container""#, MD_ITEM_CONTENT_TYPE_TREE), // epub
+            format!(
+                r#"{} == "org.idpf.epub-container""#,
+                MD_ITEM_CONTENT_TYPE_TREE
+            ), // epub
         ];
         self.clauses.push(format!("({})", conditions.join(" OR ")));
         // Exclude hidden files
-        self.clauses.push(format!(r#"NOT ({} BEGINSWITH ".")"#, MD_ITEM_FS_NAME));
+        self.clauses
+            .push(format!(r#"NOT ({} BEGINSWITH ".")"#, MD_ITEM_FS_NAME));
         self
     }
 
@@ -372,7 +417,11 @@ impl PredicateBuilder {
             .iter()
             .map(|ext| {
                 let ext = ext.strip_prefix('.').unwrap_or(ext);
-                format!(r#"{} ENDSWITH[c] ".{}""#, MD_ITEM_FS_NAME, escape_predicate_string(ext))
+                format!(
+                    r#"{} ENDSWITH[c] ".{}""#,
+                    MD_ITEM_FS_NAME,
+                    escape_predicate_string(ext)
+                )
             })
             .collect();
         self.clauses.push(format!("({})", conditions.join(" OR ")));
@@ -769,10 +818,8 @@ impl PredicateBuilder {
     /// ```
     #[must_use]
     pub fn exclude_hidden_files(mut self) -> Self {
-        self.clauses.push(format!(
-            r#"NOT ({} BEGINSWITH ".")"#,
-            MD_ITEM_FS_NAME
-        ));
+        self.clauses
+            .push(format!(r#"NOT ({} BEGINSWITH ".")"#, MD_ITEM_FS_NAME));
         self
     }
 
@@ -811,7 +858,8 @@ impl PredicateBuilder {
         conditions.push(format!(r#"{} BEGINSWITH ".""#, MD_ITEM_FS_NAME));
 
         if !conditions.is_empty() {
-            self.clauses.push(format!("NOT ({})", conditions.join(" OR ")));
+            self.clauses
+                .push(format!("NOT ({})", conditions.join(" OR ")));
         }
 
         self
@@ -957,6 +1005,7 @@ fn create_predicate_from_format(format: &str) -> Retained<NSPredicate> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_escape_predicate_string_basic() {
@@ -1105,10 +1154,74 @@ mod tests {
             assert!(format.contains("kMDItemFSSize"));
         }
 
-        // Note: Date predicate tests are skipped because NSPredicate date
-        // format strings require special handling. The modified_after/before
-        // methods work but their format varies by macOS version.
-        // TODO: Implement proper date comparison using NSDate objects.
+        #[test]
+        fn test_build_date_predicate_modified_after() {
+            use std::time::{Duration, SystemTime};
+
+            // Test modified_after predicate
+            let week_ago = SystemTime::now() - Duration::from_secs(7 * 24 * 60 * 60);
+            let predicate = PredicateBuilder::new().modified_after(week_ago).build();
+            let format = predicate.predicateFormat().to_string();
+
+            // Should contain the modification date metadata key
+            assert!(format.contains("kMDItemFSContentChangeDate"));
+            // Should use comparison operator
+            assert!(format.contains(">"));
+        }
+
+        #[test]
+        fn test_build_date_predicate_modified_before() {
+            use std::time::SystemTime;
+
+            // Test modified_before predicate
+            let now = SystemTime::now();
+            let predicate = PredicateBuilder::new().modified_before(now).build();
+            let format = predicate.predicateFormat().to_string();
+
+            // Should contain the modification date metadata key
+            assert!(format.contains("kMDItemFSContentChangeDate"));
+            // Should use comparison operator
+            assert!(format.contains("<"));
+        }
+
+        #[test]
+        fn test_build_date_range_predicate() {
+            use std::time::{Duration, SystemTime};
+
+            // Test date range using both modified_after and modified_before
+            let now = SystemTime::now();
+            let week_ago = now - Duration::from_secs(7 * 24 * 60 * 60);
+
+            let predicate = PredicateBuilder::new()
+                .modified_after(week_ago)
+                .modified_before(now)
+                .build();
+            let format = predicate.predicateFormat().to_string();
+
+            // Should be a compound predicate with both conditions
+            assert!(format.contains("kMDItemFSContentChangeDate"));
+            // Should have both comparison operators (combined with AND)
+            assert!(format.contains(">"));
+            assert!(format.contains("<"));
+        }
+
+        #[test]
+        fn test_build_combined_date_and_type_predicate() {
+            use std::time::{Duration, SystemTime};
+
+            // Test combining date filter with content type filter
+            let week_ago = SystemTime::now() - Duration::from_secs(7 * 24 * 60 * 60);
+
+            let predicate = PredicateBuilder::new()
+                .extension_is("pdf")
+                .modified_after(week_ago)
+                .build();
+            let format = predicate.predicateFormat().to_string();
+
+            // Should contain both the extension and date conditions
+            assert!(format.contains("kMDItemFSName") || format.contains("pdf"));
+            assert!(format.contains("kMDItemFSContentChangeDate"));
+        }
 
         #[test]
         fn test_predicate_with_special_characters() {

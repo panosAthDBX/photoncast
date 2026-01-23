@@ -109,7 +109,7 @@ impl TimerManager {
     ///
     /// # Returns
     ///
-    /// Returns `Ok(Some(action))` if timer expired (and was cancelled), 
+    /// Returns `Ok(Some(action))` if timer expired (and was cancelled),
     /// `Ok(None)` if no timer or not expired yet.
     ///
     /// # Errors

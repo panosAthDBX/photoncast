@@ -389,7 +389,11 @@ impl FileIndex {
     }
 
     /// Internal implementation for adding a file.
-    fn add_indexed_file_internal(&mut self, file: &IndexedFile, use_transaction: bool) -> Result<()> {
+    fn add_indexed_file_internal(
+        &mut self,
+        file: &IndexedFile,
+        use_transaction: bool,
+    ) -> Result<()> {
         let path_str = file
             .path
             .to_str()
@@ -773,7 +777,8 @@ impl IndexingService {
         self.complete.store(false, Ordering::SeqCst);
         self.progress.store(0, Ordering::SeqCst);
         // Estimate total based on scope count; will be updated as we go
-        self.total.store(self.scopes.len() * 10000, Ordering::SeqCst);
+        self.total
+            .store(self.scopes.len() * 10000, Ordering::SeqCst);
 
         // Batch size for periodic commits and lock releases
         const BATCH_SIZE: usize = 1000;
@@ -831,7 +836,8 @@ impl IndexingService {
                         total_indexed += BATCH_SIZE;
                         self.progress.store(total_indexed, Ordering::SeqCst);
                         // Update total estimate based on progress
-                        self.total.store(total_indexed.max(batch_count + 1000), Ordering::SeqCst);
+                        self.total
+                            .store(total_indexed.max(batch_count + 1000), Ordering::SeqCst);
 
                         // Yield to allow other tasks
                         tokio::task::yield_now().await;
@@ -878,7 +884,8 @@ impl IndexingService {
         self.complete.store(false, Ordering::SeqCst);
         self.progress.store(0, Ordering::SeqCst);
         // Estimate total based on scope count; will be updated as we go
-        self.total.store(self.scopes.len() * 10000, Ordering::SeqCst);
+        self.total
+            .store(self.scopes.len() * 10000, Ordering::SeqCst);
 
         // Batch size for periodic commits and lock releases
         const BATCH_SIZE: usize = 1000;
@@ -936,7 +943,8 @@ impl IndexingService {
                         total_indexed += BATCH_SIZE;
                         self.progress.store(total_indexed, Ordering::SeqCst);
                         // Update total estimate based on progress
-                        self.total.store(total_indexed.max(batch_count + 1000), Ordering::SeqCst);
+                        self.total
+                            .store(total_indexed.max(batch_count + 1000), Ordering::SeqCst);
                     }
                 }
             }

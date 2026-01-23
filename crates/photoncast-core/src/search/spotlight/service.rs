@@ -292,8 +292,7 @@ impl SpotlightSearchService {
         )?;
 
         // Phase 2: Expand to secondary scopes if needed
-        if results.len() < options.min_results_before_expand
-            && !options.secondary_scopes.is_empty()
+        if results.len() < options.min_results_before_expand && !options.secondary_scopes.is_empty()
         {
             let secondary_results = self.execute_query_with_scopes(
                 &predicate,
@@ -303,8 +302,7 @@ impl SpotlightSearchService {
             )?;
 
             // Merge and deduplicate by path (clone paths to avoid borrow issue)
-            let existing_paths: HashSet<PathBuf> =
-                results.iter().map(|r| r.path.clone()).collect();
+            let existing_paths: HashSet<PathBuf> = results.iter().map(|r| r.path.clone()).collect();
             for result in secondary_results {
                 if !existing_paths.contains(&result.path) {
                     results.push(result);
@@ -461,14 +459,14 @@ fn file_query_to_predicate(
         match file_type {
             FileTypeFilter::Extension(ext) => {
                 builder = builder.extension_is(ext);
-            }
+            },
             FileTypeFilter::Category(category) => {
                 // Use the UTI types from the category
                 let utis = category.uti_types();
                 if let Some(first_uti) = utis.first() {
                     builder = builder.content_type_tree(first_uti);
                 }
-            }
+            },
         }
     }
 

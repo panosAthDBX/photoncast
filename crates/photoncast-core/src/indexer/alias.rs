@@ -167,8 +167,8 @@ fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
 
     // Try to resolve as alias
     // Options: WithoutUI | WithoutMounting
-    let options = NSURLBookmarkResolutionOptions::WithoutUI
-        | NSURLBookmarkResolutionOptions::WithoutMounting;
+    let options =
+        NSURLBookmarkResolutionOptions::WithoutUI | NSURLBookmarkResolutionOptions::WithoutMounting;
 
     let resolved = NSURL::URLByResolvingAliasFileAtURL_options_error(&url, options);
 

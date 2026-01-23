@@ -556,9 +556,7 @@ impl CustomSearchScope {
         }
         path.extension()
             .and_then(|e| e.to_str())
-            .is_some_and(|ext| {
-                self.extensions.iter().any(|e| e.eq_ignore_ascii_case(ext))
-            })
+            .is_some_and(|ext| self.extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)))
     }
 }
 
@@ -604,7 +602,7 @@ impl FileSearchHotkey {
 }
 
 /// Returns the default search scopes (Desktop, Documents, Downloads).
-/// 
+///
 /// These are the recommended default directories for file search indexing.
 /// They cover the most commonly used user file locations without indexing
 /// system files, code repositories, or other non-user content.
