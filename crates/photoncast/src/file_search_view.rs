@@ -1993,17 +1993,8 @@ impl FileSearchView {
                 }
             }
             key if key == "tab" => {
-                if modifiers.shift {
-                    // Shift+Tab: go back to parent directory in browsing mode
-                    if self.section_mode == SectionMode::Browsing {
-                        self.browse_go_back(cx);
-                    }
-                } else {
-                    // Tab: enter folder in browsing mode
-                    if self.section_mode == SectionMode::Browsing {
-                        self.browse_enter_folder(cx);
-                    }
-                }
+                // Tab navigation is handled by NextGroup/PreviousGroup actions in launcher.rs
+                // which check for browsing mode and call browse_enter_folder/browse_go_back
             }
             key if key == "backspace" => {
                 if !self.query.is_empty() {

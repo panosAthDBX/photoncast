@@ -96,6 +96,8 @@ actions!(
         CopyPath,
         CopyFile,
         ShowActionsMenu,
+        BrowseEnterFolder,
+        BrowseGoBack,
         // Clipboard History
         OpenClipboardHistory,
         // Task 7.4: App Management actions

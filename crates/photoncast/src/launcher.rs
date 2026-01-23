@@ -3532,6 +3532,17 @@ impl LauncherWindow {
     }
 
     fn next_group(&mut self, _: &NextGroup, cx: &mut ViewContext<Self>) {
+        // If file search view is in browsing mode, use Tab to enter folder
+        if let Some(file_search_view) = &self.file_search_view {
+            let is_browsing = file_search_view.read(cx).section_mode == crate::file_search_view::SectionMode::Browsing;
+            if is_browsing {
+                file_search_view.update(cx, |view, cx| {
+                    view.browse_enter_folder(cx);
+                });
+                return;
+            }
+        }
+        
         // Check if we should autocomplete a quicklink instead of navigating groups
         // This happens when: there's only 1 result OR the selected result is a quicklink that needs input
         if let Some(core_result) = self.core_results.get(self.selected_index) {
@@ -3587,6 +3598,17 @@ impl LauncherWindow {
     }
 
     fn previous_group(&mut self, _: &PreviousGroup, cx: &mut ViewContext<Self>) {
+        // If file search view is in browsing mode, use Shift+Tab to go to parent directory
+        if let Some(file_search_view) = &self.file_search_view {
+            let is_browsing = file_search_view.read(cx).section_mode == crate::file_search_view::SectionMode::Browsing;
+            if is_browsing {
+                file_search_view.update(cx, |view, cx| {
+                    view.browse_go_back(cx);
+                });
+                return;
+            }
+        }
+        
         if self.results.is_empty() {
             return;
         }
