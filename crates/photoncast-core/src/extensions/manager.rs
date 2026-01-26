@@ -194,6 +194,47 @@ impl ExtensionManager {
         }
     }
 
+    /// Auto-loads all enabled extensions that don't require permissions consent.
+    ///
+    /// This should be called after `discover()` to activate extensions for search.
+    /// Extensions requiring permissions consent will be skipped and can be loaded
+    /// later when the user grants consent.
+    pub fn auto_load_enabled(&mut self) {
+        let extension_ids: Vec<String> = self
+            .registry
+            .list()
+            .iter()
+            .filter(|r| r.enabled)
+            .map(|r| r.manifest.extension.id.clone())
+            .collect();
+
+        for id in extension_ids {
+            // Skip if already loaded
+            if self.is_loaded(&id) {
+                continue;
+            }
+
+            match self.load_and_activate(&id) {
+                Ok(()) => {
+                    tracing::info!(extension_id = %id, "Auto-loaded extension");
+                },
+                Err(ExtensionManagerError::PermissionsConsentRequired { id, .. }) => {
+                    tracing::debug!(
+                        extension_id = %id,
+                        "Extension requires permissions consent, skipping auto-load"
+                    );
+                },
+                Err(err) => {
+                    tracing::warn!(
+                        extension_id = %id,
+                        error = %err,
+                        "Failed to auto-load extension"
+                    );
+                },
+            }
+        }
+    }
+
     pub fn load_and_activate(&mut self, id: &str) -> Result<(), ExtensionManagerError> {
         let record = self
             .registry

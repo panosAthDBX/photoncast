@@ -138,6 +138,9 @@ impl PhotonCastApp {
                 );
             }
         }
+
+        // Auto-load enabled extensions for search
+        extension_manager.auto_load_enabled();
         let extension_manager = Arc::new(RwLock::new(extension_manager));
 
         // Create the search engine with configured settings
