@@ -1789,6 +1789,11 @@ impl LauncherWindow {
         if self.extension_view.is_some() {
             self.extension_view = None;
             self.extension_view_id = None;
+            // Resize window back to normal
+            crate::platform::resize_window(
+                crate::constants::LAUNCHER_WIDTH.0.into(),
+                crate::constants::LAUNCHER_HEIGHT.0.into(),
+            );
         }
 
         self.visible = false;
@@ -3024,16 +3029,9 @@ impl LauncherWindow {
             return;
         }
 
-        // If extension view is showing, close it and return to search
+        // If extension view is showing, hide everything
         if self.extension_view.is_some() {
-            self.extension_view = None;
-            self.extension_view_id = None;
-            // Resize window back to normal
-            crate::platform::resize_window(
-                crate::constants::LAUNCHER_WIDTH.0.into(),
-                crate::constants::LAUNCHER_HEIGHT.0.into(),
-            );
-            cx.notify();
+            self.hide(cx);
             return;
         }
 
