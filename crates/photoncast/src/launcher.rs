@@ -165,6 +165,10 @@ pub struct LauncherWindow {
     pending_confirmation: Option<(SystemCommand, ConfirmationDialog)>,
     /// Pending extension permissions consent request
     pending_permissions_consent: Option<crate::permissions_dialog::PendingPermissionsConsent>,
+    /// Queue of extensions requiring first-launch consent
+    first_launch_consent_queue: Vec<(String, photoncast_core::extensions::permissions::PermissionsDialog)>,
+    /// Whether we've checked for first-launch extensions
+    first_launch_checked: bool,
     /// Current search mode (Normal or `FileSearch`)
     search_mode: SearchMode,
     /// File search view (shown when in FileSearch mode)
@@ -463,6 +467,8 @@ impl LauncherWindow {
             index_initialized: false,
             pending_confirmation: None,
             pending_permissions_consent: None,
+            first_launch_consent_queue: Vec::new(),
+            first_launch_checked: false,
             search_mode: SearchMode::Normal,
             file_search_view: None,
             file_search_loading: false,
@@ -1706,6 +1712,52 @@ impl LauncherWindow {
         self.start_appear_animation(cx);
         self.fetch_next_meeting(cx);
         self.load_suggestions(cx);
+
+        // Check for first-launch extension consents (only once)
+        if !self.first_launch_checked {
+            self.first_launch_checked = true;
+            self.check_first_launch_consents(cx);
+        }
+    }
+
+    /// Checks for extensions requiring first-launch consent and queues them.
+    fn check_first_launch_consents(&mut self, cx: &mut ViewContext<Self>) {
+        let extensions = self
+            .photoncast_app
+            .read()
+            .get_extensions_requiring_consent();
+
+        if extensions.is_empty() {
+            return;
+        }
+
+        tracing::info!(
+            count = extensions.len(),
+            "Found extensions requiring first-launch consent"
+        );
+
+        // Queue all extensions needing consent
+        self.first_launch_consent_queue = extensions;
+
+        // Show the first one
+        self.show_next_first_launch_consent(cx);
+    }
+
+    /// Shows the next extension consent dialog from the queue.
+    fn show_next_first_launch_consent(&mut self, cx: &mut ViewContext<Self>) {
+        if let Some((extension_id, dialog)) = self.first_launch_consent_queue.first().cloned() {
+            tracing::info!(
+                extension_id = %extension_id,
+                "Showing first-launch consent dialog"
+            );
+            self.pending_permissions_consent =
+                Some(crate::permissions_dialog::PendingPermissionsConsent {
+                    dialog,
+                    pending_command: None,
+                    is_first_launch: true,
+                });
+            cx.notify();
+        }
     }
 
     /// Hides the launcher window with animation
@@ -2769,25 +2821,32 @@ impl LauncherWindow {
         if let Some(consent) = self.pending_permissions_consent.take() {
             let extension_id = consent.dialog.extension_id.clone();
             let pending_command = consent.pending_command.clone();
+            let is_first_launch = consent.is_first_launch;
 
             // Accept permissions
-            if let Err(e) = self
+            let accept_result = self
                 .photoncast_app
                 .read()
-                .accept_extension_permissions(&extension_id)
-            {
+                .accept_extension_permissions(&extension_id);
+
+            if let Err(e) = accept_result {
                 tracing::error!(
                     extension_id = %extension_id,
                     error = %e,
                     "Failed to accept extension permissions"
                 );
-                cx.notify();
+                // Continue to process first-launch queue even on error
+                if is_first_launch {
+                    self.advance_first_launch_queue(cx);
+                } else {
+                    cx.notify();
+                }
                 return;
             }
 
             tracing::info!(extension_id = %extension_id, "Permissions accepted");
 
-            // If there's a pending command, execute it now
+            // If there's a pending command, execute it now (on-demand flow)
             if let Some((ext_id, cmd_id)) = pending_command {
                 let result = self
                     .photoncast_app
@@ -2812,24 +2871,45 @@ impl LauncherWindow {
                         );
                     },
                 }
+            } else if is_first_launch {
+                // First-launch flow: move to next extension in queue
+                self.advance_first_launch_queue(cx);
+                return;
             }
 
             cx.notify();
         }
     }
 
+    /// Advances the first-launch consent queue to the next extension.
+    fn advance_first_launch_queue(&mut self, cx: &mut ViewContext<Self>) {
+        // Remove the first extension from the queue (already processed)
+        if !self.first_launch_consent_queue.is_empty() {
+            self.first_launch_consent_queue.remove(0);
+        }
+
+        // Show next dialog or finish
+        if !self.first_launch_consent_queue.is_empty() {
+            self.show_next_first_launch_consent(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
     /// Denies the pending permissions consent and closes the dialog.
     fn deny_permissions_consent(&mut self, cx: &mut ViewContext<Self>) {
-        if self.pending_permissions_consent.is_some() {
-            let extension_id = self
-                .pending_permissions_consent
-                .as_ref()
-                .map(|c| c.dialog.extension_id.clone());
-            self.pending_permissions_consent = None;
-            if let Some(id) = extension_id {
-                tracing::info!(extension_id = %id, "Permissions denied by user");
+        if let Some(consent) = self.pending_permissions_consent.take() {
+            let extension_id = consent.dialog.extension_id.clone();
+            let is_first_launch = consent.is_first_launch;
+
+            tracing::info!(extension_id = %extension_id, "Permissions denied by user");
+
+            // If first-launch flow, continue to next extension
+            if is_first_launch {
+                self.advance_first_launch_queue(cx);
+            } else {
+                cx.notify();
             }
-            cx.notify();
         }
     }
 
