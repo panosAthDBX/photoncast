@@ -13,7 +13,7 @@ path = "libphotoncast_ext_screenshots.dylib"
 
 [permissions]
 clipboard = true
-filesystem = ["~/Desktop", "~/Pictures"]
+filesystem = ["~/Desktop", "~/Pictures", "~/Documents/screenshots"]
 
 [[commands]]
 id = "browse"
@@ -26,4 +26,4 @@ name = "screenshots_folder"
 type = "directory"
 title = "Screenshots Folder"
 description = "Folder to scan for screenshots"
-default = "~/Desktop"
+default = "~/Documents/screenshots"

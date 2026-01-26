@@ -1764,6 +1764,13 @@ fn calculate_window_bounds(cx: &AppContext) -> Bounds<Pixels> {
 
 /// Register all key bindings for the launcher
 fn register_key_bindings(cx: &mut AppContext) {
+    // Register extension view key bindings
+    extension_views::list_view::register_key_bindings(cx);
+    extension_views::detail_view::register_key_bindings(cx);
+    extension_views::form_view::register_key_bindings(cx);
+    extension_views::grid_view::register_key_bindings(cx);
+    extension_views::register_navigation_key_bindings(cx);
+
     cx.bind_keys([
         // Navigation
         KeyBinding::new("down", SelectNext, Some("LauncherWindow")),

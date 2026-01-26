@@ -19,10 +19,10 @@
 
 mod colors;
 mod design_system;
-mod detail_view;
-mod form_view;
-mod grid_view;
-mod list_view;
+pub mod detail_view;
+pub mod form_view;
+pub mod grid_view;
+pub mod list_view;
 mod navigation;
 mod preview;
 
