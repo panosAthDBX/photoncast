@@ -5,7 +5,7 @@ id = "com.photoncast.github"
 name = "GitHub"
 version = "1.0.0"
 description = "Search GitHub repositories"
-api_version = "1"
+api_version = 1
 
 [entry]
 kind = "native"

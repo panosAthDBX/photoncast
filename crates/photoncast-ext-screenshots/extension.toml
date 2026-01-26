@@ -5,7 +5,7 @@ id = "com.photoncast.screenshots"
 name = "Screenshot Browser"
 version = "1.0.0"
 description = "Browse and manage screenshots"
-api_version = "1"
+api_version = 1
 
 [entry]
 kind = "native"
