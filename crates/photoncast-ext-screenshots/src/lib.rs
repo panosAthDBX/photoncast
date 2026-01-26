@@ -69,11 +69,10 @@ impl Screenshot {
         datetime.format("%b %d, %Y %H:%M").to_string()
     }
 
-    /// Gets the duration since Unix epoch for the modified time
+    /// Gets the duration since the file was modified (age).
     fn modified_duration(&self) -> RDuration {
-        let duration = self
-            .modified
-            .duration_since(SystemTime::UNIX_EPOCH)
+        let duration = SystemTime::now()
+            .duration_since(self.modified)
             .unwrap_or_default();
         RDuration::from_secs(duration.as_secs())
     }
