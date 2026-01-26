@@ -344,6 +344,9 @@ impl ExtensionListView {
         // Close actions menu after executing
         self.show_actions_menu = false;
         
+        // Track if this action should close the extension view
+        let mut should_close = false;
+        
         match &action.handler {
             ActionHandler::Callback => {
                 if let Some(callback) = &self.action_callback {
@@ -353,10 +356,12 @@ impl ExtensionListView {
             ActionHandler::OpenUrl(url) => {
                 let url = url.to_string();
                 let _ = open::that(&url);
+                should_close = true;
             },
             ActionHandler::OpenFile(path) => {
                 let path = path.to_string();
                 let _ = open::that(&path);
+                should_close = true;
             },
             ActionHandler::RevealInFinder(path) => {
                 let path = path.to_string();
@@ -364,6 +369,7 @@ impl ExtensionListView {
                 let _ = std::process::Command::new("open")
                     .args(["-R", &path])
                     .spawn();
+                should_close = true;
             },
             ActionHandler::QuickLook(path) => {
                 let path = path.to_string();
@@ -371,10 +377,12 @@ impl ExtensionListView {
                 let _ = std::process::Command::new("qlmanage")
                     .args(["-p", &path])
                     .spawn();
+                // Don't close for QuickLook - user may want to continue browsing
             },
             ActionHandler::CopyToClipboard(text) => {
                 let text = text.to_string();
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+                should_close = true;
             },
             ActionHandler::PushView(_view) => {
                 // TODO: Implement view navigation
@@ -383,6 +391,14 @@ impl ExtensionListView {
                 // Not applicable for list view
             },
         }
+        
+        // Close the extension view for terminal actions
+        if should_close {
+            if let Some(callback) = &self.action_callback {
+                callback("__cancel__", cx);
+            }
+        }
+        
         cx.notify();
     }
 
