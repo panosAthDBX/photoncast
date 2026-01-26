@@ -489,6 +489,19 @@ impl PhotonCastApp {
             .map_err(|e| e.to_string())
     }
 
+    /// Takes the pending view from an extension after command execution.
+    ///
+    /// This should be called after `launch_extension_command` to check if
+    /// the extension rendered a view that should be displayed.
+    #[must_use]
+    pub fn take_extension_view(
+        &self,
+        extension_id: &str,
+    ) -> Option<photoncast_extension_api::ExtensionView> {
+        let mut manager = self.extension_manager.write();
+        manager.take_pending_view(extension_id)
+    }
+
     /// Performs a search with timeout handling (Task 3.10.2).
     ///
     /// Returns partial results if the timeout is exceeded.

@@ -982,6 +982,21 @@ impl ExtensionManager {
         self.invocation_guard.complete(extension_id, command_id);
         Err(ExtensionApiError::message("command not found")).into()
     }
+
+    /// Gets the most recently rendered view for an extension (and clears it).
+    ///
+    /// This should be called after `launch_command` to retrieve any view
+    /// that the extension rendered during command execution.
+    #[must_use]
+    pub fn take_pending_view(
+        &mut self,
+        extension_id: &str,
+    ) -> Option<photoncast_extension_api::ExtensionView> {
+        let loaded = self.loaded.get(extension_id)?;
+        let mut handles = loaded.host.view_handles.write();
+        // Take the last (most recent) view
+        handles.pop().and_then(|h| h.view())
+    }
 }
 
 fn map_extension_icon(icon: photoncast_extension_api::IconSource) -> IconSource {

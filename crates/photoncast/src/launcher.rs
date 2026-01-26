@@ -177,6 +177,10 @@ pub struct LauncherWindow {
     file_search_loading: bool,
     /// Last file search query (for debouncing)
     file_search_pending_query: Option<String>,
+    /// Extension view (shown when an extension renders a view)
+    extension_view: Option<AnyView>,
+    /// ID of the extension whose view is displayed
+    extension_view_id: Option<String>,
     /// File search debounce generation (incremented on each keystroke)
     file_search_generation: u64,
     /// Calculator command state
@@ -475,6 +479,8 @@ impl LauncherWindow {
             file_search_view: None,
             file_search_loading: false,
             file_search_pending_query: None,
+            extension_view: None,
+            extension_view_id: None,
             file_search_generation: 0,
             calculator_command,
             calculator_runtime,
@@ -1779,6 +1785,12 @@ impl LauncherWindow {
             self.file_search_view = None;
         }
 
+        // Clean up extension view if active
+        if self.extension_view.is_some() {
+            self.extension_view = None;
+            self.extension_view_id = None;
+        }
+
         self.visible = false;
         self.start_dismiss_animation(cx);
     }
@@ -2754,7 +2766,20 @@ impl LauncherWindow {
                                 command_id = %command_id,
                                 "Extension command executed"
                             );
-                            self.hide(cx);
+                            // Check if the extension rendered a view
+                            let pending_view = self.photoncast_app.read().take_extension_view(extension_id);
+                            if let Some(ext_view) = pending_view {
+                                tracing::info!(
+                                    extension_id = %extension_id,
+                                    "Extension rendered a view, displaying it"
+                                );
+                                let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
+                                self.extension_view = Some(rendered);
+                                self.extension_view_id = Some(extension_id.to_string());
+                                cx.notify();
+                            } else {
+                                self.hide(cx);
+                            }
                         },
                         Err(photoncast_core::app::ExtensionLaunchError::PermissionsConsentRequired {
                             extension_id: ext_id,
@@ -2868,7 +2893,20 @@ impl LauncherWindow {
                             command_id = %cmd_id,
                             "Extension command executed after consent"
                         );
-                        self.hide(cx);
+                        // Check if the extension rendered a view
+                        let pending_view = self.photoncast_app.read().take_extension_view(&ext_id);
+                        if let Some(ext_view) = pending_view {
+                            tracing::info!(
+                                extension_id = %ext_id,
+                                "Extension rendered a view, displaying it"
+                            );
+                            let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
+                            self.extension_view = Some(rendered);
+                            self.extension_view_id = Some(ext_id.clone());
+                            cx.notify();
+                        } else {
+                            self.hide(cx);
+                        }
                     },
                     Err(e) => {
                         tracing::error!(
@@ -2973,6 +3011,14 @@ impl LauncherWindow {
         // If permissions consent dialog is showing, deny and close it
         if self.pending_permissions_consent.is_some() {
             self.deny_permissions_consent(cx);
+            return;
+        }
+
+        // If extension view is showing, close it and return to search
+        if self.extension_view.is_some() {
+            self.extension_view = None;
+            self.extension_view_id = None;
+            cx.notify();
             return;
         }
 
@@ -7417,8 +7463,16 @@ impl Render for LauncherWindow {
                         .child(view)
                 )
             })
+            // Extension View Mode: render the extension's view
+            .when_some(self.extension_view.clone(), |el, view| {
+                el.child(
+                    div()
+                        .size_full()
+                        .child(view)
+                )
+            })
             // Normal/Calendar Mode: render the standard launcher content
-            .when(self.file_search_view.is_none(), |el| {
+            .when(self.file_search_view.is_none() && self.extension_view.is_none(), |el| {
                 el
                     // Search bar
                     .child(self.render_search_bar(cx))
