@@ -425,6 +425,49 @@ impl Extension for ScreenshotBrowserExtension {
         ExtensionApiResult::ROk(())
     }
 
+    fn on_startup(&mut self, ctx: &ExtensionContext) -> ExtensionApiResult<()> {
+        // Pre-cache thumbnails for all screenshots in the configured folder
+        let prefs = ctx.host.get_preferences().unwrap_or(PreferenceValues {
+            values: RVec::new(),
+        });
+
+        let folder = prefs
+            .values
+            .iter()
+            .find_map(|t| {
+                if t.0.as_str() == "screenshots_folder" {
+                    if let PreferenceValue::Directory(ref s) = t.1 {
+                        Some(s.to_string())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "~/Documents/screenshots".to_string());
+
+        // Spawn background task to generate thumbnails
+        std::thread::spawn(move || {
+            let screenshots = scan_screenshots(&folder);
+            let mut cached = 0;
+            for screenshot in screenshots {
+                if get_or_create_thumbnail(&screenshot.path, screenshot.modified).is_some() {
+                    cached += 1;
+                }
+            }
+            if cached > 0 {
+                tracing::debug!(
+                    count = cached,
+                    folder = folder.as_str(),
+                    "Pre-cached screenshot thumbnails"
+                );
+            }
+        });
+
+        ExtensionApiResult::ROk(())
+    }
+
     fn search_provider(&self) -> ROption<ExtensionSearchProvider_TO<'static, RBox<()>>> {
         // This extension uses view mode, not search mode
         ROption::RNone

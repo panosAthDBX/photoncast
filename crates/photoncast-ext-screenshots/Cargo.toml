@@ -14,3 +14,4 @@ abi_stable = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
 image = "0.25"
+tracing = { workspace = true }

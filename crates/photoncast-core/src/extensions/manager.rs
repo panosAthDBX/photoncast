@@ -344,6 +344,23 @@ impl ExtensionManager {
         {
             return Err(ExtensionManagerError::Api(err));
         }
+
+        // Call on_startup hook (errors are logged but don't prevent activation)
+        let startup_ctx = make_extension_context(
+            &loaded.host_services,
+            &loaded.host,
+            &loaded.runtime,
+            &loaded.cache,
+            &loaded.manifest,
+        );
+        if let Err(err) = loaded.instance.on_startup(&startup_ctx).into_result() {
+            tracing::warn!(
+                extension_id = id,
+                error = %err,
+                "Extension on_startup hook failed"
+            );
+        }
+
         self.registry.update_state(id, ExtensionState::Active)?;
         self.loaded.insert(id.to_string(), loaded);
 
@@ -655,6 +672,22 @@ impl ExtensionManager {
             );
             self.mark_failed(id, &error_msg);
             return ReloadResult::failure(id.to_string(), duration, error_msg);
+        }
+
+        // Call on_startup hook (errors are logged but don't prevent activation)
+        let startup_ctx = make_extension_context(
+            &loaded.host_services,
+            &loaded.host,
+            &loaded.runtime,
+            &loaded.cache,
+            &loaded.manifest,
+        );
+        if let Err(err) = loaded.instance.on_startup(&startup_ctx).into_result() {
+            tracing::warn!(
+                extension_id = id,
+                error = %err,
+                "Extension on_startup hook failed during reload"
+            );
         }
 
         // Update state to Active

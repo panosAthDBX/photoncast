@@ -249,6 +249,17 @@ pub trait Extension: Send + Sync {
     fn manifest(&self) -> ExtensionManifest;
     fn activate(&mut self, ctx: ExtensionContext) -> ExtensionApiResult<()>;
     fn deactivate(&mut self) -> ExtensionApiResult<()>;
+    /// Called after activation when permissions are granted.
+    ///
+    /// This hook is invoked:
+    /// - When the app loads an extension (if permissions are already granted)
+    /// - When permissions are first granted for an extension
+    ///
+    /// Use this for background tasks like pre-caching data, warming up caches,
+    /// or other initialization that shouldn't block the main activation.
+    fn on_startup(&mut self, _ctx: &ExtensionContext) -> ExtensionApiResult<()> {
+        ExtensionApiResult::ROk(())
+    }
     fn search_provider(&self) -> ROption<ExtensionSearchProvider_TO<'static, RBox<()>>> {
         ROption::RNone
     }
