@@ -141,7 +141,7 @@ impl ExtensionFormView {
             values.insert(field_id, value);
         }
 
-        let mut view = Self {
+        let view = Self {
             form_view,
             values,
             errors: HashMap::new(),
@@ -572,7 +572,7 @@ impl ExtensionFormView {
                     Some(FieldValue::Text(s)) => s.clone(),
                     _ => String::new(),
                 };
-                let cursor_pos = self.cursor_positions.get(&field_id).copied().unwrap_or(0);
+                let _cursor_pos = self.cursor_positions.get(&field_id).copied().unwrap_or(0);
 
                 div()
                     .w_full()
@@ -599,7 +599,7 @@ impl ExtensionFormView {
                         text
                     })
             },
-            FieldType::Number { min, max } => {
+            FieldType::Number { min: _, max: _ } => {
                 let num = match value {
                     Some(FieldValue::Number(n)) => *n,
                     _ => 0.0,

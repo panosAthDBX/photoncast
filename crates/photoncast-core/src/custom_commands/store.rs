@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 use tokio::task;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use super::{CommandOutput, CustomCommand, MAX_OUTPUT_SIZE};
 use crate::utils::paths;

@@ -140,7 +140,7 @@ impl ExtensionPreviewPane {
     }
 
     /// Renders inline markdown formatting (bold, italic, code, links).
-    fn render_inline_formatting(text: &str, colors: &ExtensionViewColors) -> String {
+    fn render_inline_formatting(text: &str, _colors: &ExtensionViewColors) -> String {
         // For simplicity, we'll strip markdown for now
         // A full implementation would parse and render inline elements
         let mut result = text.to_string();
@@ -217,7 +217,7 @@ impl ExtensionPreviewPane {
     }
 
     /// Renders a metadata value, detecting URLs for linking.
-    fn render_metadata_value(value: &str, colors: &ExtensionViewColors) -> String {
+    fn render_metadata_value(value: &str, _colors: &ExtensionViewColors) -> String {
         // For simplicity, return as-is
         // A full implementation would detect URLs and make them clickable
         value.to_string()

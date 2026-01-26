@@ -5,6 +5,8 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::doc_markdown)]
 #![allow(non_camel_case_types)]
+// abi_stable's sabi_trait macro generates non-local impl blocks
+#![allow(non_local_definitions)]
 
 //! PhotonCast Extension API (ABI-stable).
 //!

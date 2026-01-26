@@ -239,7 +239,7 @@ impl ExtensionGridView {
     fn render_grid_item(
         &self,
         item: &GridItem,
-        index: usize,
+        _index: usize,
         is_selected: bool,
         colors: &ExtensionViewColors,
     ) -> impl IntoElement {
@@ -303,7 +303,7 @@ impl ExtensionGridView {
                         .object_fit(gpui::ObjectFit::Contain),
                 )
             },
-            ImageSource::Url(url) => {
+            ImageSource::Url(_url) => {
                 // For URLs, we would need async image loading
                 // For now, show a placeholder
                 div()
@@ -318,7 +318,7 @@ impl ExtensionGridView {
                     .text_2xl()
                     .child("🌐")
             },
-            ImageSource::Base64 { data, mime_type } => {
+            ImageSource::Base64 { data: _, mime_type: _ } => {
                 // Base64 images need to be decoded
                 // For now, show placeholder
                 div()

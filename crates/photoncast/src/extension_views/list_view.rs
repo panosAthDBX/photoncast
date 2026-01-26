@@ -130,7 +130,7 @@ impl ExtensionListView {
 
         let flat_items = Self::flatten_items(&list_view.sections);
 
-        let mut view = Self {
+        let view = Self {
             list_view,
             search_query: String::new(),
             cursor_position: 0,

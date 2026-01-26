@@ -1549,7 +1549,7 @@ fn open_argument_input_window(
         size: size(ARGUMENT_INPUT_WIDTH, ARGUMENT_INPUT_HEIGHT),
     };
 
-    let link_name = quicklink.name.clone();
+    let _link_name = quicklink.name.clone();
 
     match cx.open_window(
         WindowOptions {

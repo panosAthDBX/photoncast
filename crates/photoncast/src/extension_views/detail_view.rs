@@ -312,7 +312,7 @@ impl ExtensionDetailView {
                     .text_sm()
                     .text_color(colors.accent)
                     .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, move |_, cx| {
+                    .on_mouse_down(gpui::MouseButton::Left, move |_, _cx| {
                         let _ = open::that(&url_for_click);
                     })
                     .child(text.to_string())

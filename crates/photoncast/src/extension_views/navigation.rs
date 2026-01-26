@@ -86,7 +86,7 @@ pub enum AnimationDirection {
 // ============================================================================
 
 /// A single entry in the navigation stack.
-struct NavigationEntry {
+pub(crate) struct NavigationEntry {
     /// The extension view data.
     view: ExtensionView,
     /// The rendered GPUI view.
@@ -243,7 +243,7 @@ struct NavigationAnimation {
 }
 
 /// Types of view updates that can be sent via ViewHandle.
-enum ViewUpdate {
+pub(crate) enum ViewUpdate {
     /// Replace entire view.
     ReplaceView(ExtensionView),
     /// Update list items only.
