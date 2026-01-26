@@ -22,6 +22,10 @@ pub struct ExtensionManifest {
     pub commands: Vec<CommandManifest>,
     #[serde(default)]
     pub preferences: Vec<PreferenceManifest>,
+    /// Runtime field: the directory containing this extension (set during discovery).
+    /// Not serialized - populated programmatically when the manifest is loaded.
+    #[serde(skip, default)]
+    pub directory: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,10 +123,16 @@ impl ManifestError {
 
 pub fn load_manifest(path: &Path) -> Result<ExtensionManifest, ManifestError> {
     let contents = fs::read_to_string(path)?;
-    toml::from_str(&contents).map_err(|e| ManifestError::Parse {
-        path: path.to_path_buf(),
-        source: e,
-    })
+    let mut manifest: ExtensionManifest =
+        toml::from_str(&contents).map_err(|e| ManifestError::Parse {
+            path: path.to_path_buf(),
+            source: e,
+        })?;
+
+    // Set the runtime directory field based on the manifest path
+    manifest.directory = path.parent().map(|p| p.to_path_buf());
+
+    Ok(manifest)
 }
 
 pub fn validate_manifest(
@@ -654,6 +664,7 @@ api_version = 1
             permissions: Permissions::default(),
             commands: vec![],
             preferences: vec![],
+            directory: None,
         };
 
         let mut cache = ManifestCache::new();
@@ -702,6 +713,7 @@ api_version = 1
             permissions: Permissions::default(),
             commands: vec![],
             preferences: vec![],
+            directory: None,
         };
 
         let mut cache = ManifestCache::new();

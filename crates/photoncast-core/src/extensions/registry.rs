@@ -156,6 +156,7 @@ mod tests {
             permissions: Permissions::default(),
             commands: vec![],
             preferences: vec![],
+            directory: None,
         }
     }
 

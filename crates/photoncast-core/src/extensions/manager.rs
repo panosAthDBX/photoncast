@@ -933,11 +933,15 @@ fn resolve_entry_path(manifest: &ExtensionManifest, override_path: Option<&Path>
     if let Some(path) = override_path {
         return path.to_path_buf();
     }
-    let manifest_dir = PathBuf::from(&manifest.entry.path)
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
-    manifest_dir.join(&manifest.entry.path)
+
+    // Use the manifest's directory (set during discovery) to resolve the entry path
+    let base_dir = manifest
+        .directory
+        .as_ref()
+        .map(|p| p.as_path())
+        .unwrap_or_else(|| Path::new("."));
+
+    base_dir.join(&manifest.entry.path)
 }
 
 #[cfg(test)]
