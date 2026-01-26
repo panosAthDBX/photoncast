@@ -189,6 +189,7 @@ impl SearchProvider for OptimizedAppProvider {
                     result_type: ResultType::Application,
                     score: entry.frecency.mul_add(10.0, f64::from(score)),
                     match_indices,
+                    requires_permissions: false,
                     action: SearchAction::LaunchApp {
                         bundle_id: app.bundle_id.as_str().to_string(),
                         path: app.path.clone(),

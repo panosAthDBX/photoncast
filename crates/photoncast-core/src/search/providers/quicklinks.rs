@@ -151,7 +151,8 @@ impl QuickLinksProvider {
             result_type: ResultType::QuickLink,
             score,
             match_indices: indices,
-            action: SearchAction::ExecuteQuickLink {
+            requires_permissions: false,
+                    action: SearchAction::ExecuteQuickLink {
                 id: link.id.to_string(),
                 url_template: link.link.clone(),
                 arguments: arguments.to_string(),

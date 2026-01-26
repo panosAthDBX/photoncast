@@ -2591,7 +2591,7 @@ impl PreferencesWindow {
                 )
             })
             .children(extensions.into_iter().map(
-                |(id, name, enabled, state, permissions, has_consent)| {
+                |(id, name, enabled, state, permissions, has_consent, commands)| {
                     self.render_extension_row(
                         &id,
                         &name,
@@ -2599,6 +2599,7 @@ impl PreferencesWindow {
                         state,
                         &permissions,
                         has_consent,
+                        &commands,
                         &colors,
                         cx,
                     )
@@ -2614,6 +2615,7 @@ impl PreferencesWindow {
         state: ExtensionState,
         permissions: &[String],
         has_consent: bool,
+        commands: &[String],
         colors: &PrefsColors,
         cx: &mut ViewContext<Self>,
     ) -> impl IntoElement {
@@ -2752,8 +2754,34 @@ impl PreferencesWindow {
                         )
                     }),
             )
-            // Consent status and revoke button
+            // Commands list
+            .when(!commands.is_empty(), |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(text_muted)
+                                .child("Commands:"),
+                        )
+                        .children(commands.iter().map(|cmd| {
+                            div()
+                                .px(px(4.0))
+                                .py(px(1.0))
+                                .rounded(px(3.0))
+                                .bg(surface_hover)
+                                .text_size(px(10.0))
+                                .text_color(text_muted)
+                                .child(cmd.clone())
+                        })),
+                )
+            })
+            // Consent status and grant/revoke button
             .when(!permissions.is_empty(), |this| {
+                let id_for_grant = id_for_revoke.clone();
                 this.child(
                     div()
                         .flex()
@@ -2794,6 +2822,30 @@ impl PreferencesWindow {
                                             .text_size(px(11.0))
                                             .text_color(hsla(0.0, 0.7, 0.5, 1.0))
                                             .child("Revoke"),
+                                    ),
+                            )
+                        })
+                        .when(!has_consent, |this| {
+                            this.child(
+                                div()
+                                    .id(SharedString::from(format!("grant-{}", id_for_grant.clone())))
+                                    .px(px(8.0))
+                                    .py(px(4.0))
+                                    .rounded(px(4.0))
+                                    .bg(accent.opacity(0.15))
+                                    .hover(|s| s.bg(accent.opacity(0.25)))
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(move |this, _, cx| {
+                                        if let Some(app) = &this.photoncast_app {
+                                            let _ = app.read().accept_extension_permissions(&id_for_grant);
+                                            cx.notify();
+                                        }
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(accent)
+                                            .child("Grant Access"),
                                     ),
                             )
                         }),

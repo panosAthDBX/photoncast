@@ -118,6 +118,7 @@ impl SearchProvider for CommandProvider {
                         Vec::new() // Don't highlight title for alias matches
                     },
                     action,
+                    requires_permissions: false,
                 });
             }
         }

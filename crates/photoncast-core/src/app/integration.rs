@@ -393,11 +393,11 @@ impl PhotonCastApp {
 
     /// Gets all discovered extensions for the settings view.
     ///
-    /// Returns a list of (id, name, enabled, state, permissions, has_consent) tuples.
+    /// Returns a list of (id, name, enabled, state, permissions, has_consent, commands) tuples.
     #[must_use]
     pub fn get_all_extensions(
         &self,
-    ) -> Vec<(String, String, bool, ExtensionState, Vec<String>, bool)> {
+    ) -> Vec<(String, String, bool, ExtensionState, Vec<String>, bool, Vec<String>)> {
         let manager = self.extension_manager.read();
         let mut result = Vec::new();
 
@@ -426,7 +426,15 @@ impl PhotonCastApp {
             // Check if permissions have been granted
             let has_consent = manager.has_permissions_consent(&id);
 
-            result.push((id, name, enabled, state, permissions, has_consent));
+            // Get command names
+            let commands: Vec<String> = record
+                .manifest
+                .commands
+                .iter()
+                .map(|c| c.name.clone())
+                .collect();
+
+            result.push((id, name, enabled, state, permissions, has_consent, commands));
         }
 
         result

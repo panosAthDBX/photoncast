@@ -121,6 +121,7 @@ impl SearchProvider for AppProvider {
                     result_type: ResultType::Application,
                     score: f64::from(score),
                     match_indices,
+                    requires_permissions: false,
                     action: SearchAction::LaunchApp {
                         bundle_id: app.bundle_id.as_str().to_string(),
                         path: app.path.clone(),

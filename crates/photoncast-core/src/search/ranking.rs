@@ -485,6 +485,7 @@ mod tests {
             result_type: crate::search::ResultType::Application,
             score,
             match_indices: Vec::new(),
+            requires_permissions: false,
             action: SearchAction::OpenFile {
                 path: PathBuf::from("/test"),
             },
@@ -838,6 +839,7 @@ mod property_tests {
             result_type: crate::search::ResultType::Application,
             score,
             match_indices: Vec::new(),
+            requires_permissions: false,
             action: SearchAction::OpenFile {
                 path: PathBuf::from("/test"),
             },

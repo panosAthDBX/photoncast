@@ -388,6 +388,7 @@ mod tests {
             action: SearchAction::OpenFile {
                 path: PathBuf::from("/test"),
             },
+            requires_permissions: false,
         }
     }
 

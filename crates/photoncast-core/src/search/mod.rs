@@ -109,6 +109,8 @@ pub struct SearchResult {
     pub match_indices: Vec<usize>,
     /// Action to perform when activated.
     pub action: SearchAction,
+    /// Whether this result requires permissions consent before execution.
+    pub requires_permissions: bool,
 }
 
 /// Source of an icon for display.

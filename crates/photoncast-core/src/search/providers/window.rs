@@ -62,6 +62,7 @@ impl SearchProvider for WindowProvider {
                     result_type: ResultType::SystemCommand,
                     score: f64::from(score),
                     match_indices: indices,
+                    requires_permissions: false,
                     action: SearchAction::ExecuteWindowCommand {
                         command_id: cmd.id.to_string(),
                     },

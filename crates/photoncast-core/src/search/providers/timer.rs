@@ -92,7 +92,8 @@ impl SearchProvider for TimerProvider {
                 result_type: ResultType::SystemCommand,
                 score: 10000.0,
                 match_indices: vec![],
-                action: SearchAction::OpenSleepTimer {
+                requires_permissions: false,
+                    action: SearchAction::OpenSleepTimer {
                     expression: "cancel".to_string(),
                 },
             });
@@ -113,7 +114,8 @@ impl SearchProvider for TimerProvider {
                 result_type: ResultType::SystemCommand,
                 score: 10000.0,
                 match_indices: vec![],
-                action: SearchAction::OpenSleepTimer {
+                requires_permissions: false,
+                    action: SearchAction::OpenSleepTimer {
                     expression: "status".to_string(),
                 },
             });
@@ -138,6 +140,7 @@ impl SearchProvider for TimerProvider {
                     result_type: ResultType::SystemCommand,
                     score: 10000.0, // High score for exact timer expressions
                     match_indices: vec![],
+                    requires_permissions: false,
                     action: SearchAction::OpenSleepTimer {
                         expression: query.to_string(),
                     },
@@ -184,6 +187,7 @@ impl SearchProvider for TimerProvider {
                     score: f64::from(score),
                     match_indices: indices,
                     action,
+                    requires_permissions: false,
                 });
             }
         }

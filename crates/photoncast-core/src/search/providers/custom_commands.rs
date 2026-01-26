@@ -161,7 +161,8 @@ impl CustomCommandProvider {
             result_type: ResultType::CustomCommand,
             score,
             match_indices: indices,
-            action: SearchAction::ExecuteCustomCommand {
+            requires_permissions: false,
+                    action: SearchAction::ExecuteCustomCommand {
                 command_id: command.id.clone(),
                 arguments: arguments.to_string(),
             },

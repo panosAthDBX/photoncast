@@ -164,7 +164,8 @@ impl FileProvider {
             result_type,
             score: 0.0,                // Score will be applied by the ranking system
             match_indices: Vec::new(), // Spotlight doesn't provide match indices
-            action: SearchAction::OpenFile {
+            requires_permissions: false,
+                    action: SearchAction::OpenFile {
                 path: file_result.path,
             },
         }

@@ -297,6 +297,7 @@ mod tests {
             result_type,
             score,
             match_indices: Vec::new(),
+            requires_permissions: false,
             action: SearchAction::OpenFile {
                 path: PathBuf::from("/test"),
             },

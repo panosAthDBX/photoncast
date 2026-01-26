@@ -773,6 +773,7 @@ impl ExtensionManager {
                             extension_id: extension_id.clone(),
                             command_id: item.id.to_string(),
                         },
+                        requires_permissions: false,
                     });
                 }
             }
@@ -839,6 +840,87 @@ impl ExtensionManager {
                         extension_id: extension_id.to_string(),
                         command_id: command.id.to_string(),
                     },
+                    requires_permissions: false,
+                });
+            }
+        }
+
+        // Also search commands from unloaded but enabled extensions (need permissions)
+        for record in self.registry.list() {
+            // Skip if already loaded or disabled
+            if self.loaded.contains_key(&record.manifest.extension.id) || !record.enabled {
+                continue;
+            }
+
+            // Check if this extension needs permissions consent
+            let needs_consent = self.check_permissions_consent(&record.manifest.extension.id).is_some();
+            if !needs_consent {
+                continue; // If it doesn't need consent, something else is blocking load
+            }
+
+            let extension_id = &record.manifest.extension.id;
+            let extension_name = &record.manifest.extension.name;
+
+            for command in &record.manifest.commands {
+                if command.mode != "search" {
+                    continue;
+                }
+
+                let name = &command.name;
+                let mut best_score = command_matcher
+                    .score(query, name)
+                    .map(|(score, indices)| (score.saturating_add(100), indices, true));
+
+                if let Some((score, indices)) = command_matcher.score(query, &command.id) {
+                    match &best_score {
+                        Some((best, _, _)) if score <= *best => {},
+                        _ => {
+                            best_score = Some((score.saturating_add(50), indices, false));
+                        },
+                    }
+                }
+
+                for keyword in &command.keywords {
+                    if let Some((score, indices)) = command_matcher.score(query, keyword) {
+                        match &best_score {
+                            Some((best, _, _)) if score <= *best => {},
+                            _ => {
+                                best_score = Some((score, indices, false));
+                            },
+                        }
+                    }
+                }
+
+                let Some((score, indices, name_match)) = best_score else {
+                    continue;
+                };
+
+                let subtitle = command
+                    .subtitle
+                    .clone()
+                    .unwrap_or_else(|| format!("{} (requires permissions)", extension_name));
+
+                let icon = command
+                    .icon
+                    .clone()
+                    .map(|i| IconSource::SystemIcon { name: i })
+                    .unwrap_or_else(|| IconSource::SystemIcon {
+                        name: "puzzlepiece".to_string(),
+                    });
+
+                results.push(SearchResult {
+                    id: SearchResultId::new(format!("ext-command:{}:{}", extension_id, command.id)),
+                    title: name.clone(),
+                    subtitle,
+                    icon,
+                    result_type: ResultType::Extension,
+                    score: f64::from(score),
+                    match_indices: if name_match { indices } else { Vec::new() },
+                    action: SearchAction::ExecuteExtensionCommand {
+                        extension_id: extension_id.to_string(),
+                        command_id: command.id.clone(),
+                    },
+                    requires_permissions: true,
                 });
             }
         }

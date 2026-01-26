@@ -370,6 +370,8 @@ pub struct ResultItem {
     pub bundle_id: Option<String>,
     /// App path for applications (used for reveal in finder, uninstall)
     pub app_path: Option<std::path::PathBuf>,
+    /// Whether this result requires permissions consent
+    pub requires_permissions: bool,
 }
 
 /// Type of search result for grouping
@@ -1311,6 +1313,7 @@ impl LauncherWindow {
             result_type: result.result_type.into(),
             bundle_id,
             app_path,
+            requires_permissions: result.requires_permissions,
         }
     }
 
@@ -1329,6 +1332,7 @@ impl LauncherWindow {
             result_type: CoreResultType::SystemCommand,
             score: 0.0,
             match_indices: vec![],
+            requires_permissions: false,
             action: SearchAction::CopyToClipboard {
                 text: result.formatted_value.clone(),
             },
@@ -1345,6 +1349,7 @@ impl LauncherWindow {
             result_type: ResultType::Calculator,
             bundle_id: None,
             app_path: None,
+            requires_permissions: false,
         }
     }
 
@@ -1451,7 +1456,8 @@ impl LauncherWindow {
                             result_type: CoreResultType::Application,
                             score: 100.0, // High score for frecent apps
                             match_indices: vec![],
-                            action: SearchAction::LaunchApp {
+                            requires_permissions: false,
+            action: SearchAction::LaunchApp {
                                 bundle_id: indexed_app.bundle_id.as_str().to_string(),
                                 path: indexed_app.path.clone(),
                             },
@@ -1958,7 +1964,8 @@ impl LauncherWindow {
                                 result_type,
                                 score: 0.0,
                                 match_indices: vec![],
-                                action: SearchAction::OpenFile { path },
+                                requires_permissions: false,
+            action: SearchAction::OpenFile { path },
                             }
                         })
                         .collect()
@@ -2008,7 +2015,8 @@ impl LauncherWindow {
                     result_type: photoncast_core::search::ResultType::SystemCommand,
                     score: 15000.0, // Very high score to show at top
                     match_indices: vec![],
-                    action: SearchAction::OpenSleepTimer {
+                    requires_permissions: false,
+            action: SearchAction::OpenSleepTimer {
                         expression: "cancel".to_string(),
                     },
                 };
@@ -5153,6 +5161,19 @@ impl LauncherWindow {
                             .child(result.subtitle.clone()),
                     ),
             )
+            // Permissions required badge
+            .when(result.requires_permissions, |el| {
+                el.child(
+                    div()
+                        .px(px(6.0))
+                        .py(px(2.0))
+                        .rounded(px(4.0))
+                        .bg(hsla(0.08, 0.7, 0.5, 0.15))
+                        .text_size(px(10.0))
+                        .text_color(hsla(0.08, 0.7, 0.5, 1.0))
+                        .child("🔐 Grant Access"),
+                )
+            })
             .child({
                 // Shortcut badge - offset by 1 when meeting is visible (meeting takes ⌘1)
                 let has_meeting = self.query.is_empty() && self.next_meeting.is_some();
