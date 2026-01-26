@@ -448,7 +448,8 @@ fn main() {
                             }
 
                             if preferences_handle.is_none() {
-                                if let Some(handle) = open_preferences_window(cx) {
+                                let app = launcher_state_for_events.photoncast_app();
+                                if let Some(handle) = open_preferences_window(cx, Some(app)) {
                                     let _ = handle.update(cx, |_, cx| {
                                         cx.activate(true);
                                         cx.activate_window();
@@ -1358,7 +1359,10 @@ const PREFS_WIDTH: Pixels = px(864.0);
 const PREFS_HEIGHT: Pixels = px(1040.0);
 
 /// Opens a new preferences window and returns its handle
-fn open_preferences_window(cx: &mut AppContext) -> Option<WindowHandle<PreferencesWindow>> {
+fn open_preferences_window(
+    cx: &mut AppContext,
+    photoncast_app: Option<std::sync::Arc<parking_lot::RwLock<photoncast_core::app::PhotonCastApp>>>,
+) -> Option<WindowHandle<PreferencesWindow>> {
     let display = cx.displays().first().cloned();
     let display_bounds = display.map_or_else(
         || Bounds {
@@ -1396,7 +1400,7 @@ fn open_preferences_window(cx: &mut AppContext) -> Option<WindowHandle<Preferenc
         },
         |cx| {
             cx.activate(true);
-            cx.new_view(|cx| PreferencesWindow::new(cx))
+            cx.new_view(|cx| PreferencesWindow::new(cx, photoncast_app))
         },
     ) {
         Ok(handle) => {

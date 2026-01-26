@@ -11,6 +11,7 @@ use tracing::{debug, info, warn};
 
 use crate::extensions::{ExtensionConfig, ExtensionManager, ExtensionManagerError};
 use crate::extensions::permissions::PermissionsDialog;
+use crate::extensions::registry::ExtensionState;
 use crate::indexer::IndexedApp;
 use crate::search::providers::{
     AppProvider, AppsProvider, CalendarProvider, CommandProvider, CustomCommandProvider,
@@ -388,6 +389,91 @@ impl PhotonCastApp {
         }
 
         result
+    }
+
+    /// Gets all discovered extensions for the settings view.
+    ///
+    /// Returns a list of (id, name, enabled, state, permissions, has_consent) tuples.
+    #[must_use]
+    pub fn get_all_extensions(
+        &self,
+    ) -> Vec<(String, String, bool, ExtensionState, Vec<String>, bool)> {
+        let manager = self.extension_manager.read();
+        let mut result = Vec::new();
+
+        for record in manager.registry().list() {
+            let id = record.manifest.extension.id.clone();
+            let name = record.manifest.extension.name.clone();
+            let enabled = record.enabled;
+            let state = record.state;
+
+            // Get permission names
+            let p = &record.manifest.permissions;
+            let mut permissions = Vec::new();
+            if p.network {
+                permissions.push("Network".to_string());
+            }
+            if p.clipboard {
+                permissions.push("Clipboard".to_string());
+            }
+            if p.notifications {
+                permissions.push("Notifications".to_string());
+            }
+            if !p.filesystem.is_empty() {
+                permissions.push("Filesystem".to_string());
+            }
+
+            // Check if permissions have been granted
+            let has_consent = manager.has_permissions_consent(&id);
+
+            result.push((id, name, enabled, state, permissions, has_consent));
+        }
+
+        result
+    }
+
+    /// Toggles the enabled state of an extension.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the extension is not found.
+    pub fn toggle_extension_enabled(&self, extension_id: &str) -> Result<(), String> {
+        let mut manager = self.extension_manager.write();
+
+        // Get current state first
+        let new_enabled = {
+            let record = manager.registry().get(extension_id).ok_or_else(|| {
+                format!("Extension not found: {}", extension_id)
+            })?;
+            !record.enabled
+        };
+
+        // Now modify
+        manager
+            .registry_mut()
+            .set_enabled(extension_id, new_enabled)
+            .map_err(|e| e.to_string())?;
+
+        // If disabling, also unload if loaded
+        if !new_enabled {
+            let _ = manager.deactivate_and_unload(extension_id);
+        }
+
+        Ok(())
+    }
+
+    /// Revokes permissions for an extension.
+    ///
+    /// This will also unload the extension if it's currently loaded.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub fn revoke_extension_permissions(&self, extension_id: &str) -> Result<(), String> {
+        let mut manager = self.extension_manager.write();
+        manager
+            .revoke_permissions(extension_id)
+            .map_err(|e| e.to_string())
     }
 
     /// Performs a search with timeout handling (Task 3.10.2).

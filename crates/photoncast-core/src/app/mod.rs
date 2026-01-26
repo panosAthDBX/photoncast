@@ -19,6 +19,7 @@ pub use config_file::{
 pub use integration::{
     ExtensionLaunchError, IntegrationConfig, PhotonCastApp, SearchOutcome, SEARCH_TIMEOUT_MESSAGE,
 };
+pub use crate::extensions::registry::ExtensionState;
 pub use keybindings::{
     default_keybindings_path, Keybindings, KeybindingsError, KeybindingsResult, Shortcut,
 };

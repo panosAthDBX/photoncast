@@ -733,6 +733,10 @@ impl ExtensionManager {
         &self.registry
     }
 
+    pub fn registry_mut(&mut self) -> &mut ExtensionRegistry {
+        &mut self.registry
+    }
+
     pub fn search(&self, query: &str, max_results: usize) -> Vec<SearchResult> {
         if query.is_empty() {
             return Vec::new();
