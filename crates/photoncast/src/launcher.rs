@@ -1800,6 +1800,23 @@ impl LauncherWindow {
         self.start_dismiss_animation(cx);
     }
 
+    /// Closes the extension view and returns to the search view.
+    /// Called when the extension view's cancel callback is triggered.
+    fn close_extension_view(&mut self, cx: &mut ViewContext<Self>) {
+        if self.extension_view.is_some() {
+            self.extension_view = None;
+            self.extension_view_id = None;
+            // Resize window back to normal
+            crate::platform::resize_window(
+                crate::constants::LAUNCHER_WIDTH.0.into(),
+                crate::constants::LAUNCHER_HEIGHT.0.into(),
+            );
+            // Re-focus the launcher's search input
+            cx.focus(&self.focus_handle);
+            cx.notify();
+        }
+    }
+
     /// Sets the bundle ID and window title that was frontmost before Photoncast opened.
     /// Used for window management commands to target the correct window.
     pub fn set_previous_frontmost_window(
@@ -2778,7 +2795,23 @@ impl LauncherWindow {
                                     extension_id = %extension_id,
                                     "Extension rendered a view, displaying it"
                                 );
-                                let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
+                                // Create action callback to handle cancel and other actions
+                                let view_handle = cx.view().downgrade();
+                                let action_callback: crate::extension_views::ActionCallback =
+                                    std::sync::Arc::new(move |action_id, cx| {
+                                        if action_id == "__cancel__" {
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |launcher, cx| {
+                                                    launcher.close_extension_view(cx);
+                                                });
+                                            }
+                                        }
+                                    });
+                                let rendered = crate::extension_views::render_extension_view(
+                                    ext_view,
+                                    Some(action_callback),
+                                    cx,
+                                );
                                 // Focus the extension view so it receives keyboard events
                                 if let Ok(list_view) = rendered.clone().downcast::<crate::extension_views::ExtensionListView>() {
                                     cx.focus_view(&list_view);
@@ -2914,7 +2947,23 @@ impl LauncherWindow {
                                 extension_id = %ext_id,
                                 "Extension rendered a view, displaying it"
                             );
-                            let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
+                            // Create action callback to handle cancel and other actions
+                            let view_handle = cx.view().downgrade();
+                            let action_callback: crate::extension_views::ActionCallback =
+                                std::sync::Arc::new(move |action_id, cx| {
+                                    if action_id == "__cancel__" {
+                                        if let Some(view) = view_handle.upgrade() {
+                                            view.update(cx, |launcher, cx| {
+                                                launcher.close_extension_view(cx);
+                                            });
+                                        }
+                                    }
+                                });
+                            let rendered = crate::extension_views::render_extension_view(
+                                ext_view,
+                                Some(action_callback),
+                                cx,
+                            );
                             // Focus the extension view so it receives keyboard events
                             if let Ok(list_view) = rendered.clone().downcast::<crate::extension_views::ExtensionListView>() {
                                 cx.focus_view(&list_view);

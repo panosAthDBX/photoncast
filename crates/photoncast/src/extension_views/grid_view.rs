@@ -243,11 +243,8 @@ impl ExtensionGridView {
         is_selected: bool,
         colors: &ExtensionViewColors,
     ) -> impl IntoElement {
-        let cols = self.columns();
-        let item_width = (VIEW_WIDTH.0 - PADDING.0 * 2.0 - (cols - 1) as f32 * 8.0) / cols as f32;
-
         div()
-            .w(px(item_width))
+            .flex_1() // Distribute width evenly among columns
             .flex()
             .flex_col()
             .gap(px(8.0))
@@ -490,14 +487,10 @@ impl Render for ExtensionGridView {
             .on_action(cx.listener(Self::select_down))
             .on_action(cx.listener(Self::activate))
             .on_action(cx.listener(Self::cancel))
-            .w(VIEW_WIDTH)
-            .max_h(VIEW_MAX_HEIGHT)
+            .size_full() // Fill parent container
             .flex()
             .flex_col()
             .bg(colors.background)
-            .rounded(BORDER_RADIUS)
-            .border_1()
-            .border_color(colors.border)
             .overflow_hidden()
             // Title
             .child(

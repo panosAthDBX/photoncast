@@ -1042,14 +1042,10 @@ impl Render for ExtensionFormView {
                     }
                 }
             }))
-            .w(VIEW_WIDTH)
-            .max_h(VIEW_MAX_HEIGHT)
+            .size_full() // Fill parent container
             .flex()
             .flex_col()
             .bg(colors.background)
-            .rounded(BORDER_RADIUS)
-            .border_1()
-            .border_color(colors.border)
             .overflow_hidden()
             // Title
             .child(
