@@ -64,6 +64,8 @@
 
 pub mod app;
 pub mod commands;
+pub mod custom_commands;
+pub mod extensions;
 pub mod indexer;
 pub mod platform;
 pub mod search;

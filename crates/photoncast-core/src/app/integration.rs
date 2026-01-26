@@ -9,10 +9,11 @@ use std::time::Duration;
 use parking_lot::RwLock;
 use tracing::{debug, info, warn};
 
+use crate::extensions::{ExtensionConfig, ExtensionManager};
 use crate::indexer::IndexedApp;
 use crate::search::providers::{
-    AppProvider, AppsProvider, CalendarProvider, CommandProvider, FileProvider, QuickLinksProvider,
-    TimerProvider, WindowProvider,
+    AppProvider, AppsProvider, CalendarProvider, CommandProvider, CustomCommandProvider,
+    ExtensionProvider, FileProvider, QuickLinksProvider, TimerProvider, WindowProvider,
 };
 use crate::search::{SearchConfig, SearchEngine, SearchResults};
 
@@ -93,6 +94,8 @@ pub struct PhotonCastApp {
     app_index: Arc<RwLock<Vec<IndexedApp>>>,
     /// Quick links provider reference for cache invalidation.
     quicklinks_provider: Option<Arc<QuickLinksProvider>>,
+    /// Extension manager for native extensions.
+    extension_manager: Arc<RwLock<ExtensionManager>>,
     /// Configuration.
     config: IntegrationConfig,
 }
@@ -109,6 +112,12 @@ impl PhotonCastApp {
     pub fn with_config(config: IntegrationConfig) -> Self {
         let app_index = Arc::new(RwLock::new(Vec::new()));
 
+        // Initialize extension manager and discover extensions
+        let extension_config = ExtensionConfig::default();
+        let mut extension_manager = ExtensionManager::new();
+        extension_manager.discover(&extension_config);
+        let extension_manager = Arc::new(RwLock::new(extension_manager));
+
         // Create the search engine with configured settings
         let search_config = SearchConfig {
             max_results_per_provider: config.max_results_per_provider,
@@ -118,13 +127,18 @@ impl PhotonCastApp {
         let mut search_engine = SearchEngine::with_config(search_config);
 
         // Register all search providers (Task 3.10.1)
-        let quicklinks_provider =
-            Self::register_providers(&mut search_engine, Arc::clone(&app_index), &config);
+        let quicklinks_provider = Self::register_providers(
+            &mut search_engine,
+            Arc::clone(&app_index),
+            Arc::clone(&extension_manager),
+            &config,
+        );
 
         Self {
             search_engine,
             app_index,
             quicklinks_provider,
+            extension_manager,
             config,
         }
     }
@@ -134,6 +148,7 @@ impl PhotonCastApp {
     fn register_providers(
         engine: &mut SearchEngine,
         app_index: Arc<RwLock<Vec<IndexedApp>>>,
+        extension_manager: Arc<RwLock<ExtensionManager>>,
         config: &IntegrationConfig,
     ) -> Option<Arc<QuickLinksProvider>> {
         info!("Registering search providers...");
@@ -182,7 +197,23 @@ impl PhotonCastApp {
         engine.add_provider(app_management_provider);
         debug!("Registered AppsProvider");
 
-        // 8. File Provider (lower priority, optional)
+        // 8. Custom commands provider (optional if storage fails)
+        match CustomCommandProvider::with_default_store() {
+            Ok(provider) => {
+                engine.add_provider(provider);
+                debug!("Registered CustomCommandProvider");
+            },
+            Err(e) => {
+                warn!(error = %e, "Custom commands provider unavailable");
+            },
+        }
+
+        // 9. Extension provider (native extensions)
+        let extension_provider = ExtensionProvider::new(extension_manager);
+        engine.add_provider(extension_provider);
+        debug!("Registered ExtensionProvider");
+
+        // 10. File Provider (lower priority, optional)
         if config.include_files {
             let file_provider = FileProvider::new(config.file_result_limit);
             engine.add_provider(file_provider);
@@ -206,6 +237,61 @@ impl PhotonCastApp {
         if let Some(provider) = &self.quicklinks_provider {
             provider.invalidate_cache();
             debug!("Quicklinks cache invalidated via PhotonCastApp");
+        }
+    }
+
+    /// Returns a reference to the extension manager.
+    #[must_use]
+    pub fn extension_manager(&self) -> &Arc<RwLock<ExtensionManager>> {
+        &self.extension_manager
+    }
+
+    /// Launches an extension command.
+    ///
+    /// This activates the extension if needed and invokes the command.
+    ///
+    /// # Arguments
+    ///
+    /// * `extension_id` - The extension identifier.
+    /// * `command_id` - The command identifier within the extension.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error message on failure.
+    pub fn launch_extension_command(
+        &self,
+        extension_id: &str,
+        command_id: &str,
+    ) -> Result<(), String> {
+        use abi_stable::std_types::ROption;
+        use photoncast_extension_api::CommandArguments;
+
+        let mut manager = self.extension_manager.write();
+
+        // Load and activate if not already loaded
+        if !manager.is_loaded(extension_id) {
+            if let Err(e) = manager.load_and_activate(extension_id) {
+                return Err(format!("Failed to load extension: {e}"));
+            }
+        }
+
+        // Launch the command
+        let args = CommandArguments {
+            query: ROption::RNone,
+            selection: ROption::RNone,
+            clipboard: ROption::RNone,
+            extra: ROption::RNone,
+        };
+        match manager.launch_command(extension_id, command_id, args).into_result() {
+            Ok(_) => {
+                info!(
+                    extension_id = extension_id,
+                    command_id = command_id,
+                    "Extension command executed"
+                );
+                Ok(())
+            },
+            Err(e) => Err(format!("Failed to execute command: {e}")),
         }
     }
 

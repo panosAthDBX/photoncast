@@ -582,7 +582,9 @@ impl AppLauncher {
             | SearchAction::OpenCalendar { command_id: _ }
             | SearchAction::ExecuteWindowCommand { command_id: _ }
             | SearchAction::OpenAppManagement { command_id: _ }
-            | SearchAction::ForceQuitApp { pid: _ } => {
+            | SearchAction::ForceQuitApp { pid: _ }
+            | SearchAction::ExecuteCustomCommand { .. }
+            | SearchAction::ExecuteExtensionCommand { .. } => {
                 debug!("ignoring non-launch action in AppLauncher");
                 Ok(())
             },
@@ -652,7 +654,9 @@ impl AppLauncher {
             | SearchAction::OpenCalendar { command_id: _ }
             | SearchAction::ExecuteWindowCommand { command_id: _ }
             | SearchAction::OpenAppManagement { command_id: _ }
-            | SearchAction::ForceQuitApp { pid: _ } => {
+            | SearchAction::ForceQuitApp { pid: _ }
+            | SearchAction::ExecuteCustomCommand { .. }
+            | SearchAction::ExecuteExtensionCommand { .. } => {
                 debug!("ignoring non-launch action in AppLauncher");
                 Ok(())
             },

@@ -1,0 +1,33 @@
+schema_version = "1"
+
+[extension]
+id = "com.photoncast.github"
+name = "GitHub"
+version = "1.0.0"
+description = "Search GitHub repositories"
+api_version = "1"
+
+[entry]
+kind = "native"
+path = "lib/libgithub.dylib"
+
+[permissions]
+network = true
+clipboard = true
+
+[[commands]]
+id = "search-repos"
+name = "Search Repositories"
+mode = "search"
+keywords = ["github", "repo", "repository"]
+
+[[preferences]]
+name = "api_token"
+kind = "secret"
+title = "Personal Access Token"
+description = "GitHub PAT for authenticated requests"
+
+[[preferences]]
+name = "default_org"
+kind = "string"
+title = "Default Organization"

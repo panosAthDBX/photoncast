@@ -1,0 +1,29 @@
+schema_version = "1"
+
+[extension]
+id = "com.photoncast.screenshots"
+name = "Screenshot Browser"
+version = "1.0.0"
+description = "Browse and manage screenshots"
+api_version = "1"
+
+[entry]
+kind = "native"
+path = "lib/libscreenshots.dylib"
+
+[permissions]
+clipboard = true
+filesystem = true
+
+[[commands]]
+id = "browse"
+name = "Browse Screenshots"
+mode = "view"
+keywords = ["screenshot", "image", "capture", "snip"]
+
+[[preferences]]
+name = "screenshots_folder"
+kind = "directory"
+title = "Screenshots Folder"
+description = "Folder to scan for screenshots"
+default = "~/Desktop"

@@ -396,7 +396,7 @@ impl From<CoreResultType> for ResultType {
     fn from(core_type: CoreResultType) -> Self {
         match core_type {
             CoreResultType::Application => Self::Application,
-            CoreResultType::SystemCommand => Self::Command,
+            CoreResultType::SystemCommand | CoreResultType::CustomCommand | CoreResultType::Extension => Self::Command,
             CoreResultType::QuickLink => Self::QuickLink,
             CoreResultType::File => Self::File,
             CoreResultType::Folder => Self::Folder,
@@ -2617,6 +2617,90 @@ impl LauncherWindow {
                 SearchAction::QuickLookFile { path } => {
                     // Quick Look is handled separately
                     tracing::info!(path = %path.display(), "Quick Look not yet implemented");
+                },
+                SearchAction::ExecuteCustomCommand { command_id, arguments } => {
+                    // Custom commands are executed via custom_commands module
+                    tracing::info!(
+                        command_id = %command_id,
+                        arguments = %arguments,
+                        "Executing custom command"
+                    );
+
+                    // Load and execute custom command
+                    use photoncast_core::custom_commands::{
+                        CommandExecutor as CustomCommandExecutor, CustomCommandStore,
+                        PlaceholderContext,
+                    };
+
+                    match CustomCommandStore::open_default() {
+                        Ok(store) => {
+                            if let Ok(Some(cmd)) = store.get(command_id) {
+                                let executor = CustomCommandExecutor::default();
+                                let context = PlaceholderContext::with_query(arguments);
+
+                                // Execute in background using shared runtime
+                                let cmd = cmd.clone();
+                                let rt = Arc::clone(&self.calculator_runtime);
+                                std::thread::spawn(move || {
+                                    rt.block_on(async {
+                                        match executor.execute(&cmd, &context).await {
+                                            Ok(result) => {
+                                                if result.success {
+                                                    tracing::info!(
+                                                        "Custom command executed: {}",
+                                                        cmd.name
+                                                    );
+                                                } else {
+                                                    tracing::warn!(
+                                                        "Custom command failed: {} - {}",
+                                                        cmd.name,
+                                                        result.stderr
+                                                    );
+                                                }
+                                            },
+                                            Err(e) => {
+                                                tracing::error!(
+                                                    "Custom command execution error: {}",
+                                                    e
+                                                );
+                                            },
+                                        }
+                                    });
+                                });
+                            } else {
+                                tracing::error!("Custom command not found: {}", command_id);
+                            }
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to open custom commands store: {}", e);
+                        },
+                    }
+                    self.hide(cx);
+                },
+                SearchAction::ExecuteExtensionCommand { extension_id, command_id } => {
+                    // Extension commands are executed via extension manager
+                    match self
+                        .photoncast_app
+                        .read()
+                        .launch_extension_command(extension_id, command_id)
+                    {
+                        Ok(()) => {
+                            tracing::info!(
+                                extension_id = %extension_id,
+                                command_id = %command_id,
+                                "Extension command executed"
+                            );
+                        },
+                        Err(e) => {
+                            tracing::error!(
+                                extension_id = %extension_id,
+                                command_id = %command_id,
+                                error = %e,
+                                "Failed to execute extension command"
+                            );
+                        },
+                    }
+                    self.hide(cx);
                 },
             }
         }

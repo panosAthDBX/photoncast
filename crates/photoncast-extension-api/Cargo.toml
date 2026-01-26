@@ -1,0 +1,27 @@
+[package]
+name = "photoncast-extension-api"
+description = "ABI-stable extension API for PhotonCast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "photoncast_extension_api"
+path = "src/lib.rs"
+
+[dependencies]
+abi_stable = { workspace = true, features = ["serde_json"] }
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[features]
+default = []

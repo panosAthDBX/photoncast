@@ -1,0 +1,13 @@
+[package]
+name = "photoncast-ext-system-preferences"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "Open System Settings panes"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+photoncast-extension-api = { path = "../photoncast-extension-api" }
+abi_stable = { workspace = true }

@@ -61,7 +61,8 @@ pub use index::{
     UsageRecord,
 };
 pub use providers::{
-    AppProvider, CommandProvider, FileProvider, OptimizedAppProvider, SearchProvider,
+    AppProvider, CommandProvider, FileProvider, OptimizedAppProvider,
+    SearchProvider,
 };
 pub use ranking::{BoostConfig, FrecencyScore, ResultRanker, UsageData};
 
@@ -150,6 +151,10 @@ pub enum ResultType {
     File,
     /// Folder result.
     Folder,
+    /// Custom command result.
+    CustomCommand,
+    /// Extension result.
+    Extension,
 }
 
 impl ResultType {
@@ -162,6 +167,8 @@ impl ResultType {
             Self::QuickLink => "Quick Links",
             Self::File => "Files",
             Self::Folder => "Folders",
+            Self::CustomCommand => "Custom Commands",
+            Self::Extension => "Extensions",
         }
     }
 
@@ -172,8 +179,10 @@ impl ResultType {
             Self::Application => 0,
             Self::SystemCommand => 1,
             Self::QuickLink => 2,
-            Self::File => 3,
-            Self::Folder => 4,
+            Self::CustomCommand => 3,
+            Self::Extension => 4,
+            Self::File => 5,
+            Self::Folder => 6,
         }
     }
 }
@@ -255,6 +264,20 @@ pub enum SearchAction {
     ForceQuitApp {
         /// Process ID to force quit.
         pid: u32,
+    },
+    /// Execute a custom command.
+    ExecuteCustomCommand {
+        /// Custom command ID.
+        command_id: String,
+        /// Arguments to pass to the command.
+        arguments: String,
+    },
+    /// Execute an extension command.
+    ExecuteExtensionCommand {
+        /// Extension ID.
+        extension_id: String,
+        /// Command ID within the extension.
+        command_id: String,
     },
 }
 

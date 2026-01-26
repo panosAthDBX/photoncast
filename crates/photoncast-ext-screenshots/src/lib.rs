@@ -1,0 +1,399 @@
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::must_use_candidate)]
+
+//! Screenshot Browser Extension for PhotonCast
+//!
+//! Browse and manage screenshots from a configurable folder.
+
+use abi_stable::prefix_type::PrefixTypeTrait;
+use abi_stable::sabi_trait::prelude::TD_Opaque;
+use abi_stable::std_types::{RBox, RDuration, ROption, RResult, RString, RVec};
+use chrono::{DateTime, Local};
+use photoncast_extension_api::prelude::*;
+use photoncast_extension_api::{
+    CommandHandlerTrait, ExtensionApiResult, ExtensionManifest, ExtensionSearchProvider_TO,
+    Extension_TO,
+};
+use std::path::PathBuf;
+use std::time::SystemTime;
+
+/// Supported image extensions
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp"];
+
+/// Represents a screenshot file
+#[derive(Debug, Clone)]
+struct Screenshot {
+    path: PathBuf,
+    name: String,
+    extension: String,
+    size_bytes: u64,
+    modified: SystemTime,
+}
+
+impl Screenshot {
+    /// Creates a new screenshot from a file path and metadata
+    fn new(path: PathBuf, size_bytes: u64, modified: SystemTime) -> Option<Self> {
+        let name = path.file_stem()?.to_string_lossy().to_string();
+        let extension = path.extension()?.to_string_lossy().to_lowercase();
+
+        if !IMAGE_EXTENSIONS.contains(&extension.as_str()) {
+            return None;
+        }
+
+        Some(Self {
+            path,
+            name,
+            extension,
+            size_bytes,
+            modified,
+        })
+    }
+
+    /// Formats the file size for display
+    fn formatted_size(&self) -> String {
+        let kb = self.size_bytes as f64 / 1024.0;
+        if kb < 1024.0 {
+            format!("{kb:.1} KB")
+        } else {
+            let mb = kb / 1024.0;
+            format!("{mb:.1} MB")
+        }
+    }
+
+    /// Formats the modified date for display
+    fn formatted_date(&self) -> String {
+        let datetime: DateTime<Local> = self.modified.into();
+        datetime.format("%b %d, %Y %H:%M").to_string()
+    }
+
+    /// Gets the duration since Unix epoch for the modified time
+    fn modified_duration(&self) -> RDuration {
+        let duration = self
+            .modified
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default();
+        RDuration::from_secs(duration.as_secs())
+    }
+
+    /// Creates actions for this screenshot
+    fn actions(&self) -> RVec<Action> {
+        let path_str = self.path.to_string_lossy().to_string();
+        let mut actions = RVec::new();
+
+        // Copy to clipboard (primary action)
+        // Note: In real implementation, this would copy the image data
+        actions.push(Action {
+            id: RString::from("copy"),
+            title: RString::from("Copy to Clipboard"),
+            icon: ROption::RSome(IconSource::SystemIcon {
+                name: RString::from("doc.on.doc"),
+            }),
+            shortcut: ROption::RSome(Shortcut::cmd("c")),
+            style: ActionStyle::Primary,
+            handler: ActionHandler::CopyToClipboard(RString::from(path_str.as_str())),
+        });
+
+        // Open in Preview
+        actions.push(Action {
+            id: RString::from("open"),
+            title: RString::from("Open in Preview"),
+            icon: ROption::RSome(IconSource::SystemIcon {
+                name: RString::from("eye"),
+            }),
+            shortcut: ROption::RSome(Shortcut::cmd("o")),
+            style: ActionStyle::Default,
+            handler: ActionHandler::OpenFile(RString::from(path_str.as_str())),
+        });
+
+        // Reveal in Finder
+        let parent_path = self
+            .path
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| path_str.clone());
+        actions.push(Action {
+            id: RString::from("reveal"),
+            title: RString::from("Reveal in Finder"),
+            icon: ROption::RSome(IconSource::SystemIcon {
+                name: RString::from("folder"),
+            }),
+            shortcut: ROption::RSome(Shortcut::cmd_shift("f")),
+            style: ActionStyle::Default,
+            handler: ActionHandler::OpenFile(RString::from(parent_path)),
+        });
+
+        // Quick Look
+        actions.push(Action {
+            id: RString::from("quicklook"),
+            title: RString::from("Quick Look"),
+            icon: ROption::RSome(IconSource::SystemIcon {
+                name: RString::from("eye.fill"),
+            }),
+            shortcut: ROption::RSome(Shortcut {
+                key: RString::from(" "),
+                modifiers: Modifiers {
+                    cmd: false,
+                    shift: false,
+                    alt: false,
+                    ctrl: false,
+                },
+            }),
+            style: ActionStyle::Default,
+            handler: ActionHandler::OpenFile(RString::from(path_str.as_str())),
+        });
+
+        // Delete with confirmation
+        actions.push(Action {
+            id: RString::from("delete"),
+            title: RString::from("Move to Trash"),
+            icon: ROption::RSome(IconSource::SystemIcon {
+                name: RString::from("trash"),
+            }),
+            shortcut: ROption::RSome(Shortcut::cmd("backspace")),
+            style: ActionStyle::Destructive,
+            handler: ActionHandler::Callback, // Would trigger delete confirmation
+        });
+
+        actions
+    }
+
+    /// Creates a list item for this screenshot
+    fn to_list_item(&self) -> ListItem {
+        let path_str = self.path.to_string_lossy().to_string();
+
+        let mut accessories = RVec::new();
+
+        // File size
+        accessories.push(Accessory::Text(RString::from(self.formatted_size())));
+
+        // Modified date
+        accessories.push(Accessory::Date(self.modified_duration()));
+
+        // Extension tag
+        let color = extension_color(&self.extension);
+        accessories.push(Accessory::Tag {
+            text: RString::from(self.extension.to_uppercase()),
+            color,
+        });
+
+        ListItem {
+            id: RString::from(path_str.as_str()),
+            title: RString::from(self.name.as_str()),
+            subtitle: ROption::RSome(RString::from(self.formatted_date())),
+            icon: IconSource::FileIcon {
+                path: RString::from(path_str.as_str()),
+            },
+            accessories,
+            actions: self.actions(),
+            preview: ROption::RSome(self.preview()),
+            shortcut: ROption::RNone,
+        }
+    }
+
+    /// Creates a preview for this screenshot
+    fn preview(&self) -> Preview {
+        let path_str = self.path.to_string_lossy().to_string();
+        Preview::Image {
+            source: RString::from(path_str),
+            alt: RString::from(self.name.as_str()),
+        }
+    }
+}
+
+/// Maps file extensions to tag colors
+fn extension_color(ext: &str) -> TagColor {
+    match ext {
+        "png" => TagColor::Blue,
+        "jpg" | "jpeg" => TagColor::Green,
+        "gif" => TagColor::Purple,
+        "webp" => TagColor::Yellow,
+        "heic" => TagColor::Orange,
+        _ => TagColor::Default,
+    }
+}
+
+/// Scans a directory for screenshot files
+fn scan_screenshots(folder: &str) -> Vec<Screenshot> {
+    let path = if folder.starts_with('~') {
+        dirs::home_dir()
+            .map(|home| home.join(&folder[2..]))
+            .unwrap_or_else(|| PathBuf::from(folder))
+    } else {
+        PathBuf::from(folder)
+    };
+
+    let mut screenshots = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&path) {
+        for entry in entries.flatten() {
+            let file_path = entry.path();
+
+            if file_path.is_file() {
+                if let Ok(metadata) = entry.metadata() {
+                    let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                    if let Some(screenshot) = Screenshot::new(file_path, metadata.len(), modified) {
+                        screenshots.push(screenshot);
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by modified date (newest first)
+    screenshots.sort_by(|a, b| b.modified.cmp(&a.modified));
+    screenshots
+}
+
+/// Command handler for browsing screenshots
+struct BrowseScreenshotsHandler;
+
+impl CommandHandlerTrait for BrowseScreenshotsHandler {
+    fn handle(&self, ctx: ExtensionContext, args: CommandArguments) -> ExtensionApiResult<()> {
+        // Get screenshots folder from preferences
+        let prefs = ctx.host.get_preferences().unwrap_or(PreferenceValues {
+            values: RVec::new(),
+        });
+
+        let folder = prefs
+            .values
+            .iter()
+            .find_map(|t| {
+                if t.0.as_str() == "screenshots_folder" {
+                    if let PreferenceValue::Directory(ref s) = t.1 {
+                        Some(s.to_string())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "~/Desktop".to_string());
+
+        // Scan for screenshots
+        let screenshots = scan_screenshots(&folder);
+
+        // Filter by query if provided
+        let query = args.query.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let query_lower = query.to_lowercase();
+
+        let filtered: Vec<&Screenshot> = if query.is_empty() {
+            screenshots.iter().collect()
+        } else {
+            screenshots
+                .iter()
+                .filter(|s| s.name.to_lowercase().contains(&query_lower))
+                .collect()
+        };
+
+        // Build list items
+        let items: RVec<ListItem> = filtered.iter().map(|s| s.to_list_item()).collect();
+
+        let sections = RVec::from(vec![ListSection {
+            title: ROption::RSome(RString::from(format!("Screenshots ({})", filtered.len()))),
+            items,
+        }]);
+
+        let view = ExtensionView::List(ListView {
+            title: RString::from("Browse Screenshots"),
+            search_bar: ROption::RSome(SearchBarConfig {
+                placeholder: RString::from("Filter screenshots..."),
+                throttle_ms: 100,
+            }),
+            sections,
+            empty_state: ROption::RSome(EmptyState {
+                icon: ROption::RSome(IconSource::SystemIcon {
+                    name: RString::from("photo"),
+                }),
+                title: RString::from("No screenshots found"),
+                description: ROption::RSome(RString::from(format!("No images found in {folder}"))),
+                actions: RVec::new(),
+            }),
+            show_preview: true,
+        });
+
+        match ctx.host.render_view(view) {
+            RResult::ROk(_) => ExtensionApiResult::ROk(()),
+            RResult::RErr(e) => ExtensionApiResult::RErr(e),
+        }
+    }
+}
+
+/// Screenshot Browser Extension
+pub struct ScreenshotBrowserExtension {
+    ctx: Option<ExtensionContext>,
+}
+
+impl ScreenshotBrowserExtension {
+    fn new() -> Self {
+        Self { ctx: None }
+    }
+}
+
+impl Extension for ScreenshotBrowserExtension {
+    fn manifest(&self) -> ExtensionManifest {
+        ExtensionManifest {
+            id: RString::from("com.photoncast.screenshots"),
+            name: RString::from("Screenshot Browser"),
+            version: RString::from("1.0.0"),
+            description: ROption::RSome(RString::from("Browse and manage screenshots")),
+            author: ROption::RSome(RString::from("PhotonCast")),
+            license: ROption::RSome(RString::from("MIT")),
+            homepage: ROption::RSome(RString::from("https://github.com/photoncast/photoncast")),
+            min_photoncast_version: ROption::RNone,
+            api_version: 1,
+        }
+    }
+
+    fn activate(&mut self, ctx: ExtensionContext) -> ExtensionApiResult<()> {
+        self.ctx = Some(ctx);
+        ExtensionApiResult::ROk(())
+    }
+
+    fn deactivate(&mut self) -> ExtensionApiResult<()> {
+        self.ctx = None;
+        ExtensionApiResult::ROk(())
+    }
+
+    fn search_provider(&self) -> ROption<ExtensionSearchProvider_TO<'static, RBox<()>>> {
+        // This extension uses view mode, not search mode
+        ROption::RNone
+    }
+
+    fn commands(&self) -> RVec<ExtensionCommand> {
+        RVec::from(vec![ExtensionCommand {
+            id: RString::from("browse"),
+            name: RString::from("Browse Screenshots"),
+            mode: CommandMode::View,
+            keywords: RVec::from(vec![
+                RString::from("screenshot"),
+                RString::from("image"),
+                RString::from("capture"),
+                RString::from("snip"),
+            ]),
+            handler: CommandHandler::new(BrowseScreenshotsHandler),
+            icon: ROption::RSome(IconSource::SystemIcon {
+                name: RString::from("photo.on.rectangle"),
+            }),
+            subtitle: ROption::RSome(RString::from("Browse and manage screenshots")),
+            permissions: RVec::from(vec![
+                RString::from("clipboard"),
+                RString::from("filesystem"),
+            ]),
+        }])
+    }
+}
+
+/// Creates the extension instance (called by PhotonCast)
+#[no_mangle]
+pub extern "C" fn create_extension() -> ExtensionBox {
+    Extension_TO::from_value(ScreenshotBrowserExtension::new(), TD_Opaque)
+}
+
+#[abi_stable::export_root_module]
+fn instantiate_root_module() -> ExtensionApiRootModule_Ref {
+    ExtensionApiRootModule { create_extension }.leak_into_prefix()
+}

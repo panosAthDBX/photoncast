@@ -22,6 +22,8 @@ photoncast-timer = { path = "../photoncast-timer" }
 photoncast-window = { path = "../photoncast-window" }
 photoncast-calendar = { path = "../photoncast-calendar" }
 photoncast-apps = { path = "../photoncast-apps" }
+photoncast-extension-api = { path = "../photoncast-extension-api" }
+photoncast-theme = { path = "../photoncast-theme" }
 
 # GPUI & UI
 gpui.workspace = true
@@ -50,6 +52,15 @@ directories.workspace = true
 # Performance
 rayon.workspace = true
 lru.workspace = true
+
+# Regular Expressions
+regex.workspace = true
+
+# File opening
+open = "5"
+
+# ABI stability
+abi_stable.workspace = true
 
 # macOS Integration
 plist.workspace = true

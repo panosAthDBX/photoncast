@@ -4,6 +4,8 @@ pub mod apps;
 pub mod apps_manage;
 pub mod calendar;
 pub mod commands;
+pub mod custom_commands;
+pub mod extension;
 pub mod files;
 pub mod optimized_apps;
 pub mod quicklinks;
@@ -14,6 +16,8 @@ pub use apps::AppProvider;
 pub use apps_manage::AppsProvider;
 pub use calendar::CalendarProvider;
 pub use commands::CommandProvider;
+pub use custom_commands::CustomCommandProvider;
+pub use extension::ExtensionProvider;
 pub use files::{FileProvider, FileUsageTracker, NoOpFileTracker, DEFAULT_FILE_MAX_RESULTS};
 pub use optimized_apps::OptimizedAppProvider;
 pub use quicklinks::QuickLinksProvider;
@@ -37,4 +41,9 @@ pub trait SearchProvider: Send + Sync {
     /// * `query` - The search query.
     /// * `max_results` - Maximum number of results to return.
     fn search(&self, query: &str, max_results: usize) -> Vec<SearchResult>;
+
+    /// Returns a reference to the provider as `Any` for downcasting.
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
 }

@@ -1,0 +1,18 @@
+schema_version = "1"
+
+[extension]
+id = "com.photoncast.settings"
+name = "System Preferences"
+version = "1.0.0"
+description = "Open System Settings panes quickly"
+api_version = "1"
+
+[entry]
+kind = "native"
+path = "lib/libsystem_preferences.dylib"
+
+[[commands]]
+id = "open-settings"
+name = "Open System Settings"
+mode = "view"
+keywords = ["settings", "preferences", "system"]

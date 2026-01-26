@@ -45,7 +45,12 @@ rusqlite.workspace = true
 # Search
 nucleo.workspace = true
 
+# ABI & Dynamic Loading
+abi_stable.workspace = true
+libloading.workspace = true
+
 # Productivity modules
+photoncast-extension-api = { path = "../photoncast-extension-api" }
 photoncast-quicklinks = { path = "../photoncast-quicklinks", default-features = false }
 photoncast-timer = { path = "../photoncast-timer", default-features = false }
 photoncast-window = { path = "../photoncast-window", default-features = false }
@@ -61,6 +66,7 @@ core-foundation-sys.workspace = true
 # Native Spotlight integration via objc2
 objc2.workspace = true
 objc2-foundation.workspace = true
+objc2-app-kit.workspace = true
 block2.workspace = true
 
 # File System Watching
@@ -80,6 +86,11 @@ parking_lot.workspace = true
 directories.workspace = true
 dirs.workspace = true
 url.workspace = true
+regex.workspace = true
+semver.workspace = true
+
+# Security
+security-framework.workspace = true
 
 # Caching
 lru.workspace = true

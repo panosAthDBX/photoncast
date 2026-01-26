@@ -99,6 +99,16 @@ block2 = "0.6"
 # File System Watching
 notify = "6.1"
 
+# ABI & Dynamic Loading
+abi_stable = "0.11"
+libloading = "0.8"
+
+# Regular Expressions
+regex = "1"
+
+# SemVer
+semver = "1"
+
 # Directory Traversal
 walkdir = "2.5"
 
@@ -115,6 +125,9 @@ dirs = "5.0"
 hostname = "0.4"
 url = "2.5"
 libc = "0.2"
+
+# Security (macOS Keychain)
+security-framework = "2.10"
 
 # Performance
 rayon = "1.10"

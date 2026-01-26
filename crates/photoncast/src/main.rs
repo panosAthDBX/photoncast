@@ -39,6 +39,7 @@ use tracing_subscriber::EnvFilter;
 
 mod app_events;
 mod constants;
+mod extension_views;
 mod file_search_helper;
 mod file_search_view;
 mod launcher;
@@ -1434,21 +1435,17 @@ fn open_create_quicklink_window(
 
     match cx.open_window(
         WindowOptions {
-            titlebar: Some(TitlebarOptions {
-                title: Some("Create Quicklink".into()),
-                appears_transparent: true,
-                traffic_light_position: Some(point(px(9.0), px(9.0))),
-            }),
+            titlebar: None,
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
             show: true,
-            kind: WindowKind::Normal,
+            kind: WindowKind::PopUp,
             is_movable: true,
             display_id: cx.displays().first().map(|d| d.id()),
-            window_background: WindowBackgroundAppearance::Blurred,
+            window_background: WindowBackgroundAppearance::Opaque,
             app_id: Some("app.photoncast.createquicklink".to_string()),
             window_min_size: Some(size(px(420.0), px(400.0))),
-            window_decorations: Some(WindowDecorations::Client),
+            window_decorations: None,
         },
         move |cx| {
             cx.activate(true);
@@ -1556,21 +1553,17 @@ fn open_argument_input_window(
 
     match cx.open_window(
         WindowOptions {
-            titlebar: Some(TitlebarOptions {
-                title: Some(format!("Quick Link: {}", link_name).into()),
-                appears_transparent: true,
-                traffic_light_position: Some(point(px(9.0), px(9.0))),
-            }),
+            titlebar: None,
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
             show: true,
-            kind: WindowKind::Normal,
+            kind: WindowKind::PopUp,
             is_movable: true,
             display_id: cx.displays().first().map(|d| d.id()),
-            window_background: WindowBackgroundAppearance::Blurred,
+            window_background: WindowBackgroundAppearance::Opaque,
             app_id: Some("app.photoncast.argumentinput".to_string()),
             window_min_size: Some(size(px(360.0), px(200.0))),
-            window_decorations: Some(WindowDecorations::Client),
+            window_decorations: None,
         },
         move |cx| {
             cx.activate(true);
@@ -1634,21 +1627,17 @@ fn open_manage_quicklinks_window(
 
     match cx.open_window(
         WindowOptions {
-            titlebar: Some(TitlebarOptions {
-                title: Some("Manage Quicklinks".into()),
-                appears_transparent: true,
-                traffic_light_position: Some(point(px(9.0), px(9.0))),
-            }),
+            titlebar: None,
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
             show: true,
-            kind: WindowKind::Normal,
+            kind: WindowKind::PopUp,
             is_movable: true,
             display_id: cx.displays().first().map(|d| d.id()),
-            window_background: WindowBackgroundAppearance::Blurred,
+            window_background: WindowBackgroundAppearance::Opaque,
             app_id: Some("app.photoncast.managequicklinks".to_string()),
             window_min_size: Some(size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
-            window_decorations: Some(WindowDecorations::Client),
+            window_decorations: None,
         },
         move |cx| {
             cx.activate(true);
