@@ -358,7 +358,7 @@ impl PhotonCastApp {
         }
     }
 
-    /// Accepts permissions for an extension and optionally executes a pending command.
+    /// Accepts permissions for an extension and loads it.
     ///
     /// Call this after the user approves the permissions dialog.
     pub fn accept_extension_permissions(
@@ -368,6 +368,11 @@ impl PhotonCastApp {
         let mut manager = self.extension_manager.write();
         manager
             .accept_permissions(extension_id)
+            .map_err(|e| ExtensionLaunchError::Other(e.to_string()))?;
+
+        // Now load and activate the extension since permissions are granted
+        manager
+            .load_and_activate(extension_id)
             .map_err(|e| ExtensionLaunchError::Other(e.to_string()))
     }
 
