@@ -779,10 +779,6 @@ impl ExtensionManager {
             }
 
             for command in loaded.instance.commands() {
-                if !matches!(command.mode, photoncast_extension_api::CommandMode::Search) {
-                    continue;
-                }
-
                 let name = command.name.to_string();
                 let mut best_score = command_matcher
                     .score(query, &name)
@@ -845,27 +841,20 @@ impl ExtensionManager {
             }
         }
 
-        // Also search commands from unloaded but enabled extensions (need permissions)
+        // Also search commands from unloaded but enabled extensions
         for record in self.registry.list() {
             // Skip if already loaded or disabled
             if self.loaded.contains_key(&record.manifest.extension.id) || !record.enabled {
                 continue;
             }
 
-            // Check if this extension needs permissions consent
-            let needs_consent = self.check_permissions_consent(&record.manifest.extension.id).is_some();
-            if !needs_consent {
-                continue; // If it doesn't need consent, something else is blocking load
-            }
-
             let extension_id = &record.manifest.extension.id;
             let extension_name = &record.manifest.extension.name;
 
-            for command in &record.manifest.commands {
-                if command.mode != "search" {
-                    continue;
-                }
+            // Check if this extension needs permissions consent
+            let needs_consent = self.check_permissions_consent(extension_id).is_some();
 
+            for command in &record.manifest.commands {
                 let name = &command.name;
                 let mut best_score = command_matcher
                     .score(query, name)
@@ -895,10 +884,13 @@ impl ExtensionManager {
                     continue;
                 };
 
-                let subtitle = command
-                    .subtitle
-                    .clone()
-                    .unwrap_or_else(|| format!("{} (requires permissions)", extension_name));
+                let subtitle = command.subtitle.clone().unwrap_or_else(|| {
+                    if needs_consent {
+                        format!("{} (requires permissions)", extension_name)
+                    } else {
+                        extension_name.clone()
+                    }
+                });
 
                 let icon = command
                     .icon
@@ -920,7 +912,7 @@ impl ExtensionManager {
                         extension_id: extension_id.to_string(),
                         command_id: command.id.clone(),
                     },
-                    requires_permissions: true,
+                    requires_permissions: needs_consent,
                 });
             }
         }
