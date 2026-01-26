@@ -2799,7 +2799,7 @@ impl LauncherWindow {
                                 let view_handle = cx.view().downgrade();
                                 let action_callback: crate::extension_views::ActionCallback =
                                     std::sync::Arc::new(move |action_id, cx| {
-                                        if action_id == "__cancel__" {
+                                        if action_id == crate::extension_views::CLOSE_VIEW_ACTION {
                                             if let Some(view) = view_handle.upgrade() {
                                                 view.update(cx, |launcher, cx| {
                                                     launcher.close_extension_view(cx);
@@ -2951,7 +2951,7 @@ impl LauncherWindow {
                             let view_handle = cx.view().downgrade();
                             let action_callback: crate::extension_views::ActionCallback =
                                 std::sync::Arc::new(move |action_id, cx| {
-                                    if action_id == "__cancel__" {
+                                    if action_id == crate::extension_views::CLOSE_VIEW_ACTION {
                                         if let Some(view) = view_handle.upgrade() {
                                             view.update(cx, |launcher, cx| {
                                                 launcher.close_extension_view(cx);

@@ -17,6 +17,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+mod actions;
 mod colors;
 mod design_system;
 pub mod detail_view;
@@ -25,6 +26,8 @@ pub mod grid_view;
 pub mod list_view;
 mod navigation;
 mod preview;
+
+pub use actions::CLOSE_VIEW_ACTION;
 
 pub use colors::ExtensionViewColors;
 pub use design_system::{

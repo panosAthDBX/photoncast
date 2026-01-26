@@ -9,8 +9,9 @@
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use photoncast_extension_api::{Action, ActionHandler, DetailView, MetadataItem, MetadataValue};
+use photoncast_extension_api::{Action, DetailView, MetadataItem, MetadataValue};
 
+use super::actions::{execute_and_maybe_close, CLOSE_VIEW_ACTION};
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
 use super::ActionCallback;
@@ -65,60 +66,9 @@ impl ExtensionDetailView {
         }
     }
 
-    /// Executes an action.
+    /// Executes an action using the shared action execution logic.
     fn execute_action(&mut self, action: &Action, cx: &mut ViewContext<Self>) {
-        // Track if this action should close the extension view
-        let mut should_close = false;
-        
-        match &action.handler {
-            ActionHandler::Callback => {
-                if let Some(callback) = &self.action_callback {
-                    callback(action.id.as_str(), cx);
-                }
-            },
-            ActionHandler::OpenUrl(url) => {
-                let url = url.to_string();
-                let _ = open::that(&url);
-                should_close = true;
-            },
-            ActionHandler::OpenFile(path) => {
-                let path = path.to_string();
-                let _ = open::that(&path);
-                should_close = true;
-            },
-            ActionHandler::RevealInFinder(path) => {
-                let path = path.to_string();
-                let _ = std::process::Command::new("open")
-                    .args(["-R", &path])
-                    .spawn();
-                should_close = true;
-            },
-            ActionHandler::QuickLook(path) => {
-                let path = path.to_string();
-                let _ = std::process::Command::new("qlmanage")
-                    .args(["-p", &path])
-                    .spawn();
-                // Don't close for QuickLook - user may want to continue browsing
-            },
-            ActionHandler::CopyToClipboard(text) => {
-                let text = text.to_string();
-                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                should_close = true;
-            },
-            ActionHandler::PushView(_view) => {
-                // TODO: Implement view navigation
-            },
-            ActionHandler::SubmitForm => {
-                // Not applicable for detail view
-            },
-        }
-        
-        // Close the extension view for terminal actions
-        if should_close {
-            if let Some(callback) = &self.action_callback {
-                callback("__cancel__", cx);
-            }
-        }
+        execute_and_maybe_close(action, &self.action_callback, cx);
     }
 
     // ========================================================================
@@ -134,7 +84,7 @@ impl ExtensionDetailView {
 
     fn cancel(&mut self, _: &Cancel, cx: &mut ViewContext<Self>) {
         if let Some(callback) = &self.action_callback {
-            callback("__cancel__", cx);
+            callback(CLOSE_VIEW_ACTION, cx);
         }
     }
 

@@ -14,10 +14,11 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use abi_stable::std_types::RVec;
 use photoncast_extension_api::{
-    Accessory, Action, ActionHandler, EmptyState, IconSource, ListItem, ListSection, ListView,
+    Accessory, Action, EmptyState, IconSource, ListItem, ListSection, ListView,
     ROption,
 };
 
+use super::actions::{execute_and_maybe_close, CLOSE_VIEW_ACTION};
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
 use super::preview::ExtensionPreviewPane;
@@ -339,65 +340,12 @@ impl ExtensionListView {
         }
     }
 
-    /// Executes an action.
+    /// Executes an action using the shared action execution logic.
     fn execute_action(&mut self, action: &Action, cx: &mut ViewContext<Self>) {
         // Close actions menu after executing
         self.show_actions_menu = false;
         
-        // Track if this action should close the extension view
-        let mut should_close = false;
-        
-        match &action.handler {
-            ActionHandler::Callback => {
-                if let Some(callback) = &self.action_callback {
-                    callback(action.id.as_str(), cx);
-                }
-            },
-            ActionHandler::OpenUrl(url) => {
-                let url = url.to_string();
-                let _ = open::that(&url);
-                should_close = true;
-            },
-            ActionHandler::OpenFile(path) => {
-                let path = path.to_string();
-                let _ = open::that(&path);
-                should_close = true;
-            },
-            ActionHandler::RevealInFinder(path) => {
-                let path = path.to_string();
-                // Use macOS-specific reveal command
-                let _ = std::process::Command::new("open")
-                    .args(["-R", &path])
-                    .spawn();
-                should_close = true;
-            },
-            ActionHandler::QuickLook(path) => {
-                let path = path.to_string();
-                // Use macOS Quick Look via qlmanage
-                let _ = std::process::Command::new("qlmanage")
-                    .args(["-p", &path])
-                    .spawn();
-                // Don't close for QuickLook - user may want to continue browsing
-            },
-            ActionHandler::CopyToClipboard(text) => {
-                let text = text.to_string();
-                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                should_close = true;
-            },
-            ActionHandler::PushView(_view) => {
-                // TODO: Implement view navigation
-            },
-            ActionHandler::SubmitForm => {
-                // Not applicable for list view
-            },
-        }
-        
-        // Close the extension view for terminal actions
-        if should_close {
-            if let Some(callback) = &self.action_callback {
-                callback("__cancel__", cx);
-            }
-        }
+        execute_and_maybe_close(action, &self.action_callback, cx);
         
         cx.notify();
     }
@@ -486,7 +434,7 @@ impl ExtensionListView {
         } else {
             // Close the view
             if let Some(callback) = &self.action_callback {
-                callback("__cancel__", cx);
+                callback(CLOSE_VIEW_ACTION, cx);
             }
         }
     }

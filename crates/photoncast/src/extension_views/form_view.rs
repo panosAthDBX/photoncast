@@ -16,6 +16,7 @@ use gpui::*;
 use abi_stable::std_types::RVec;
 use photoncast_extension_api::{DropdownOption, FieldType, FormField, FormView, ROption};
 
+use super::actions::CLOSE_VIEW_ACTION;
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
 use super::ActionCallback;
@@ -388,7 +389,7 @@ impl ExtensionFormView {
             self.dropdown_open = false;
             cx.notify();
         } else if let Some(callback) = &self.action_callback {
-            callback("__cancel__", cx);
+            callback(CLOSE_VIEW_ACTION, cx);
         }
     }
 

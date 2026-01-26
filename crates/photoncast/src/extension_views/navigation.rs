@@ -19,7 +19,7 @@ use photoncast_extension_api::{ExtensionView, ListItem, ViewHandle, ViewHandleTr
 
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
-use super::{render_extension_view, ActionCallback};
+use super::{render_extension_view, ActionCallback, CLOSE_VIEW_ACTION};
 
 // ============================================================================
 // Actions
@@ -401,7 +401,7 @@ impl NavigationContainer {
         if !self.stack.can_pop() {
             // Can't pop - trigger cancel callback instead
             if let Some(callback) = &self.action_callback {
-                callback("__cancel__", cx);
+                callback(CLOSE_VIEW_ACTION, cx);
             }
             return;
         }
