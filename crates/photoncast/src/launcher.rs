@@ -2776,6 +2776,11 @@ impl LauncherWindow {
                                 let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
                                 self.extension_view = Some(rendered);
                                 self.extension_view_id = Some(extension_id.to_string());
+                                // Resize window to fit extension view
+                                crate::platform::resize_window(
+                                    crate::constants::LAUNCHER_WIDTH.0.into(),
+                                    crate::constants::EXPANDED_HEIGHT.0.into(),
+                                );
                                 cx.notify();
                             } else {
                                 self.hide(cx);
@@ -2903,6 +2908,11 @@ impl LauncherWindow {
                             let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
                             self.extension_view = Some(rendered);
                             self.extension_view_id = Some(ext_id.clone());
+                            // Resize window to fit extension view
+                            crate::platform::resize_window(
+                                crate::constants::LAUNCHER_WIDTH.0.into(),
+                                crate::constants::EXPANDED_HEIGHT.0.into(),
+                            );
                             cx.notify();
                         } else {
                             self.hide(cx);
@@ -3018,6 +3028,11 @@ impl LauncherWindow {
         if self.extension_view.is_some() {
             self.extension_view = None;
             self.extension_view_id = None;
+            // Resize window back to normal
+            crate::platform::resize_window(
+                crate::constants::LAUNCHER_WIDTH.0.into(),
+                crate::constants::LAUNCHER_HEIGHT.0.into(),
+            );
             cx.notify();
             return;
         }
