@@ -9,7 +9,8 @@ use std::time::Duration;
 use parking_lot::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::extensions::{ExtensionConfig, ExtensionManager};
+use crate::extensions::{ExtensionConfig, ExtensionManager, ExtensionManagerError};
+use crate::extensions::permissions::PermissionsDialog;
 use crate::indexer::IndexedApp;
 use crate::search::providers::{
     AppProvider, AppsProvider, CalendarProvider, CommandProvider, CustomCommandProvider,
@@ -46,6 +47,29 @@ impl Default for IntegrationConfig {
             max_total_results: 20,
             include_files: true,
             file_result_limit: 5,
+        }
+    }
+}
+
+/// Error type for extension command launch operations.
+#[derive(Debug)]
+pub enum ExtensionLaunchError {
+    /// Extension requires permissions consent before it can be loaded.
+    PermissionsConsentRequired {
+        extension_id: String,
+        dialog: PermissionsDialog,
+    },
+    /// Other errors (load failure, command not found, etc.)
+    Other(String),
+}
+
+impl std::fmt::Display for ExtensionLaunchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PermissionsConsentRequired { extension_id, .. } => {
+                write!(f, "Extension {} requires permissions consent", extension_id)
+            }
+            Self::Other(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -282,12 +306,14 @@ impl PhotonCastApp {
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` on success, or an error message on failure.
+    /// Returns `Ok(())` on success, or a structured error on failure.
+    /// If the extension requires permissions consent, returns
+    /// `ExtensionLaunchError::PermissionsConsentRequired` with the dialog info.
     pub fn launch_extension_command(
         &self,
         extension_id: &str,
         command_id: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), ExtensionLaunchError> {
         use abi_stable::std_types::ROption;
         use photoncast_extension_api::CommandArguments;
 
@@ -296,7 +322,16 @@ impl PhotonCastApp {
         // Load and activate if not already loaded
         if !manager.is_loaded(extension_id) {
             if let Err(e) = manager.load_and_activate(extension_id) {
-                return Err(format!("Failed to load extension: {e}"));
+                // Check if this is a permissions consent error
+                if let ExtensionManagerError::PermissionsConsentRequired { id, dialog } = e {
+                    return Err(ExtensionLaunchError::PermissionsConsentRequired {
+                        extension_id: id,
+                        dialog,
+                    });
+                }
+                return Err(ExtensionLaunchError::Other(format!(
+                    "Failed to load extension: {e}"
+                )));
             }
         }
 
@@ -316,8 +351,43 @@ impl PhotonCastApp {
                 );
                 Ok(())
             },
-            Err(e) => Err(format!("Failed to execute command: {e}")),
+            Err(e) => Err(ExtensionLaunchError::Other(format!(
+                "Failed to execute command: {e}"
+            ))),
         }
+    }
+
+    /// Accepts permissions for an extension and optionally executes a pending command.
+    ///
+    /// Call this after the user approves the permissions dialog.
+    pub fn accept_extension_permissions(
+        &self,
+        extension_id: &str,
+    ) -> Result<(), ExtensionLaunchError> {
+        let mut manager = self.extension_manager.write();
+        manager
+            .accept_permissions(extension_id)
+            .map_err(|e| ExtensionLaunchError::Other(e.to_string()))
+    }
+
+    /// Gets pending extensions requiring consent (for first-launch flow).
+    ///
+    /// Returns a list of (extension_id, dialog) pairs for extensions that need consent.
+    #[must_use]
+    pub fn get_extensions_requiring_consent(&self) -> Vec<(String, PermissionsDialog)> {
+        let manager = self.extension_manager.read();
+        let mut result = Vec::new();
+
+        for record in manager.registry().list() {
+            if record.enabled && !manager.is_loaded(&record.manifest.extension.id) {
+                if let Some(dialog) = manager.check_permissions_consent(&record.manifest.extension.id)
+                {
+                    result.push((record.manifest.extension.id.clone(), dialog));
+                }
+            }
+        }
+
+        result
     }
 
     /// Performs a search with timeout handling (Task 3.10.2).

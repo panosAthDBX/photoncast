@@ -16,7 +16,9 @@ pub use config_file::{
     default_config_dir, default_config_path, ensure_config_dir, ensure_config_file, load_config,
     load_config_from, save_config, save_config_to, ConfigFileError, ConfigManager, ConfigResult,
 };
-pub use integration::{IntegrationConfig, PhotonCastApp, SearchOutcome, SEARCH_TIMEOUT_MESSAGE};
+pub use integration::{
+    ExtensionLaunchError, IntegrationConfig, PhotonCastApp, SearchOutcome, SEARCH_TIMEOUT_MESSAGE,
+};
 pub use keybindings::{
     default_keybindings_path, Keybindings, KeybindingsError, KeybindingsResult, Shortcut,
 };

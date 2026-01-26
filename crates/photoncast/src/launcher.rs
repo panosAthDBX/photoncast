@@ -163,6 +163,8 @@ pub struct LauncherWindow {
     index_initialized: bool,
     /// Pending command awaiting confirmation (command and dialog info)
     pending_confirmation: Option<(SystemCommand, ConfirmationDialog)>,
+    /// Pending extension permissions consent request
+    pending_permissions_consent: Option<crate::permissions_dialog::PendingPermissionsConsent>,
     /// Current search mode (Normal or `FileSearch`)
     search_mode: SearchMode,
     /// File search view (shown when in FileSearch mode)
@@ -460,6 +462,7 @@ impl LauncherWindow {
             index_started,
             index_initialized: false,
             pending_confirmation: None,
+            pending_permissions_consent: None,
             search_mode: SearchMode::Normal,
             file_search_view: None,
             file_search_loading: false,
@@ -2679,17 +2682,39 @@ impl LauncherWindow {
                 },
                 SearchAction::ExecuteExtensionCommand { extension_id, command_id } => {
                     // Extension commands are executed via extension manager
-                    match self
+                    let result = self
                         .photoncast_app
                         .read()
-                        .launch_extension_command(extension_id, command_id)
-                    {
+                        .launch_extension_command(extension_id, command_id);
+
+                    match result {
                         Ok(()) => {
                             tracing::info!(
                                 extension_id = %extension_id,
                                 command_id = %command_id,
                                 "Extension command executed"
                             );
+                            self.hide(cx);
+                        },
+                        Err(photoncast_core::app::ExtensionLaunchError::PermissionsConsentRequired {
+                            extension_id: ext_id,
+                            dialog,
+                        }) => {
+                            // Show permissions consent dialog
+                            tracing::info!(
+                                extension_id = %ext_id,
+                                "Extension requires permissions consent"
+                            );
+                            self.pending_permissions_consent =
+                                Some(crate::permissions_dialog::PendingPermissionsConsent {
+                                    dialog,
+                                    pending_command: Some((
+                                        ext_id,
+                                        command_id.to_string(),
+                                    )),
+                                    is_first_launch: false,
+                                });
+                            cx.notify();
                         },
                         Err(e) => {
                             tracing::error!(
@@ -2698,9 +2723,9 @@ impl LauncherWindow {
                                 error = %e,
                                 "Failed to execute extension command"
                             );
+                            self.hide(cx);
                         },
                     }
-                    self.hide(cx);
                 },
             }
         }
@@ -2735,6 +2760,75 @@ impl LauncherWindow {
     fn cancel_confirmation(&mut self, cx: &mut ViewContext<Self>) {
         if self.pending_confirmation.is_some() {
             self.pending_confirmation = None;
+            cx.notify();
+        }
+    }
+
+    /// Accepts the pending permissions consent and optionally executes the pending command.
+    fn accept_permissions_consent(&mut self, cx: &mut ViewContext<Self>) {
+        if let Some(consent) = self.pending_permissions_consent.take() {
+            let extension_id = consent.dialog.extension_id.clone();
+            let pending_command = consent.pending_command.clone();
+
+            // Accept permissions
+            if let Err(e) = self
+                .photoncast_app
+                .read()
+                .accept_extension_permissions(&extension_id)
+            {
+                tracing::error!(
+                    extension_id = %extension_id,
+                    error = %e,
+                    "Failed to accept extension permissions"
+                );
+                cx.notify();
+                return;
+            }
+
+            tracing::info!(extension_id = %extension_id, "Permissions accepted");
+
+            // If there's a pending command, execute it now
+            if let Some((ext_id, cmd_id)) = pending_command {
+                let result = self
+                    .photoncast_app
+                    .read()
+                    .launch_extension_command(&ext_id, &cmd_id);
+
+                match result {
+                    Ok(()) => {
+                        tracing::info!(
+                            extension_id = %ext_id,
+                            command_id = %cmd_id,
+                            "Extension command executed after consent"
+                        );
+                        self.hide(cx);
+                    },
+                    Err(e) => {
+                        tracing::error!(
+                            extension_id = %ext_id,
+                            command_id = %cmd_id,
+                            error = %e,
+                            "Failed to execute extension command after consent"
+                        );
+                    },
+                }
+            }
+
+            cx.notify();
+        }
+    }
+
+    /// Denies the pending permissions consent and closes the dialog.
+    fn deny_permissions_consent(&mut self, cx: &mut ViewContext<Self>) {
+        if self.pending_permissions_consent.is_some() {
+            let extension_id = self
+                .pending_permissions_consent
+                .as_ref()
+                .map(|c| c.dialog.extension_id.clone());
+            self.pending_permissions_consent = None;
+            if let Some(id) = extension_id {
+                tracing::info!(extension_id = %id, "Permissions denied by user");
+            }
             cx.notify();
         }
     }
@@ -2785,6 +2879,12 @@ impl LauncherWindow {
         // If confirmation dialog is showing, cancel it first
         if self.pending_confirmation.is_some() {
             self.cancel_confirmation(cx);
+            return;
+        }
+
+        // If permissions consent dialog is showing, deny and close it
+        if self.pending_permissions_consent.is_some() {
+            self.deny_permissions_consent(cx);
             return;
         }
 
@@ -6100,6 +6200,211 @@ impl LauncherWindow {
         }
     }
 
+    /// Renders the extension permissions consent dialog
+    fn render_permissions_consent_dialog(
+        &self,
+        consent: &crate::permissions_dialog::PendingPermissionsConsent,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
+        let dialog = &consent.dialog;
+        let extension_name = dialog.extension_name.clone();
+        let permissions = dialog.permissions.clone();
+        let is_first_launch = consent.is_first_launch;
+
+        let launcher_colors = get_launcher_colors(cx);
+
+        div()
+            .id("permissions-overlay")
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(launcher_colors.overlay)
+            .child(
+                div()
+                    .id("permissions-dialog")
+                    .w(px(380.0))
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .p_5()
+                    .bg(launcher_colors.surface_elevated)
+                    .rounded(px(12.0))
+                    .border_1()
+                    .border_color(launcher_colors.border)
+                    .shadow_xl()
+                    // Header
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(
+                                        div()
+                                            .size(px(40.0))
+                                            .rounded(px(8.0))
+                                            .bg(launcher_colors.surface)
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .child(
+                                                div()
+                                                    .text_size(px(20.0))
+                                                    .child("🧩"),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(15.0))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(launcher_colors.text)
+                                            .child(if is_first_launch {
+                                                format!("\"{}\" wants to be enabled", extension_name)
+                                            } else {
+                                                format!("\"{}\" requires permissions", extension_name)
+                                            }),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .text_color(launcher_colors.text_muted)
+                                    .child("This extension requests access to:"),
+                            ),
+                    )
+                    // Permissions list
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .p_3()
+                            .bg(launcher_colors.surface)
+                            .rounded(px(8.0))
+                            .children(permissions.iter().map(|perm| {
+                                let name = perm.name.clone();
+                                let description = perm.description.clone();
+                                let accent = launcher_colors.accent;
+                                let text = launcher_colors.text;
+                                let text_muted = launcher_colors.text_muted;
+
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .gap_3()
+                                    .py_1()
+                                    .child(
+                                        div()
+                                            .size(px(24.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .rounded(px(4.0))
+                                            .bg(accent.opacity(0.1))
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .text_color(accent)
+                                                    .child(match perm.id {
+                                                        photoncast_core::extensions::permissions::PermissionType::Network => "🌐",
+                                                        photoncast_core::extensions::permissions::PermissionType::Clipboard => "📋",
+                                                        photoncast_core::extensions::permissions::PermissionType::Notifications => "🔔",
+                                                        photoncast_core::extensions::permissions::PermissionType::Filesystem => "📁",
+                                                    }),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_px()
+                                            .child(
+                                                div()
+                                                    .text_size(px(13.0))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(text)
+                                                    .child(name),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .text_color(text_muted)
+                                                    .child(description),
+                                            ),
+                                    )
+                            })),
+                    )
+                    // Action buttons
+                    .child({
+                        let accept_bg = launcher_colors.accent;
+                        let accept_hover = launcher_colors.accent_hover;
+                        let deny_bg = launcher_colors.surface;
+                        let deny_hover = launcher_colors.surface_hover;
+                        let text = launcher_colors.text;
+                        let border = launcher_colors.border;
+
+                        div()
+                            .flex()
+                            .gap_3()
+                            .pt_2()
+                            .child(
+                                div()
+                                    .id("deny-button")
+                                    .flex_1()
+                                    .h(px(36.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(8.0))
+                                    .bg(deny_bg)
+                                    .border_1()
+                                    .border_color(border)
+                                    .hover(move |s| s.bg(deny_hover))
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, cx| {
+                                        this.deny_permissions_consent(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(text)
+                                            .child("Deny"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("accept-button")
+                                    .flex_1()
+                                    .h(px(36.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(8.0))
+                                    .bg(accept_bg)
+                                    .hover(move |s| s.bg(accept_hover))
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, cx| {
+                                        this.accept_permissions_consent(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.0))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(hsla(0.0, 0.0, 1.0, 1.0))
+                                            .child("Enable"),
+                                    ),
+                            )
+                    }),
+            )
+    }
+
     /// Renders the uninstall preview dialog
     fn render_uninstall_preview(
         &self,
@@ -7058,6 +7363,10 @@ impl Render for LauncherWindow {
             // Confirmation dialog overlay
             .when_some(pending_dialog, |el, dialog| {
                 el.child(self.render_confirmation_dialog(&dialog, cx))
+            })
+            // Extension permissions consent dialog overlay
+            .when_some(self.pending_permissions_consent.clone(), |el, consent| {
+                el.child(self.render_permissions_consent_dialog(&consent, cx))
             })
             // Task 7.5: Uninstall preview overlay
             .when_some(self.uninstall_preview.clone(), |el, preview| {

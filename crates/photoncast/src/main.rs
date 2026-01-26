@@ -43,6 +43,7 @@ mod extension_views;
 mod file_search_helper;
 mod file_search_view;
 mod launcher;
+mod permissions_dialog;
 mod platform;
 mod preferences_window;
 
