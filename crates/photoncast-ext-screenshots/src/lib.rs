@@ -271,7 +271,7 @@ impl CommandHandlerTrait for BrowseScreenshotsHandler {
                     None
                 }
             })
-            .unwrap_or_else(|| "~/Desktop".to_string());
+            .unwrap_or_else(|| "~/Documents/screenshots".to_string());
 
         // Scan for screenshots
         let screenshots = scan_screenshots(&folder);
