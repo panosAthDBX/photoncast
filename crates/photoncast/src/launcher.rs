@@ -2779,6 +2779,10 @@ impl LauncherWindow {
                                     "Extension rendered a view, displaying it"
                                 );
                                 let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
+                                // Focus the extension view so it receives keyboard events
+                                if let Ok(list_view) = rendered.clone().downcast::<crate::extension_views::ExtensionListView>() {
+                                    cx.focus_view(&list_view);
+                                }
                                 self.extension_view = Some(rendered);
                                 self.extension_view_id = Some(extension_id.to_string());
                                 // Resize window to fit extension view
@@ -2911,6 +2915,10 @@ impl LauncherWindow {
                                 "Extension rendered a view, displaying it"
                             );
                             let rendered = crate::extension_views::render_extension_view(ext_view, None, cx);
+                            // Focus the extension view so it receives keyboard events
+                            if let Ok(list_view) = rendered.clone().downcast::<crate::extension_views::ExtensionListView>() {
+                                cx.focus_view(&list_view);
+                            }
                             self.extension_view = Some(rendered);
                             self.extension_view_id = Some(ext_id.clone());
                             // Resize window to fit extension view
@@ -7418,6 +7426,7 @@ impl Render for LauncherWindow {
             || pending_dialog.is_some();
 
         // Main container with rounded corners and shadow
+        // Note: When extension view is active, it handles its own focus and keyboard events
         div()
             .track_focus(&self.focus_handle)
             .key_context("LauncherWindow")
