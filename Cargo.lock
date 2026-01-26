@@ -4464,6 +4464,7 @@ dependencies = [
  "abi_stable",
  "chrono",
  "dirs 5.0.1",
+ "image",
  "photoncast-extension-api",
 ]
 

@@ -12,16 +12,81 @@ use abi_stable::prefix_type::PrefixTypeTrait;
 use abi_stable::sabi_trait::prelude::TD_Opaque;
 use abi_stable::std_types::{RBox, RDuration, ROption, RResult, RString, RVec};
 use chrono::{DateTime, Local};
+use image::GenericImageView;
 use photoncast_extension_api::prelude::*;
 use photoncast_extension_api::{
     CommandHandlerTrait, ExtensionApiResult, ExtensionManifest, ExtensionSearchProvider_TO,
     Extension_TO,
 };
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 /// Supported image extensions
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp"];
+
+/// Thumbnail size (max width or height)
+const THUMBNAIL_SIZE: u32 = 400;
+
+/// Gets the thumbnail cache directory
+fn get_thumbnail_cache_dir() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("PhotonCast")
+        .join("thumbnails")
+}
+
+/// Generates a cache key for an image based on path and modification time
+fn thumbnail_cache_key(path: &PathBuf, modified: SystemTime) -> String {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    if let Ok(duration) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+        duration.as_secs().hash(&mut hasher);
+    }
+    format!("{:x}.png", hasher.finish())
+}
+
+/// Gets or generates a thumbnail for an image.
+/// Returns the thumbnail path if successful, or None if generation failed.
+fn get_or_create_thumbnail(path: &PathBuf, modified: SystemTime) -> Option<PathBuf> {
+    let cache_dir = get_thumbnail_cache_dir();
+    let cache_key = thumbnail_cache_key(path, modified);
+    let thumbnail_path = cache_dir.join(&cache_key);
+
+    // Return cached thumbnail if it exists
+    if thumbnail_path.exists() {
+        return Some(thumbnail_path);
+    }
+
+    // Create cache directory if needed
+    if std::fs::create_dir_all(&cache_dir).is_err() {
+        return None;
+    }
+
+    // Load and resize the image
+    let img = match image::open(path) {
+        Ok(img) => img,
+        Err(_) => return None,
+    };
+
+    // Only create thumbnail if image is larger than thumbnail size
+    let (width, height) = img.dimensions();
+    if width <= THUMBNAIL_SIZE && height <= THUMBNAIL_SIZE {
+        // Image is small enough, use original
+        return Some(path.clone());
+    }
+
+    // Resize maintaining aspect ratio
+    let thumbnail = img.thumbnail(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+
+    // Save thumbnail
+    if thumbnail.save(&thumbnail_path).is_err() {
+        return None;
+    }
+
+    Some(thumbnail_path)
+}
 
 /// Represents a screenshot file
 #[derive(Debug, Clone)]
@@ -192,9 +257,12 @@ impl Screenshot {
         }
     }
 
-    /// Creates a preview for this screenshot
+    /// Creates a preview for this screenshot using a thumbnail for large images
     fn preview(&self) -> Preview {
-        let path_str = self.path.to_string_lossy().to_string();
+        // Use thumbnail for preview (generates if needed, falls back to original)
+        let preview_path = get_or_create_thumbnail(&self.path, self.modified)
+            .unwrap_or_else(|| self.path.clone());
+        let path_str = preview_path.to_string_lossy().to_string();
         Preview::Image {
             source: RString::from(path_str),
             alt: RString::from(self.name.as_str()),

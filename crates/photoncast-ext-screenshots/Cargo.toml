@@ -13,3 +13,4 @@ photoncast-extension-api = { path = "../photoncast-extension-api" }
 abi_stable = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
+image = "0.25"
