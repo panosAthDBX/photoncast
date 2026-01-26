@@ -157,6 +157,8 @@ impl ExtensionPreviewPane {
 
     /// Renders an image preview.
     fn render_image(&self, source: &str, alt: &str) -> impl IntoElement {
+        // Use PathBuf to load from filesystem (not as an asset)
+        let path = std::path::PathBuf::from(source);
         div()
             .flex()
             .flex_col()
@@ -168,7 +170,7 @@ impl ExtensionPreviewPane {
                     .overflow_hidden()
                     .rounded(px(8.0))
                     .child(
-                        img(SharedString::from(source.to_string()))
+                        img(path)
                             .max_w_full()
                     ),
             )

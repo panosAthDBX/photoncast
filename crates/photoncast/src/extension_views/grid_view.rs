@@ -296,8 +296,10 @@ impl ExtensionGridView {
     fn render_image(&self, source: &ImageSource, colors: &ExtensionViewColors) -> impl IntoElement {
         match source {
             ImageSource::Path(path) => {
+                // Use PathBuf to load from filesystem (not as an asset)
+                let file_path = std::path::PathBuf::from(path.to_string());
                 div().child(
-                    img(SharedString::from(path.to_string()))
+                    img(file_path)
                         .w(px(80.0))
                         .h(px(80.0))
                         .object_fit(gpui::ObjectFit::Contain),
