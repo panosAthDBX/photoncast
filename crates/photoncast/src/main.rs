@@ -1385,7 +1385,7 @@ fn open_preferences_window(cx: &mut AppContext) -> Option<WindowHandle<Preferenc
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
             show: true,
-            kind: WindowKind::Normal,
+            kind: WindowKind::PopUp,
             is_movable: true,
             display_id: cx.displays().first().map(|d| d.id()),
             window_background: WindowBackgroundAppearance::Blurred,

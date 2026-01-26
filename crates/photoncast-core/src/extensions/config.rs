@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 /// Environment variable to override dev mode setting.
 pub const ENV_DEV_EXTENSIONS: &str = "PHOTONCAST_DEV_EXTENSIONS";
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionConfig {
-    #[serde(default)]
+    #[serde(default = "default_enabled")]
     pub enabled: bool,
     #[serde(default)]
     pub dev_mode: bool,
@@ -14,6 +14,21 @@ pub struct ExtensionConfig {
     /// Hot-reload debounce duration in milliseconds.
     #[serde(default = "default_reload_debounce_ms")]
     pub reload_debounce_ms: u64,
+}
+
+const fn default_enabled() -> bool {
+    true
+}
+
+impl Default for ExtensionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dev_mode: false,
+            dev_paths: Vec::new(),
+            reload_debounce_ms: default_reload_debounce_ms(),
+        }
+    }
 }
 
 const fn default_reload_debounce_ms() -> u64 {

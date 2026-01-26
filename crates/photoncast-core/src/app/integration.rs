@@ -114,8 +114,30 @@ impl PhotonCastApp {
 
         // Initialize extension manager and discover extensions
         let extension_config = ExtensionConfig::default();
+        info!(
+            enabled = extension_config.enabled,
+            dev_mode = extension_config.effective_dev_mode(),
+            "Initializing extension system"
+        );
         let mut extension_manager = ExtensionManager::new();
         extension_manager.discover(&extension_config);
+        
+        // Log discovered extensions
+        {
+            let discovered = extension_manager.registry().list();
+            if discovered.is_empty() {
+                info!(
+                    extensions_dir = %crate::utils::paths::data_dir().join("extensions").display(),
+                    "No extensions discovered. Place extensions in the extensions directory."
+                );
+            } else {
+                info!(
+                    count = discovered.len(),
+                    extensions = ?discovered.iter().map(|r| &r.manifest.extension.id).collect::<Vec<_>>(),
+                    "Discovered extensions"
+                );
+            }
+        }
         let extension_manager = Arc::new(RwLock::new(extension_manager));
 
         // Create the search engine with configured settings
