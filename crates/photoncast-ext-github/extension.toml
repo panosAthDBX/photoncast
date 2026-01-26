@@ -23,11 +23,11 @@ keywords = ["github", "repo", "repository"]
 
 [[preferences]]
 name = "api_token"
-kind = "secret"
+type = "secret"
 title = "Personal Access Token"
 description = "GitHub PAT for authenticated requests"
 
 [[preferences]]
 name = "default_org"
-kind = "string"
+type = "string"
 title = "Default Organization"
