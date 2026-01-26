@@ -9,7 +9,7 @@ api_version = "1"
 
 [entry]
 kind = "native"
-path = "lib/libscreenshots.dylib"
+path = "libphotoncast_ext_screenshots.dylib"
 
 [permissions]
 clipboard = true

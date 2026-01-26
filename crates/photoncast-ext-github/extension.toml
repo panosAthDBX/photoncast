@@ -9,7 +9,7 @@ api_version = "1"
 
 [entry]
 kind = "native"
-path = "lib/libgithub.dylib"
+path = "libphotoncast_ext_github.dylib"
 
 [permissions]
 network = true
