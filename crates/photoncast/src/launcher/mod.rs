@@ -242,6 +242,7 @@ pub struct LauncherWindow {
     results_scroll_handle: gpui::ScrollHandle,
     previous_frontmost_app: Option<String>,
     previous_frontmost_window_title: Option<String>,
+    _appearance_subscription: Option<Subscription>,
 }
 
 #[derive(Clone)]
@@ -522,7 +523,33 @@ impl LauncherWindow {
             results_scroll_handle: gpui::ScrollHandle::new(),
             previous_frontmost_app: None,
             previous_frontmost_window_title: None,
+            _appearance_subscription: None,
         };
+
+        // Set up appearance observation for auto theme switching.
+        // Stored on the window so the subscription lives as long as the window.
+        window._appearance_subscription = Some(cx.observe_window_appearance(
+            |_view: &mut Self, cx| {
+                use photoncast_core::platform::appearance::flavor_from_window_appearance;
+                let appearance = cx.window_appearance();
+                let current_theme = cx.try_global::<PhotonTheme>().cloned();
+                if let Some(theme) = current_theme {
+                    if theme.auto_sync {
+                        let new_flavor = flavor_from_window_appearance(appearance);
+                        if theme.flavor != new_flavor {
+                            tracing::info!(
+                                "System appearance changed: {:?} -> {:?}",
+                                theme.flavor, new_flavor
+                            );
+                            let new_theme =
+                                PhotonTheme::new(new_flavor, theme.accent).with_auto_sync(true);
+                            cx.set_global(new_theme);
+                            cx.refresh();
+                        }
+                    }
+                }
+            },
+        ));
 
         // Start the appear animation
         window.start_appear_animation(cx);

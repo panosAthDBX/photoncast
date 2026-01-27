@@ -64,7 +64,6 @@ use photoncast_core::app::config::{Config, ThemeSetting};
 use photoncast_core::platform::accessibility::{
     check_accessibility_permission, request_accessibility_permission,
 };
-use photoncast_core::platform::appearance::flavor_from_window_appearance;
 use photoncast_core::platform::hotkey::is_spotlight_enabled;
 use photoncast_core::platform::LoginItemManager;
 use photoncast_core::theme::PhotonTheme;
@@ -323,11 +322,6 @@ fn main() {
         // Create initial launcher window
         let launcher_state = LauncherSharedState::new();
         let window_handle = open_launcher_window(cx, &launcher_state);
-
-        // Set up appearance observation for auto theme switching
-        let _appearance_subscription = window_handle
-            .as_ref()
-            .and_then(|handle| setup_appearance_observation(handle, cx));
 
         // Spawn a task to listen for app events (hotkey, menu bar)
         let clipboard_state_for_events = clipboard_for_window;
@@ -1195,38 +1189,6 @@ fn get_frontmost_window_title() -> Option<String> {
 #[cfg(not(target_os = "macos"))]
 fn get_frontmost_window_info() -> (Option<String>, Option<String>) {
     (None, None)
-}
-
-/// Sets up system appearance observation to automatically update the theme
-/// when macOS switches between light and dark mode.
-fn setup_appearance_observation(
-    window_handle: &WindowHandle<LauncherWindow>,
-    cx: &mut AppContext,
-) -> Option<Subscription> {
-    window_handle
-        .update(cx, |_view, cx| {
-            cx.observe_window_appearance(|_view, cx| {
-                let appearance = cx.window_appearance();
-                let current_theme = cx.try_global::<PhotonTheme>().cloned();
-
-                if let Some(theme) = current_theme {
-                    if theme.auto_sync {
-                        let new_flavor = flavor_from_window_appearance(appearance);
-                        if theme.flavor != new_flavor {
-                            info!(
-                                "System appearance changed: {:?} -> {:?}",
-                                theme.flavor, new_flavor
-                            );
-                            let new_theme =
-                                PhotonTheme::new(new_flavor, theme.accent).with_auto_sync(true);
-                            cx.set_global(new_theme);
-                            cx.refresh();
-                        }
-                    }
-                }
-            })
-        })
-        .ok()
 }
 
 /// Opens a new launcher window and returns its handle
