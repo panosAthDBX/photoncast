@@ -7,6 +7,15 @@
 #![allow(non_camel_case_types)]
 // abi_stable's sabi_trait macro generates non-local impl blocks
 #![allow(non_local_definitions)]
+// abi_stable's sabi_trait macro generates unavoidable FFI pointer casts
+#![allow(clippy::cast_ptr_alignment)]
+// abi_stable's sabi_trait macro uses underscore-prefixed bindings internally
+#![allow(clippy::used_underscore_binding)]
+#![allow(clippy::no_effect_underscore_binding)]
+// abi_stable's sabi_trait macro generates explicit lifetimes that could be elided
+#![allow(clippy::elidable_lifetime_names)]
+// abi_stable's StableAbi derive macro generates explicit Clone on Copy types
+#![allow(clippy::expl_impl_clone_on_copy)]
 
 //! PhotonCast Extension API (ABI-stable).
 //!
@@ -51,7 +60,7 @@ use thiserror::Error;
 
 /// Serde helper module for `RVec<Tuple2<RString, RString>>`.
 mod tuple2_vec_serde {
-    use super::*;
+    use super::{Deserialize, Deserializer, RString, RVec, Serializer, Tuple2};
 
     pub fn serialize<S>(
         value: &RVec<Tuple2<RString, RString>>,
@@ -62,7 +71,7 @@ mod tuple2_vec_serde {
     {
         use serde::ser::SerializeSeq;
         let mut seq = serializer.serialize_seq(Some(value.len()))?;
-        for item in value.iter() {
+        for item in value {
             seq.serialize_element(&(item.0.as_str(), item.1.as_str()))?;
         }
         seq.end()
@@ -946,7 +955,7 @@ impl ExtensionRuntime {
     }
 
     pub fn spawn(&self, future: ExtensionFuture_TO<'static, RBox<()>>) {
-        self.inner.spawn(future)
+        self.inner.spawn(future);
     }
 }
 
@@ -982,15 +991,15 @@ impl Cache {
     }
 
     pub fn set(&self, key: RStr<'_>, value: RawValueBox, ttl: ROption<RDuration>) {
-        self.inner.set(key, value, ttl)
+        self.inner.set(key, value, ttl);
     }
 
     pub fn remove(&self, key: RStr<'_>) {
-        self.inner.remove(key)
+        self.inner.remove(key);
     }
 
     pub fn clear(&self) {
-        self.inner.clear()
+        self.inner.clear();
     }
 
     pub fn has(&self, key: RStr<'_>) -> bool {
