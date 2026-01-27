@@ -42,6 +42,7 @@ mod constants;
 mod extension_views;
 mod file_search_helper;
 mod file_search_view;
+mod icon_cache;
 mod launcher;
 mod permissions_dialog;
 mod platform;
@@ -128,8 +129,8 @@ struct ClipboardState {
     monitor: Option<Arc<ClipboardMonitor>>,
 }
 
-fn main() {
-    // Initialize logging
+/// Initializes the tracing/logging subsystem with an environment-based filter.
+fn init_logging() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -137,8 +138,12 @@ fn main() {
         .init();
 
     info!("Starting PhotonCast v{}", env!("CARGO_PKG_VERSION"));
+}
 
-    // Load config and apply settings at startup
+/// Loads the application configuration from disk and applies global settings.
+///
+/// Falls back to [`Config::default()`] if the config file cannot be read.
+fn load_app_config() -> Config {
     let app_config = photoncast_core::app::config_file::load_config().unwrap_or_else(|e| {
         warn!("Failed to load config, using defaults: {}", e);
         Config::default()
@@ -155,20 +160,18 @@ fn main() {
         app_config.appearance.reduce_motion
     );
 
-    // Check for hotkey conflicts with Spotlight (non-blocking, informational only)
-    check_spotlight_conflict();
+    app_config
+}
 
-    // Check and log login item status
-    check_login_item_status();
-
-    // Create channel for app events (hotkey, menu bar)
-    let (event_tx, event_rx) = mpsc::channel::<AppEvent>();
-    app_events::set_event_sender(event_tx.clone());
-
-    // Check accessibility permission and register hotkey (non-blocking)
-    let hotkey_tx = event_tx.clone();
+/// Registers global hotkeys for the launcher toggle and clipboard history.
+///
+/// Requires accessibility permission. If permission is not granted, requests it
+/// and logs a warning — the user will need to restart after granting access.
+fn init_hotkeys(event_tx: &mpsc::Sender<AppEvent>) {
     let has_permission = check_accessibility_permission();
     if has_permission {
+        // Register launcher hotkey (Cmd+Space)
+        let hotkey_tx = event_tx.clone();
         match platform::register_global_hotkey(move || {
             if let Err(e) = hotkey_tx.send(AppEvent::ToggleLauncher) {
                 error!("Failed to send hotkey event: {}", e);
@@ -189,16 +192,20 @@ fn main() {
             Err(e) => error!("Failed to register clipboard hotkey: {}", e),
         }
     } else {
-        // Request permission without blocking - user will need to restart app after granting
+        // Request permission without blocking — user will need to restart after granting
         warn!("Accessibility permission not granted. Requesting...");
         request_accessibility_permission();
         warn!(
             "Please grant accessibility access and restart PhotonCast for global hotkey to work."
         );
     }
+}
 
-    // Initialize clipboard storage
+/// Initializes clipboard storage, starts the background monitor, and returns
+/// the shared clipboard state (or `None` if storage failed to open).
+fn init_clipboard() -> Option<Arc<RwLock<ClipboardState>>> {
     let clipboard_config = ClipboardConfig::default();
+
     let clipboard_storage = match ClipboardStorage::open(&clipboard_config) {
         Ok(storage) => {
             info!("Clipboard storage initialized");
@@ -220,6 +227,7 @@ fn main() {
         monitor
     });
 
+    // Spawn background thread for clipboard monitoring
     if let Some(monitor) = clipboard_monitor.clone() {
         std::thread::spawn(move || {
             let rt = match tokio::runtime::Runtime::new() {
@@ -239,14 +247,36 @@ fn main() {
         });
     }
 
-    // Wrap clipboard state for sharing
-    let clipboard_state = clipboard_storage.map(|storage| {
+    // Wrap clipboard state for sharing across the application
+    clipboard_storage.map(|storage| {
         Arc::new(RwLock::new(ClipboardState {
             storage,
-            config: clipboard_config.clone(),
+            config: clipboard_config,
             monitor: clipboard_monitor,
         }))
-    });
+    })
+}
+
+fn main() {
+    init_logging();
+
+    let app_config = load_app_config();
+
+    // Check for hotkey conflicts with Spotlight (non-blocking, informational only)
+    check_spotlight_conflict();
+
+    // Check and log login item status
+    check_login_item_status();
+
+    // Create channel for app events (hotkey, menu bar)
+    let (event_tx, event_rx) = mpsc::channel::<AppEvent>();
+    app_events::set_event_sender(event_tx.clone());
+
+    // Register global hotkeys (non-blocking, requires accessibility permission)
+    init_hotkeys(&event_tx);
+
+    // Initialize clipboard subsystem (storage + background monitor)
+    let clipboard_state = init_clipboard();
 
     // Pre-initialize live file index for instant file search
     // This takes ~7s to populate, so starting early ensures it's ready
@@ -1232,6 +1262,49 @@ fn open_launcher_window(
     }
 }
 
+/// Opens a centered window on the primary display with the given size and options.
+///
+/// This is a shared helper that extracts the common display-bounds centering
+/// logic used by most window-opening functions.
+fn open_window_centered<V: 'static + Render>(
+    cx: &mut AppContext,
+    window_size: Size<Pixels>,
+    y_offset_percent: f32,
+    build_options: impl FnOnce(Bounds<Pixels>, Option<DisplayId>) -> WindowOptions,
+    build_view: impl FnOnce(&mut WindowContext) -> View<V> + 'static,
+    window_name: &str,
+) -> Option<WindowHandle<V>> {
+    let display = cx.displays().first().cloned();
+    let display_bounds = display.map_or_else(
+        || Bounds {
+            origin: Point::default(),
+            size: size(px(1920.0), px(1080.0)),
+        },
+        |d| d.bounds(),
+    );
+
+    let x = display_bounds.origin.x + (display_bounds.size.width - window_size.width) / 2.0;
+    let y = display_bounds.origin.y + display_bounds.size.height * y_offset_percent;
+
+    let bounds = Bounds {
+        origin: point(x, y),
+        size: window_size,
+    };
+
+    let display_id = cx.displays().first().map(|d| d.id());
+
+    match cx.open_window(build_options(bounds, display_id), build_view) {
+        Ok(handle) => {
+            info!("{} window opened", window_name);
+            Some(handle)
+        },
+        Err(e) => {
+            error!("Failed to create {} window: {}", window_name, e);
+            None
+        },
+    }
+}
+
 /// Opens a new clipboard history window and returns its handle
 fn open_clipboard_window(
     cx: &mut AppContext,
@@ -1247,26 +1320,11 @@ fn open_clipboard_window(
         config.history_size = 100;
     }
 
-    // Calculate window bounds (centered)
-    let display = cx.displays().first().cloned();
-    let display_bounds = display.map_or_else(
-        || Bounds {
-            origin: Point::default(),
-            size: size(px(1920.0), px(1080.0)),
-        },
-        |d| d.bounds(),
-    );
-
-    let x = display_bounds.origin.x + (display_bounds.size.width - LAUNCHER_WIDTH) / 2.0;
-    let y = display_bounds.origin.y + display_bounds.size.height * 0.25;
-
-    let bounds = Bounds {
-        origin: point(x, y),
-        size: size(LAUNCHER_WIDTH, EXPANDED_HEIGHT),
-    };
-
-    match cx.open_window(
-        WindowOptions {
+    open_window_centered(
+        cx,
+        size(LAUNCHER_WIDTH, EXPANDED_HEIGHT),
+        0.25,
+        |bounds, display_id| WindowOptions {
             titlebar: Some(TitlebarOptions {
                 title: Some("Clipboard History".into()),
                 appears_transparent: true,
@@ -1277,7 +1335,7 @@ fn open_clipboard_window(
             show: true,
             kind: WindowKind::Normal,
             is_movable: true,
-            display_id: cx.displays().first().map(|d| d.id()),
+            display_id,
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast.clipboard".to_string()),
             window_min_size: Some(size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
@@ -1287,41 +1345,19 @@ fn open_clipboard_window(
             cx.activate(true);
             cx.new_view(|cx| ClipboardHistoryView::new(storage, config, cx))
         },
-    ) {
-        Ok(handle) => {
-            info!("Clipboard history window opened");
-            Some(handle)
-        },
-        Err(e) => {
-            error!("Failed to create clipboard history window: {}", e);
-            None
-        },
-    }
+        "Clipboard history",
+    )
 }
 
 /// Opens a new quick links window and returns its handle
 fn open_quicklinks_window(
     cx: &mut AppContext,
 ) -> Option<WindowHandle<photoncast_quicklinks::ui::QuickLinksView>> {
-    let display = cx.displays().first().cloned();
-    let display_bounds = display.map_or_else(
-        || Bounds {
-            origin: Point::default(),
-            size: size(px(1920.0), px(1080.0)),
-        },
-        |d| d.bounds(),
-    );
-
-    let x = display_bounds.origin.x + (display_bounds.size.width - MODAL_WIDTH) / 2.0;
-    let y = display_bounds.origin.y + display_bounds.size.height * 0.25;
-
-    let bounds = Bounds {
-        origin: point(x, y),
-        size: size(MODAL_WIDTH, px(420.0)),
-    };
-
-    match cx.open_window(
-        WindowOptions {
+    open_window_centered(
+        cx,
+        size(MODAL_WIDTH, px(420.0)),
+        0.25,
+        |bounds, display_id| WindowOptions {
             titlebar: Some(TitlebarOptions {
                 title: Some("Quick Links".into()),
                 appears_transparent: true,
@@ -1332,7 +1368,7 @@ fn open_quicklinks_window(
             show: true,
             kind: WindowKind::Normal,
             is_movable: true,
-            display_id: cx.displays().first().map(|d| d.id()),
+            display_id,
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast.quicklinks".to_string()),
             window_min_size: Some(size(px(420.0), px(300.0))),
@@ -1342,16 +1378,8 @@ fn open_quicklinks_window(
             cx.activate(true);
             cx.new_view(|cx| photoncast_quicklinks::ui::QuickLinksView::new(cx))
         },
-    ) {
-        Ok(handle) => {
-            info!("Quick links window opened");
-            Some(handle)
-        },
-        Err(e) => {
-            error!("Failed to create quick links window: {}", e);
-            None
-        },
-    }
+        "Quick links",
+    )
 }
 
 /// Preferences window dimensions
@@ -1363,25 +1391,11 @@ fn open_preferences_window(
     cx: &mut AppContext,
     photoncast_app: Option<std::sync::Arc<parking_lot::RwLock<photoncast_core::app::PhotonCastApp>>>,
 ) -> Option<WindowHandle<PreferencesWindow>> {
-    let display = cx.displays().first().cloned();
-    let display_bounds = display.map_or_else(
-        || Bounds {
-            origin: Point::default(),
-            size: size(px(1920.0), px(1080.0)),
-        },
-        |d| d.bounds(),
-    );
-
-    let x = display_bounds.origin.x + (display_bounds.size.width - PREFS_WIDTH) / 2.0;
-    let y = display_bounds.origin.y + display_bounds.size.height * 0.2;
-
-    let bounds = Bounds {
-        origin: point(x, y),
-        size: size(PREFS_WIDTH, PREFS_HEIGHT),
-    };
-
-    match cx.open_window(
-        WindowOptions {
+    open_window_centered(
+        cx,
+        size(PREFS_WIDTH, PREFS_HEIGHT),
+        0.2,
+        |bounds, display_id| WindowOptions {
             titlebar: Some(TitlebarOptions {
                 title: Some("Preferences".into()),
                 appears_transparent: true,
@@ -1392,7 +1406,7 @@ fn open_preferences_window(
             show: true,
             kind: WindowKind::PopUp,
             is_movable: true,
-            display_id: cx.displays().first().map(|d| d.id()),
+            display_id,
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast.preferences".to_string()),
             window_min_size: Some(size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
@@ -1402,16 +1416,8 @@ fn open_preferences_window(
             cx.activate(true);
             cx.new_view(|cx| PreferencesWindow::new(cx, photoncast_app))
         },
-    ) {
-        Ok(handle) => {
-            info!("Preferences window opened");
-            Some(handle)
-        },
-        Err(e) => {
-            error!("Failed to create preferences window: {}", e);
-            None
-        },
-    }
+        "Preferences",
+    )
 }
 
 /// Opens a new create quicklink window and returns its handle
@@ -1421,32 +1427,18 @@ fn open_create_quicklink_window(
     launcher_state: &LauncherSharedState,
 ) -> Option<WindowHandle<CreateQuicklinkView>> {
     let launcher_state = launcher_state.clone();
-    let display = cx.displays().first().cloned();
-    let display_bounds = display.map_or_else(
-        || Bounds {
-            origin: Point::default(),
-            size: size(px(1920.0), px(1080.0)),
-        },
-        |d| d.bounds(),
-    );
-
-    let x = display_bounds.origin.x + (display_bounds.size.width - MODAL_WIDTH) / 2.0;
-    let y = display_bounds.origin.y + display_bounds.size.height * 0.15;
-
-    let bounds = Bounds {
-        origin: point(x, y),
-        size: size(MODAL_WIDTH, px(680.0)),
-    };
-
-    match cx.open_window(
-        WindowOptions {
+    open_window_centered(
+        cx,
+        size(MODAL_WIDTH, px(680.0)),
+        0.15,
+        |bounds, display_id| WindowOptions {
             titlebar: None,
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
             show: true,
             kind: WindowKind::PopUp,
             is_movable: true,
-            display_id: cx.displays().first().map(|d| d.id()),
+            display_id,
             window_background: WindowBackgroundAppearance::Opaque,
             app_id: Some("app.photoncast.createquicklink".to_string()),
             window_min_size: Some(size(px(420.0), px(400.0))),
@@ -1516,16 +1508,8 @@ fn open_create_quicklink_window(
                 view
             })
         },
-    ) {
-        Ok(handle) => {
-            info!("Create quicklink window opened");
-            Some(handle)
-        },
-        Err(e) => {
-            error!("Failed to create quicklink window: {}", e);
-            None
-        },
-    }
+        "Create quicklink",
+    )
 }
 
 /// Argument Input window dimensions
@@ -1537,34 +1521,18 @@ fn open_argument_input_window(
     cx: &mut AppContext,
     quicklink: photoncast_quicklinks::QuickLink,
 ) -> Option<WindowHandle<ArgumentInputView>> {
-    let display = cx.displays().first().cloned();
-    let display_bounds = display.map_or_else(
-        || Bounds {
-            origin: Point::default(),
-            size: size(px(1920.0), px(1080.0)),
-        },
-        |d| d.bounds(),
-    );
-
-    let x = display_bounds.origin.x + (display_bounds.size.width - ARGUMENT_INPUT_WIDTH) / 2.0;
-    let y = display_bounds.origin.y + display_bounds.size.height * 0.25;
-
-    let bounds = Bounds {
-        origin: point(x, y),
-        size: size(ARGUMENT_INPUT_WIDTH, ARGUMENT_INPUT_HEIGHT),
-    };
-
-    let _link_name = quicklink.name.clone();
-
-    match cx.open_window(
-        WindowOptions {
+    open_window_centered(
+        cx,
+        size(ARGUMENT_INPUT_WIDTH, ARGUMENT_INPUT_HEIGHT),
+        0.25,
+        |bounds, display_id| WindowOptions {
             titlebar: None,
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
             show: true,
             kind: WindowKind::PopUp,
             is_movable: true,
-            display_id: cx.displays().first().map(|d| d.id()),
+            display_id,
             window_background: WindowBackgroundAppearance::Opaque,
             app_id: Some("app.photoncast.argumentinput".to_string()),
             window_min_size: Some(size(px(360.0), px(200.0))),
@@ -1589,16 +1557,8 @@ fn open_argument_input_window(
                 view
             })
         },
-    ) {
-        Ok(handle) => {
-            info!("Argument input window opened");
-            Some(handle)
-        },
-        Err(e) => {
-            error!("Failed to open argument input window: {}", e);
-            None
-        },
-    }
+        "Argument input",
+    )
 }
 
 /// Opens a new manage quicklinks window and returns its handle
@@ -1610,35 +1570,22 @@ fn open_manage_quicklinks_window(
     launcher_state: &LauncherSharedState,
 ) -> Option<WindowHandle<QuicklinksManageView>> {
     let launcher_state = launcher_state.clone();
-    let display = cx.displays().first().cloned();
-    let display_bounds = display.map_or_else(
-        || Bounds {
-            origin: Point::default(),
-            size: size(px(1920.0), px(1080.0)),
-        },
-        |d| d.bounds(),
-    );
-
-    let x = display_bounds.origin.x + (display_bounds.size.width - LAUNCHER_WIDTH) / 2.0;
-    let y = display_bounds.origin.y + display_bounds.size.height * 0.15;
-
-    let bounds = Bounds {
-        origin: point(x, y),
-        size: size(LAUNCHER_WIDTH, EXPANDED_HEIGHT),
-    };
 
     // Load quicklinks
     let links = runtime.block_on(storage.load_all()).unwrap_or_default();
 
-    match cx.open_window(
-        WindowOptions {
+    open_window_centered(
+        cx,
+        size(LAUNCHER_WIDTH, EXPANDED_HEIGHT),
+        0.15,
+        |bounds, display_id| WindowOptions {
             titlebar: None,
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
             show: true,
             kind: WindowKind::PopUp,
             is_movable: true,
-            display_id: cx.displays().first().map(|d| d.id()),
+            display_id,
             window_background: WindowBackgroundAppearance::Opaque,
             app_id: Some("app.photoncast.managequicklinks".to_string()),
             window_min_size: Some(size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
@@ -1666,16 +1613,8 @@ fn open_manage_quicklinks_window(
                 view
             })
         },
-    ) {
-        Ok(handle) => {
-            info!("Manage quicklinks window opened");
-            Some(handle)
-        },
-        Err(e) => {
-            error!("Failed to create manage quicklinks window: {}", e);
-            None
-        },
-    }
+        "Manage quicklinks",
+    )
 }
 
 /// Timer window dimensions
@@ -1686,25 +1625,11 @@ const TIMER_HEIGHT: Pixels = px(220.0);
 fn open_timer_window(
     cx: &mut AppContext,
 ) -> Option<WindowHandle<photoncast_timer::ui::TimerDisplay>> {
-    let display = cx.displays().first().cloned();
-    let display_bounds = display.map_or_else(
-        || Bounds {
-            origin: Point::default(),
-            size: size(px(1920.0), px(1080.0)),
-        },
-        |d| d.bounds(),
-    );
-
-    let x = display_bounds.origin.x + (display_bounds.size.width - TIMER_WIDTH) / 2.0;
-    let y = display_bounds.origin.y + display_bounds.size.height * 0.25;
-
-    let bounds = Bounds {
-        origin: point(x, y),
-        size: size(TIMER_WIDTH, TIMER_HEIGHT),
-    };
-
-    match cx.open_window(
-        WindowOptions {
+    open_window_centered(
+        cx,
+        size(TIMER_WIDTH, TIMER_HEIGHT),
+        0.25,
+        |bounds, display_id| WindowOptions {
             titlebar: Some(TitlebarOptions {
                 title: Some("Sleep Timer".into()),
                 appears_transparent: true,
@@ -1715,7 +1640,7 @@ fn open_timer_window(
             show: true,
             kind: WindowKind::Normal,
             is_movable: true,
-            display_id: cx.displays().first().map(|d| d.id()),
+            display_id,
             window_background: WindowBackgroundAppearance::Blurred,
             app_id: Some("app.photoncast.timer".to_string()),
             window_min_size: Some(size(px(300.0), px(180.0))),
@@ -1725,16 +1650,8 @@ fn open_timer_window(
             cx.activate(true);
             cx.new_view(|cx| photoncast_timer::ui::TimerDisplay::new(cx))
         },
-    ) {
-        Ok(handle) => {
-            info!("Timer window opened");
-            Some(handle)
-        },
-        Err(e) => {
-            error!("Failed to create timer window: {}", e);
-            None
-        },
-    }
+        "Timer",
+    )
 }
 
 /// Calculate initial window bounds centered at top of screen

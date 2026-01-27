@@ -18,6 +18,11 @@ use photoncast_core::search::spotlight::{
     SpotlightSearchService,
 };
 
+use crate::constants::{
+    APP_EXTENSIONS, ARCHIVE_EXTENSIONS, AUDIO_EXTENSIONS, DOCUMENT_EXTENSIONS, EBOOK_EXTENSIONS,
+    IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
+};
+
 // =============================================================================
 // Global Live File Index (thread-safe, Spotlight-monitored)
 // =============================================================================
@@ -399,20 +404,17 @@ pub fn to_file_results(files_with_time: Vec<(PathBuf, SystemTime)>) -> Vec<FileR
         .collect()
 }
 
-/// User file extensions (same as live index whitelist).
+/// Check if a file extension is an "interesting" user file type.
 /// Only actual user files - documents, images, videos, audio. NO code files.
-const INTERESTING_EXTENSIONS: &[&str] = &[
-    // Documents
-    "pdf", "doc", "docx", "odt", "rtf", "txt", "pages", "numbers", "key", "xls", "xlsx", "csv",
-    "ppt", "pptx", // Images
-    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "svg", "heic", "heif", "raw", "cr2",
-    "nef", "arw", "dng", "psd", // Videos
-    "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", // Audio
-    "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "aiff", // Archives
-    "zip", "7z", "rar", "dmg", // E-books
-    "epub", "mobi", // macOS apps
-    "app",
-];
+fn is_interesting_extension(ext: &str) -> bool {
+    DOCUMENT_EXTENSIONS.contains(&ext)
+        || IMAGE_EXTENSIONS.contains(&ext)
+        || VIDEO_EXTENSIONS.contains(&ext)
+        || AUDIO_EXTENSIONS.contains(&ext)
+        || ARCHIVE_EXTENSIONS.contains(&ext)
+        || EBOOK_EXTENSIONS.contains(&ext)
+        || APP_EXTENSIONS.contains(&ext)
+}
 
 /// Directories to exclude from results.
 const EXCLUDED_DIRS: &[&str] = &[
@@ -456,7 +458,7 @@ fn is_interesting_file(path: &PathBuf) -> bool {
         // Check extension whitelist
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             let ext_lower = ext.to_lowercase();
-            return INTERESTING_EXTENSIONS.contains(&ext_lower.as_str());
+            return is_interesting_extension(&ext_lower);
         }
     }
 

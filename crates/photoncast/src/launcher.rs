@@ -32,7 +32,10 @@ use photoncast_calculator::{CalculatorResult, CalculatorResultKind};
 use photoncast_timer::commands::TimerManager;
 
 use crate::app_events::{self, AppEvent};
-use crate::constants::{EXPANDED_HEIGHT, LAUNCHER_HEIGHT, LAUNCHER_WIDTH};
+use crate::constants::{
+    EXPANDED_HEIGHT, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, LIST_ITEM_HEIGHT, SEARCH_BAR_HEIGHT,
+    ThemeColorSet,
+};
 use crate::{
     Activate, Cancel, ConfirmDialog, CopyBundleId, CopyFile, CopyPath, ForceQuitApp, HideApp,
     NextGroup, OpenPreferences, PreviousGroup, QuickLook, QuickSelect1, QuickSelect2, QuickSelect3,
@@ -57,61 +60,19 @@ use photoncast_core::ui::animations::{
     WINDOW_DISMISS_SCALE_END,
 };
 
-/// Helper struct holding theme colors for launcher UI
-#[derive(Clone)]
-#[allow(dead_code)]
-struct LauncherColors {
-    background: Hsla,
-    text: Hsla,
-    text_muted: Hsla,
-    text_placeholder: Hsla,
-    surface: Hsla,
-    surface_hover: Hsla,
-    surface_elevated: Hsla,
-    border: Hsla,
-    accent: Hsla,
-    accent_hover: Hsla,
-    selection: Hsla,
-    success: Hsla,
-    warning: Hsla,
-    error: Hsla,
-    overlay: Hsla,
-}
-
-impl LauncherColors {
-    fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            background: theme.colors.background.to_gpui(),
-            text: theme.colors.text.to_gpui(),
-            text_muted: theme.colors.text_muted.to_gpui(),
-            text_placeholder: theme.colors.text_placeholder.to_gpui(),
-            surface: theme.colors.surface.to_gpui(),
-            surface_hover: theme.colors.surface_hover.to_gpui(),
-            surface_elevated: theme.colors.background_elevated.to_gpui(),
-            border: theme.colors.border.to_gpui(),
-            accent: theme.colors.accent.to_gpui(),
-            accent_hover: theme.colors.accent_hover.to_gpui(),
-            selection: theme.colors.selection.to_gpui(),
-            success: theme.colors.success.to_gpui(),
-            warning: theme.colors.warning.to_gpui(),
-            error: theme.colors.error.to_gpui(),
-            overlay: hsla(0.0, 0.0, 0.0, 0.6), // Semi-transparent overlay
-        }
-    }
-}
+/// Type alias – the launcher uses the shared [`ThemeColorSet`] from constants.
+type LauncherColors = ThemeColorSet;
 
 fn get_launcher_colors(cx: &ViewContext<LauncherWindow>) -> LauncherColors {
     let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
     LauncherColors::from_theme(&theme)
 }
 
-/// Search bar height constant
-const SEARCH_BAR_HEIGHT: Pixels = px(48.0);
 /// Search icon size
 #[allow(dead_code)]
 const SEARCH_ICON_SIZE: Pixels = px(20.0);
-/// Result item height
-const RESULT_ITEM_HEIGHT: Pixels = px(56.0);
+/// Result item height (alias for the shared LIST_ITEM_HEIGHT constant)
+const RESULT_ITEM_HEIGHT: Pixels = LIST_ITEM_HEIGHT;
 /// Maximum visible results
 const MAX_VISIBLE_RESULTS: usize = 8;
 
@@ -937,195 +898,23 @@ impl LauncherWindow {
     }
 
     /// Static version of `get_app_icon_path` for use in async context.
-    ///
-    /// # Threading Model
-    ///
-    /// This function performs synchronous I/O (filesystem checks and `sips` process
-    /// spawning). It must only be called from a background thread — never from the
-    /// main/UI thread. All current call sites dispatch through
-    /// `cx.background_executor().spawn()` which satisfies this requirement.
+    /// Delegates to [`crate::icon_cache::get_icon_static`].
     fn get_app_icon_path_static(app_path: &std::path::Path) -> Option<std::path::PathBuf> {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        // Get cache directory
-        let cache_dir = directories::ProjectDirs::from("", "", "PhotonCast").map_or_else(
-            || {
-                dirs::home_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                    .join("Library/Caches/PhotonCast/icons")
-            },
-            |dirs| dirs.cache_dir().join("icons"),
-        );
-
-        // Ensure cache directory exists
-        if let Err(e) = std::fs::create_dir_all(&cache_dir) {
-            tracing::warn!("Failed to create icon cache dir: {}", e);
-            return None;
-        }
-
-        // Generate cache filename from app path hash
-        let mut hasher = DefaultHasher::new();
-        app_path.hash(&mut hasher);
-        let hash = hasher.finish();
-        let cached_path = cache_dir.join(format!("{hash:x}.png"));
-
-        // Return cached icon if it exists and is fresh
-        if cached_path.exists() {
-            // Check if app is newer than cached icon
-            let app_modified = std::fs::metadata(app_path)
-                .ok()
-                .and_then(|m| m.modified().ok());
-            let cached_modified = std::fs::metadata(&cached_path)
-                .ok()
-                .and_then(|m| m.modified().ok());
-
-            match (app_modified, cached_modified) {
-                (Some(app_time), Some(cache_time)) if cache_time >= app_time => {
-                    return Some(cached_path);
-                },
-                _ => {}, // Re-extract if we can't determine freshness
-            }
-        }
-
-        // Extract icon using platform-specific code
-        // Note: This requires access to the platform module which uses NSWorkspace
-        // Since we're in a background task, we need to extract differently
-        // For now, try to extract using iconutil or similar
-        Self::extract_icon_to_cache(app_path, &cached_path)
+        crate::icon_cache::get_icon_static(app_path)
     }
 
-    /// Extracts an app icon to the cache path.
-    ///
-    /// Spawns a synchronous `sips` process to convert `.icns` to `.png`.
-    /// Must be called from a background thread (see `get_app_icon_path_static`).
-    fn extract_icon_to_cache(
-        app_path: &std::path::Path,
-        cache_path: &std::path::Path,
-    ) -> Option<std::path::PathBuf> {
-        // Try to find the icon in the app bundle
-        let icns_path = app_path.join("Contents/Resources/AppIcon.icns");
-        if icns_path.exists() {
-            // Use sips to convert icns to png
-            let output = std::process::Command::new("sips")
-                .args([
-                    "-s",
-                    "format",
-                    "png",
-                    "-z",
-                    "64",
-                    "64",
-                    &icns_path.to_string_lossy(),
-                    "--out",
-                    &cache_path.to_string_lossy(),
-                ])
-                .output();
 
-            if let Ok(output) = output {
-                if output.status.success() {
-                    return Some(cache_path.to_path_buf());
-                }
-            }
-        } else {
-            // Try to read Info.plist to find the icon name
-            let info_plist = app_path.join("Contents/Info.plist");
-            if let Ok(plist) = plist::Value::from_file(&info_plist) {
-                if let Some(dict) = plist.as_dictionary() {
-                    if let Some(icon_name) =
-                        dict.get("CFBundleIconFile").and_then(|v| v.as_string())
-                    {
-                        let icon_name = if std::path::Path::new(icon_name)
-                            .extension()
-                            .is_some_and(|ext| ext.eq_ignore_ascii_case("icns"))
-                        {
-                            icon_name.to_string()
-                        } else {
-                            format!("{icon_name}.icns")
-                        };
-                        let icon_path = app_path.join("Contents/Resources").join(&icon_name);
-                        if icon_path.exists() {
-                            // Use sips to convert icns to png
-                            let output = std::process::Command::new("sips")
-                                .args([
-                                    "-s",
-                                    "format",
-                                    "png",
-                                    "-z",
-                                    "64",
-                                    "64",
-                                    &icon_path.to_string_lossy(),
-                                    "--out",
-                                    &cache_path.to_string_lossy(),
-                                ])
-                                .output();
-
-                            if let Ok(output) = output {
-                                if output.status.success() {
-                                    return Some(cache_path.to_path_buf());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        None
-    }
 
     /// Clears the cached icon for an app.
+    /// Delegates to [`crate::icon_cache::clear_icon`].
     fn clear_cached_icon(app_path: &std::path::Path) {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let cache_dir = directories::ProjectDirs::from("", "", "PhotonCast").map_or_else(
-            || {
-                dirs::home_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                    .join("Library/Caches/PhotonCast/icons")
-            },
-            |dirs| dirs.cache_dir().join("icons"),
-        );
-
-        let mut hasher = DefaultHasher::new();
-        app_path.hash(&mut hasher);
-        let hash = hasher.finish();
-        let cached_path = cache_dir.join(format!("{hash:x}.png"));
-
-        if cached_path.exists() {
-            if let Err(e) = std::fs::remove_file(&cached_path) {
-                tracing::warn!(path = %cached_path.display(), "Failed to remove cached icon: {}", e);
-            } else {
-                tracing::debug!(path = %cached_path.display(), "Cleared cached icon");
-            }
-        }
+        crate::icon_cache::clear_icon(app_path);
     }
 
     /// Checks if an icon is already cached, returns path if so.
-    /// This is fast - just filesystem checks, no extraction.
+    /// Delegates to [`crate::icon_cache::get_cached_icon_path`].
     fn get_cached_icon_path(app_path: &std::path::Path) -> Option<std::path::PathBuf> {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let cache_dir = directories::ProjectDirs::from("", "", "PhotonCast").map_or_else(
-            || {
-                dirs::home_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                    .join("Library/Caches/PhotonCast/icons")
-            },
-            |dirs| dirs.cache_dir().join("icons"),
-        );
-
-        let mut hasher = DefaultHasher::new();
-        app_path.hash(&mut hasher);
-        let hash = hasher.finish();
-        let cached_path = cache_dir.join(format!("{hash:x}.png"));
-
-        if cached_path.exists() {
-            Some(cached_path)
-        } else {
-            None
-        }
+        crate::icon_cache::get_cached_icon_path(app_path)
     }
 
     /// Converts an icon source to a display emoji (fallback)
@@ -1181,63 +970,9 @@ impl LauncherWindow {
     }
 
     /// Gets or extracts the icon for an app bundle as PNG.
-    /// Uses NSWorkspace to handle all icon formats including asset catalogs.
+    /// Delegates to [`crate::icon_cache::get_icon`].
     fn get_app_icon_path(app_path: &std::path::Path) -> Option<std::path::PathBuf> {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        // Get cache directory
-        let cache_dir = directories::ProjectDirs::from("", "", "PhotonCast").map_or_else(
-            || {
-                dirs::home_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                    .join("Library/Caches/PhotonCast/icons")
-            },
-            |dirs| dirs.cache_dir().join("icons"),
-        );
-
-        // Ensure cache directory exists
-        if let Err(e) = std::fs::create_dir_all(&cache_dir) {
-            tracing::warn!("Failed to create icon cache dir: {}", e);
-            return None;
-        }
-
-        // Generate cache filename from app path hash
-        let mut hasher = DefaultHasher::new();
-        app_path.hash(&mut hasher);
-        let hash = hasher.finish();
-        let cached_path = cache_dir.join(format!("{hash:x}.png"));
-
-        // Return cached icon if it exists and is fresh
-        if cached_path.exists() {
-            // Check if app is newer than cached icon
-            let app_modified = std::fs::metadata(app_path)
-                .ok()
-                .and_then(|m| m.modified().ok());
-            let cached_modified = std::fs::metadata(&cached_path)
-                .ok()
-                .and_then(|m| m.modified().ok());
-
-            match (app_modified, cached_modified) {
-                (Some(app_time), Some(cache_time)) if cache_time >= app_time => {
-                    return Some(cached_path);
-                },
-                _ => {}, // Re-extract if we can't determine freshness
-            }
-        }
-
-        // Extract icon using NSWorkspace (handles all icon formats)
-        if crate::platform::save_app_icon_as_png(app_path, &cached_path, 64) {
-            tracing::debug!(
-                "Extracted icon for {} -> {}",
-                app_path.display(),
-                cached_path.display()
-            );
-            Some(cached_path)
-        } else {
-            tracing::warn!("Failed to extract icon for {}", app_path.display());
-            None
-        }
+        crate::icon_cache::get_icon(app_path)
     }
 
     /// Gets icon path for an app by its bundle ID.

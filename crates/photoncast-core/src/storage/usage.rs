@@ -123,6 +123,74 @@ impl UsageTracker {
     }
 
     // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /// Generic frecency lookup for any usage table.
+    ///
+    /// Queries `count_column` and `ts_column` from `table` where
+    /// `key_column = key_value` and converts the result into a
+    /// [`FrecencyScore`].
+    fn get_frecency_for(
+        &self,
+        table: &str,
+        count_column: &str,
+        ts_column: &str,
+        key_column: &str,
+        key_value: &str,
+    ) -> Result<FrecencyScore> {
+        let conn = self.db.connection();
+
+        let sql = format!(
+            "SELECT {count_column}, {ts_column} FROM {table} WHERE {key_column} = ?1"
+        );
+
+        let result: Result<(u32, i64), _> =
+            conn.query_row(&sql, [key_value], |row| Ok((row.get(0)?, row.get(1)?)));
+
+        match result {
+            Ok((count, last_ts)) => {
+                let last_time = timestamp_to_system_time(last_ts);
+                Ok(FrecencyScore::calculate(count, last_time))
+            },
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(FrecencyScore::zero()),
+            Err(e) => Err(e).context(format!("failed to get {table} frecency")),
+        }
+    }
+
+    /// Generic usage recording for any usage table.
+    ///
+    /// Inserts a new row or increments the count in `table` keyed by
+    /// `key_column = key_value`.
+    fn record_use(
+        &self,
+        table: &str,
+        count_column: &str,
+        ts_column: &str,
+        key_column: &str,
+        key_value: &str,
+    ) -> Result<()> {
+        let conn = self.db.connection();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before UNIX epoch")
+            .as_secs() as i64;
+
+        let sql = format!(
+            "INSERT INTO {table} ({key_column}, {count_column}, {ts_column}, created_at) \
+             VALUES (?1, 1, ?2, ?2) \
+             ON CONFLICT({key_column}) DO UPDATE SET \
+             {count_column} = {count_column} + 1, \
+             {ts_column} = ?2"
+        );
+
+        conn.execute(&sql, rusqlite::params![key_value, now])
+            .context(format!("failed to record {table} use"))?;
+
+        Ok(())
+    }
+
+    // -------------------------------------------------------------------------
     // Command Usage
     // -------------------------------------------------------------------------
 
@@ -132,7 +200,7 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn record_command_execution(&self, command_id: &str) -> Result<()> {
-        self.db.record_command_use(command_id)
+        self.record_use("command_usage", "use_count", "last_used_at", "command_id", command_id)
     }
 
     /// Records a command execution asynchronously.
@@ -142,7 +210,11 @@ impl UsageTracker {
     /// Returns an error if the database operation fails.
     pub async fn record_command_execution_async(&self, command_id: String) -> Result<()> {
         let db = self.db.clone();
-        task::spawn_blocking(move || db.record_command_use(&command_id)).await?
+        task::spawn_blocking(move || {
+            let tracker = UsageTracker::new(db);
+            tracker.record_command_execution(&command_id)
+        })
+        .await?
     }
 
     /// Gets the frecency score for a command.
@@ -151,22 +223,7 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn get_command_frecency(&self, command_id: &str) -> Result<FrecencyScore> {
-        let conn = self.db.connection();
-
-        let result: Result<(u32, i64), _> = conn.query_row(
-            "SELECT use_count, last_used_at FROM command_usage WHERE command_id = ?1",
-            [command_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        );
-
-        match result {
-            Ok((use_count, last_used_ts)) => {
-                let last_used = timestamp_to_system_time(last_used_ts);
-                Ok(FrecencyScore::calculate(use_count, last_used))
-            },
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(FrecencyScore::zero()),
-            Err(e) => Err(e).context("failed to get command frecency"),
-        }
+        self.get_frecency_for("command_usage", "use_count", "last_used_at", "command_id", command_id)
     }
 
     /// Gets the frecency score for a command asynchronously.
@@ -177,22 +234,8 @@ impl UsageTracker {
     pub async fn get_command_frecency_async(&self, command_id: String) -> Result<FrecencyScore> {
         let db = self.db.clone();
         task::spawn_blocking(move || {
-            let conn = db.connection();
-
-            let result: Result<(u32, i64), _> = conn.query_row(
-                "SELECT use_count, last_used_at FROM command_usage WHERE command_id = ?1",
-                [&command_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            );
-
-            match result {
-                Ok((use_count, last_used_ts)) => {
-                    let last_used = timestamp_to_system_time(last_used_ts);
-                    Ok(FrecencyScore::calculate(use_count, last_used))
-                },
-                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(FrecencyScore::zero()),
-                Err(e) => Err(e).context("failed to get command frecency"),
-            }
+            let tracker = UsageTracker::new(db);
+            tracker.get_command_frecency(&command_id)
         })
         .await?
     }
@@ -207,7 +250,7 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn record_file_open(&self, path: &str) -> Result<()> {
-        self.db.record_file_open(path)
+        self.record_use("file_usage", "open_count", "last_opened_at", "file_path", path)
     }
 
     /// Records a file open asynchronously.
@@ -217,7 +260,11 @@ impl UsageTracker {
     /// Returns an error if the database operation fails.
     pub async fn record_file_open_async(&self, path: String) -> Result<()> {
         let db = self.db.clone();
-        task::spawn_blocking(move || db.record_file_open(&path)).await?
+        task::spawn_blocking(move || {
+            let tracker = UsageTracker::new(db);
+            tracker.record_file_open(&path)
+        })
+        .await?
     }
 
     /// Gets the frecency score for a file.
@@ -226,22 +273,7 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn get_file_frecency(&self, path: &str) -> Result<FrecencyScore> {
-        let conn = self.db.connection();
-
-        let result: Result<(u32, i64), _> = conn.query_row(
-            "SELECT open_count, last_opened_at FROM file_usage WHERE file_path = ?1",
-            [path],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        );
-
-        match result {
-            Ok((open_count, last_opened_ts)) => {
-                let last_opened = timestamp_to_system_time(last_opened_ts);
-                Ok(FrecencyScore::calculate(open_count, last_opened))
-            },
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(FrecencyScore::zero()),
-            Err(e) => Err(e).context("failed to get file frecency"),
-        }
+        self.get_frecency_for("file_usage", "open_count", "last_opened_at", "file_path", path)
     }
 
     /// Gets the frecency score for a file asynchronously.
@@ -252,22 +284,8 @@ impl UsageTracker {
     pub async fn get_file_frecency_async(&self, path: String) -> Result<FrecencyScore> {
         let db = self.db.clone();
         task::spawn_blocking(move || {
-            let conn = db.connection();
-
-            let result: Result<(u32, i64), _> = conn.query_row(
-                "SELECT open_count, last_opened_at FROM file_usage WHERE file_path = ?1",
-                [&path],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            );
-
-            match result {
-                Ok((open_count, last_opened_ts)) => {
-                    let last_opened = timestamp_to_system_time(last_opened_ts);
-                    Ok(FrecencyScore::calculate(open_count, last_opened))
-                },
-                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(FrecencyScore::zero()),
-                Err(e) => Err(e).context("failed to get file frecency"),
-            }
+            let tracker = UsageTracker::new(db);
+            tracker.get_file_frecency(&path)
         })
         .await?
     }

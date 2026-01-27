@@ -100,6 +100,9 @@ pub fn update_view_items(view: &AnyView, items: RVec<ListItem>, cx: &mut WindowC
 pub mod dimensions {
     use gpui::Pixels;
 
+    // Re-export shared constant from the canonical location.
+    pub use crate::constants::SECTION_HEADER_HEIGHT;
+
     /// Width of the extension view window.
     pub const VIEW_WIDTH: Pixels = gpui::px(600.0);
     /// Maximum height of the extension view window.
@@ -110,10 +113,8 @@ pub mod dimensions {
     pub const GRID_ITEM_HEIGHT: Pixels = gpui::px(120.0);
     /// Width of the preview pane.
     pub const PREVIEW_WIDTH: Pixels = gpui::px(300.0);
-    /// Search bar height.
+    /// Search bar height (extension views use a compact 44px bar).
     pub const SEARCH_BAR_HEIGHT: Pixels = gpui::px(44.0);
-    /// Section header height.
-    pub const SECTION_HEADER_HEIGHT: Pixels = gpui::px(28.0);
     /// Standard padding.
     pub const PADDING: Pixels = gpui::px(12.0);
     /// Standard border radius.
