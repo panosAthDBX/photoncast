@@ -115,6 +115,7 @@ impl QuickLinksProvider {
     }
 
     /// Converts a QuickLink to a SearchResult.
+    #[allow(clippy::match_same_arms)]
     fn link_to_result(
         link: &QuickLink,
         score: f64,
@@ -132,15 +133,15 @@ impl QuickLinksProvider {
         };
 
         // Build subtitle with alias and argument preview
-        let mut subtitle = if !arguments.is_empty() {
+        let mut subtitle = if arguments.is_empty() {
+            link.link.clone()
+        } else {
             // Show the URL with argument substituted for preview
             placeholder::substitute_argument(&link.link, arguments)
-        } else {
-            link.link.clone()
         };
 
         if let Some(ref alias) = link.alias {
-            subtitle = format!("/{} · {}", alias, subtitle);
+            subtitle = format!("/{alias} · {subtitle}");
         }
 
         SearchResult {
@@ -162,7 +163,7 @@ impl QuickLinksProvider {
 }
 
 impl SearchProvider for QuickLinksProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Quick Links"
     }
 

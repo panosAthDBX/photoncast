@@ -125,11 +125,10 @@ impl SearchIndex {
             .map(|app| {
                 let frecency = usage
                     .get_usage(app.bundle_id.as_str())
-                    .map(|record| {
+                    .map_or(0.0, |record| {
                         let last_used = datetime_to_system_time(record.last_launched);
                         FrecencyScore::calculate(record.launch_count, last_used).score()
-                    })
-                    .unwrap_or(0.0);
+                    });
                 IndexedAppEntry::new(app.clone(), frecency)
             })
             .collect();
@@ -232,6 +231,7 @@ impl Default for EarlyTerminationConfig {
 impl EarlyTerminationConfig {
     /// Calculates the termination threshold for a given max_results.
     #[must_use]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     pub fn threshold(&self, max_results: usize) -> usize {
         ((max_results as f64) * self.threshold_multiplier).ceil() as usize
     }

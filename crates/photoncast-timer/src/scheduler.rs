@@ -130,12 +130,10 @@ impl TimerScheduler {
 
         // Ensure parent directory exists
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| TimerError::Database(format!("Failed to create directory: {e}")))?;
+            std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Connection::open(&db_path)
-            .map_err(|e| TimerError::Database(format!("Failed to open database: {e}")))?;
+        let conn = Connection::open(&db_path)?;
 
         let db_path_for_log = db_path.clone();
 
@@ -168,8 +166,7 @@ impl TimerScheduler {
                 created_at TEXT NOT NULL
             )",
             [],
-        )
-        .map_err(|e| TimerError::Database(format!("Failed to create schema: {e}")))?;
+        )?;
 
         drop(db);
 
@@ -188,8 +185,7 @@ impl TimerScheduler {
         let db = self.db.write().await;
 
         // Serialize action
-        let action = serde_json::to_string(&timer.action)
-            .map_err(|e| TimerError::Serialization(e.to_string()))?;
+        let action = serde_json::to_string(&timer.action)?;
 
         db.execute(
             "INSERT OR REPLACE INTO active_timer (id, action, execute_at, created_at)
@@ -199,8 +195,7 @@ impl TimerScheduler {
                 timer.execute_at.to_rfc3339(),
                 timer.created_at.to_rfc3339(),
             ],
-        )
-        .map_err(|e| TimerError::Database(format!("Failed to save timer: {e}")))?;
+        )?;
 
         drop(db);
 
@@ -223,8 +218,7 @@ impl TimerScheduler {
         let db = self.db.read().await;
 
         let mut stmt = db
-            .prepare("SELECT action, execute_at, created_at FROM active_timer WHERE id = 1")
-            .map_err(|e| TimerError::Database(format!("Failed to prepare query: {e}")))?;
+            .prepare("SELECT action, execute_at, created_at FROM active_timer WHERE id = 1")?;
 
         let timer = stmt
             .query_row([], |row| {
@@ -266,8 +260,7 @@ impl TimerScheduler {
                     created_at,
                 })
             })
-            .optional()
-            .map_err(|e| TimerError::Database(format!("Failed to query timer: {e}")))?;
+            .optional()?;
 
         drop(stmt);
         drop(db);
@@ -284,8 +277,7 @@ impl TimerScheduler {
     pub async fn cancel_timer(&self) -> Result<()> {
         let db = self.db.write().await;
 
-        db.execute("DELETE FROM active_timer WHERE id = 1", [])
-            .map_err(|e| TimerError::Database(format!("Failed to cancel timer: {e}")))?;
+        db.execute("DELETE FROM active_timer WHERE id = 1", [])?;
 
         drop(db);
 
@@ -337,8 +329,7 @@ impl TimerScheduler {
                     "Command timed out after {}s",
                     COMMAND_TIMEOUT.as_secs()
                 ))
-            })?
-            .map_err(|e| TimerError::Execution(format!("Failed to execute command: {e}")))?;
+            })??;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

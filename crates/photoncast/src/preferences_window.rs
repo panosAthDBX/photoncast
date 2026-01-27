@@ -14,6 +14,7 @@ use photoncast_core::platform::LoginItemManager;
 use photoncast_core::theme::PhotonTheme;
 use photoncast_core::ui::animations::set_reduce_motion_override;
 
+use crate::constants::{ICON_SIZE_MD, ICON_SIZE_SM, SECTION_GAP, TEXT_SIZE_SM};
 use crate::file_search_helper::reload_live_index;
 
 /// Helper struct holding all theme colors needed for preferences UI
@@ -966,7 +967,7 @@ impl PreferencesWindow {
             .overflow_hidden()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             .child(
                 div()
                     .text_size(px(18.0))
@@ -982,7 +983,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Launch at Login
             .child(
                 self.render_toggle_row(
@@ -1032,7 +1033,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Theme selector
             .child(self.render_theme_selector(cx))
             // Accent color selector
@@ -1068,7 +1069,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // History Size
             .child(self.render_number_row(
                 "History Size",
@@ -1230,7 +1231,7 @@ impl PreferencesWindow {
                     .py(px(4.0))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(TEXT_SIZE_SM)
                             .text_color(colors.text_muted)
                             .child(display_name.to_string()),
                     )
@@ -1325,7 +1326,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Enable Calendar
             .child(
                 self.render_toggle_row(
@@ -1371,7 +1372,7 @@ impl PreferencesWindow {
                     .gap(px(4.0))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(TEXT_SIZE_SM)
                             .text_color(colors.text)
                             .child("Calendar Access"),
                     )
@@ -1391,7 +1392,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Indexing Options section
             .child(
                 div()
@@ -1553,7 +1554,7 @@ impl PreferencesWindow {
                     .gap(px(4.0))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(TEXT_SIZE_SM)
                             .text_color(colors.text)
                             .child("Reindexing"),
                     )
@@ -1607,7 +1608,7 @@ impl PreferencesWindow {
                             .child(div().text_size(px(14.0)).child("📁"))
                             .child(
                                 div()
-                                    .text_size(px(12.0))
+                                    .text_size(TEXT_SIZE_SM)
                                     .text_color(colors.text)
                                     .child(display_path),
                             ),
@@ -2020,7 +2021,7 @@ impl PreferencesWindow {
                                     .child(div().text_size(px(14.0)).child("📂"))
                                     .child(
                                         div()
-                                            .text_size(px(12.0))
+                                            .text_size(TEXT_SIZE_SM)
                                             .text_color(colors.text)
                                             .child(display_path),
                                     ),
@@ -2214,7 +2215,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Uninstaller section
             .child(
                 div()
@@ -2289,7 +2290,7 @@ impl PreferencesWindow {
                     .gap(px(4.0))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(TEXT_SIZE_SM)
                             .text_color(colors.text)
                             .child("Force Quit & Uninstall"),
                     )
@@ -2307,7 +2308,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Enable Window Management
             .child(
                 self.render_toggle_row(
@@ -2415,7 +2416,7 @@ impl PreferencesWindow {
                     .border_color(colors.border)
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(TEXT_SIZE_SM)
                             .text_color(colors.text_muted)
                             .child("Configure window management shortcuts in the Keyboard Shortcuts section. Supports Hyper key (⌘⌃⌥⇧)."),
                     ),
@@ -2434,7 +2435,7 @@ impl PreferencesWindow {
             .justify_between()
             .child(
                 div()
-                    .text_size(px(12.0))
+                    .text_size(TEXT_SIZE_SM)
                     .text_color(colors.text)
                     .child(name),
             )
@@ -2451,7 +2452,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Enable Sleep Timer
             .child(
                 self.render_toggle_row(
@@ -2530,7 +2531,7 @@ impl PreferencesWindow {
                     .flex_col()
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(TEXT_SIZE_SM)
                             .text_color(colors.text)
                             .child(name),
                     )
@@ -2557,7 +2558,7 @@ impl PreferencesWindow {
             .id("extensions-section")
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             .child(
                 div()
                     .text_size(px(13.0))
@@ -2584,7 +2585,7 @@ impl PreferencesWindow {
                         )
                         .child(
                             div()
-                                .text_size(px(12.0))
+                                .text_size(TEXT_SIZE_SM)
                                 .text_color(colors.text_placeholder)
                                 .child("Extensions will appear here once installed."),
                         ),
@@ -2704,7 +2705,7 @@ impl PreferencesWindow {
                                     .absolute()
                                     .top(px(2.0))
                                     .left(knob_x)
-                                    .size(px(16.0))
+                                    .size(ICON_SIZE_SM)
                                     .rounded_full()
                                     .bg(white()),
                             )
@@ -2868,7 +2869,7 @@ impl PreferencesWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
+            .gap(SECTION_GAP)
             // Global Shortcuts
             .child(
                 div()
@@ -2921,7 +2922,7 @@ impl PreferencesWindow {
                     .gap(px(8.0))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(TEXT_SIZE_SM)
                             .text_color(colors.text)
                             .child("Customization"),
                     )
@@ -2977,7 +2978,7 @@ impl PreferencesWindow {
             .py(px(4.0))
             .child(
                 div()
-                    .text_size(px(12.0))
+                    .text_size(TEXT_SIZE_SM)
                     .text_color(colors.text)
                     .child(name),
             )
@@ -3093,7 +3094,7 @@ impl PreferencesWindow {
                 };
                 div()
                     .id(SharedString::from(*name))
-                    .size(px(24.0))
+                    .size(ICON_SIZE_MD)
                     .rounded_full()
                     .bg(color)
                     .border_2()
@@ -3182,7 +3183,7 @@ impl PreferencesWindow {
                             .absolute()
                             .top(px(2.0))
                             .left(toggle_pos)
-                            .size(px(16.0))
+                            .size(ICON_SIZE_SM)
                             .rounded_full()
                             .bg(colors.text),
                     ),
@@ -3240,7 +3241,7 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_decrement(this, cx)))
-                            .child(div().text_size(px(12.0)).text_color(colors.text).child("-")),
+                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("-")),
                     )
                     .child(
                         div()
@@ -3261,7 +3262,7 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_increment(this, cx)))
-                            .child(div().text_size(px(12.0)).text_color(colors.text).child("+")),
+                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("+")),
                     ),
             )
     }
@@ -3318,7 +3319,7 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_decrement(this, cx)))
-                            .child(div().text_size(px(12.0)).text_color(colors.text).child("-")),
+                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("-")),
                     )
                     .child(
                         div()
@@ -3339,7 +3340,7 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_increment(this, cx)))
-                            .child(div().text_size(px(12.0)).text_color(colors.text).child("+")),
+                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("+")),
                     ),
             )
     }
@@ -3367,7 +3368,7 @@ impl PreferencesWindow {
                     .py(px(4.0))
                     .rounded(px(4.0))
                     .bg(colors.surface_hover)
-                    .text_size(px(12.0))
+                    .text_size(TEXT_SIZE_SM)
                     .text_color(colors.text_muted)
                     .child(shortcut.to_string()),
             )

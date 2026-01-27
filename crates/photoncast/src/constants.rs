@@ -60,6 +60,46 @@ pub const LIST_PANEL_WIDTH: Pixels = px(500.0);
 pub const DETAIL_PANEL_WIDTH: Pixels = px(350.0);
 
 // =============================================================================
+// Icon Sizes
+// =============================================================================
+
+/// Small icon size (16×16) — inline text, accessories.
+pub const ICON_SIZE_SM: Pixels = px(16.0);
+
+/// Medium icon size (24×24) — list items, buttons.
+pub const ICON_SIZE_MD: Pixels = px(24.0);
+
+/// Large icon size (32×32) — grid items, headers.
+pub const ICON_SIZE_LG: Pixels = px(32.0);
+
+// =============================================================================
+// Text Sizes
+// =============================================================================
+
+/// Small text size (12pt) — captions, labels.
+pub const TEXT_SIZE_SM: Pixels = px(12.0);
+
+/// Medium text size (16pt) — body text, search input.
+pub const TEXT_SIZE_MD: Pixels = px(16.0);
+
+/// Large text size (24pt) — emoji icons, headings.
+pub const TEXT_SIZE_LG: Pixels = px(24.0);
+
+// =============================================================================
+// Spacing
+// =============================================================================
+
+/// Standard section gap (16px) — spacing between form/section groups.
+pub const SECTION_GAP: Pixels = px(16.0);
+
+// =============================================================================
+// Opacity
+// =============================================================================
+
+/// Overlay alpha value — used for modal overlays and dimming.
+pub const OVERLAY_ALPHA: f32 = 0.6;
+
+// =============================================================================
 // File Type Extensions
 // =============================================================================
 
@@ -141,7 +181,7 @@ impl ThemeColorSet {
             success: theme.colors.success.to_gpui(),
             warning: theme.colors.warning.to_gpui(),
             error: theme.colors.error.to_gpui(),
-            overlay: gpui::hsla(0.0, 0.0, 0.0, 0.6),
+            overlay: gpui::hsla(0.0, 0.0, 0.0, OVERLAY_ALPHA),
         }
     }
 }

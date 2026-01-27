@@ -118,7 +118,7 @@ impl CustomCommandProvider {
     ) -> SearchResult {
         // Determine icon
         let icon = match &command.icon {
-            Some(icon_name) if icon_name.chars().next().map_or(false, |c| c.is_ascii()) => {
+            Some(icon_name) if icon_name.chars().next().is_some_and(|c| c.is_ascii()) => {
                 // Treat as system icon name
                 IconSource::SystemIcon {
                     name: icon_name.clone(),
@@ -140,7 +140,7 @@ impl CustomCommandProvider {
 
         // Add alias if present
         if let Some(ref alias) = command.alias {
-            subtitle_parts.push(format!("/{}", alias));
+            subtitle_parts.push(format!("/{alias}"));
         }
 
         // Add command preview (first part, no args)
@@ -171,7 +171,7 @@ impl CustomCommandProvider {
 }
 
 impl SearchProvider for CustomCommandProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Custom Commands"
     }
 

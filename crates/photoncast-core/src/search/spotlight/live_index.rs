@@ -357,6 +357,7 @@ impl LiveFileIndex {
 }
 
 impl Clone for LiveFileIndex {
+    #[allow(clippy::ptr_arg)]
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -365,6 +366,7 @@ impl Clone for LiveFileIndex {
 }
 
 /// Checks if a file from a custom scope matches its extension filter.
+#[allow(clippy::ptr_arg)]
 fn matches_custom_scope_filter(path: &PathBuf, custom_scopes: &[CustomScopeConfig]) -> bool {
     for scope in custom_scopes {
         if path.starts_with(&scope.path) {
@@ -398,6 +400,7 @@ fn matches_custom_scope_filter(path: &PathBuf, custom_scopes: &[CustomScopeConfi
 
 /// Queries a single scope folder with optimized Spotlight predicate.
 /// Uses file type filters in the query itself for speed.
+#[allow(clippy::cloned_ref_to_slice_refs, clippy::ptr_arg)]
 fn query_single_scope(
     scope: &PathBuf,
     custom_config: Option<&CustomScopeConfig>,
@@ -467,12 +470,14 @@ fn query_single_scope(
 }
 
 /// Runs the live NSMetadataQuery on the current thread.
+#[allow(clippy::needless_pass_by_value)]
 fn run_live_query(inner: Arc<LiveFileIndexInner>) {
     run_live_query_with_generation(inner, 0);
 }
 
 /// Runs the live NSMetadataQuery with generation checking for hot reload support.
 /// Uses PARALLEL queries - one thread per monitored folder for speed.
+#[allow(clippy::needless_pass_by_value)]
 fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: usize) {
     use std::sync::mpsc;
 
@@ -540,9 +545,7 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
     );
     for (path, config) in &scope_configs {
         let ext_info = config
-            .as_ref()
-            .map(|c| format!("extensions={:?}", c.extensions))
-            .unwrap_or_else(|| "user_files".to_string());
+            .as_ref().map_or_else(|| "user_files".to_string(), |c| format!("extensions={:?}", c.extensions));
         tracing::debug!("[FileIndex]   - {} ({})", path.display(), ext_info);
     }
     tracing::debug!("[FileIndex] ========================================");
@@ -690,9 +693,10 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
             .collect();
         let array: Retained<NSArray<NSString>> = NSArray::from_slice(&scope_refs);
 
+        #[allow(clippy::incompatible_msrv)]
         unsafe {
             let any_array: &NSArray<AnyObject> =
-                &*(std::ptr::from_ref::<NSArray<NSString>>(&array) as *const NSArray<AnyObject>);
+                &*std::ptr::from_ref::<NSArray<NSString>>(&array).cast::<NSArray<AnyObject>>();
             live_query.setSearchScopes(any_array);
         }
     }
@@ -741,12 +745,13 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
 
     unsafe {
         let ptr = Retained::as_ptr(&update_observer);
-        let any_obj: &AnyObject = &*(ptr as *const AnyObject);
+        let any_obj: &AnyObject = &*ptr.cast::<AnyObject>();
         notification_center.removeObserver(any_obj);
     }
 }
 
 /// Handles the initial results from the query.
+#[allow(clippy::incompatible_msrv)]
 fn handle_initial_results(inner: &LiveFileIndexInner, notification: NonNull<NSNotification>) {
     let notification_ref = unsafe { notification.as_ref() };
 
@@ -755,7 +760,7 @@ fn handle_initial_results(inner: &LiveFileIndexInner, notification: NonNull<NSNo
         let obj = notification_ref.object();
         obj.and_then(|o| {
             let ptr = Retained::as_ptr(&o);
-            (ptr as *const NSMetadataQuery).as_ref()
+            ptr.cast::<NSMetadataQuery>().as_ref()
         })
     };
 
@@ -769,7 +774,7 @@ fn handle_initial_results(inner: &LiveFileIndexInner, notification: NonNull<NSNo
     // Extract all results
     let results = query.results();
     let typed_results: &NSArray<NSMetadataItem> =
-        unsafe { &*(std::ptr::from_ref::<NSArray>(&results) as *const NSArray<NSMetadataItem>) };
+        unsafe { &*std::ptr::from_ref::<NSArray>(&results).cast::<NSArray<NSMetadataItem>>() };
 
     let spotlight_results = MetadataExtractor::extract_batch(typed_results);
 
@@ -804,7 +809,7 @@ fn handle_update(inner: &LiveFileIndexInner, notification: NonNull<NSNotificatio
         let obj = notification_ref.object();
         obj.and_then(|o| {
             let ptr = Retained::as_ptr(&o);
-            (ptr as *const NSMetadataQuery).as_ref()
+            ptr.cast::<NSMetadataQuery>().as_ref()
         })
     };
 
@@ -825,7 +830,7 @@ fn handle_update(inner: &LiveFileIndexInner, notification: NonNull<NSNotificatio
         // Cast the NSArray to the typed version - safe because NSMetadataQuery
         // returns NSMetadataItem objects
         let ptr: *const NSArray = &*results;
-        &*(ptr as *const NSArray<NSMetadataItem>)
+        &*ptr.cast::<NSArray<NSMetadataItem>>()
     };
 
     let spotlight_results = MetadataExtractor::extract_batch(typed_results);
@@ -978,7 +983,7 @@ fn should_exclude(path: &Path) -> bool {
 
     // Check for excluded directories
     for dir in EXCLUDED_DIRS {
-        if path_str.contains(&format!("/{}/", dir)) {
+        if path_str.contains(&format!("/{dir}/")) {
             return true;
         }
     }

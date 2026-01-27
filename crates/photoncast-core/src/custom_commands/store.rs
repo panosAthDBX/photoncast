@@ -591,6 +591,7 @@ impl CustomCommandStore {
     }
 
     /// Checks if an alias is already in use (excluding a specific command ID).
+    #[allow(clippy::unused_self)]
     fn alias_exists(&self, alias: &str, exclude_id: Option<&str>) -> Result<bool, StoreError> {
         let conn = self.conn.lock();
 
@@ -611,6 +612,7 @@ impl CustomCommandStore {
     }
 
     /// Converts a database row to a CustomCommand.
+    #[allow(clippy::cast_possible_truncation, clippy::unused_self)]
     fn row_to_command(&self, row: &rusqlite::Row<'_>) -> Result<CustomCommand, rusqlite::Error> {
         let keywords_json: Option<String> = row.get(4)?;
         let env_json: Option<String> = row.get(7)?;
@@ -649,6 +651,7 @@ impl CustomCommandStore {
     }
 
     /// Returns the count of stored commands.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn count(&self) -> Result<usize, StoreError> {
         let conn = self.conn.lock();
         let count: i64 =
@@ -669,7 +672,7 @@ fn truncate_string(s: &str, max_len: usize) -> String {
         s.to_string()
     } else {
         let truncated: String = s.chars().take(max_len).collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }
 

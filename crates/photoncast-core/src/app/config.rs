@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// User configuration for PhotonCast.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct Config {
     /// General application settings.
     #[serde(default)]
@@ -48,22 +49,6 @@ pub struct Config {
     pub file_search: FileSearchConfig,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            hotkey: HotkeyConfig::default(),
-            appearance: AppearanceConfig::default(),
-            clipboard: ClipboardConfig::default(),
-            search: SearchConfig::default(),
-            calendar: CalendarConfig::default(),
-            app_management: AppManagementConfig::default(),
-            sleep_timer: SleepTimerConfig::default(),
-            window_management: WindowManagementConfig::default(),
-            file_search: FileSearchConfig::default(),
-        }
-    }
-}
 
 /// General application settings.
 #[derive(Debug, Clone, Deserialize, Serialize)]

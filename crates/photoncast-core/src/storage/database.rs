@@ -206,6 +206,7 @@ impl Database {
     }
 
     /// Returns the current schema version.
+    #[allow(clippy::double_must_use)]
     pub fn schema_version(&self) -> Result<i32> {
         self.get_schema_version()
     }
@@ -217,6 +218,7 @@ impl Database {
     /// This method is primarily for testing and should be used carefully.
     /// Prefer using the async methods for production code.
     #[must_use]
+    #[allow(clippy::double_must_use)]
     pub fn connection(&self) -> parking_lot::MutexGuard<'_, Connection> {
         self.conn.lock()
     }
@@ -546,6 +548,7 @@ impl Database {
     /// # Errors
     ///
     /// Returns an error if the database operation fails.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn app_cache_count(&self) -> Result<usize> {
         let conn = self.conn.lock();
 
@@ -701,6 +704,7 @@ impl Database {
 
 /// Returns the default database path.
 #[must_use]
+#[allow(clippy::map_unwrap_or)]
 pub fn default_database_path() -> PathBuf {
     directories::ProjectDirs::from("", "", "PhotonCast")
         .map(|dirs| dirs.data_dir().join("photoncast.db"))

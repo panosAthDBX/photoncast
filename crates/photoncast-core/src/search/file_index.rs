@@ -172,7 +172,7 @@ impl FileTokenizer {
             } else if is_upper
                 && prev_was_upper
                 && current.len() > 1
-                && current.chars().last().is_some_and(|c| c.is_uppercase())
+                && current.chars().last().is_some_and(char::is_uppercase)
             {
                 // Check if next char is lowercase (XMLParser case)
                 false // Will be handled in next iteration
@@ -222,7 +222,7 @@ impl FileTokenizer {
     /// - `Ñoño` → `nono`
     fn ascii_fold(s: &str) -> String {
         s.nfkd()
-            .filter(|c| c.is_ascii())
+            .filter(char::is_ascii)
             .filter(|c| c.is_alphanumeric())
             .collect()
     }
@@ -266,14 +266,13 @@ impl IndexedFile {
         let extension = path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase());
+            .map(str::to_lowercase);
 
         let modified = metadata
             .modified()
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+            .map_or(0, |d| d.as_secs() as i64);
 
         Ok(Self {
             path: path.to_path_buf(),
@@ -582,7 +581,7 @@ impl FileIndex {
         }
 
         let prefix_lower = prefix.to_lowercase();
-        let prefix_pattern = format!("{}%", prefix_lower);
+        let prefix_pattern = format!("{prefix_lower}%");
 
         let mut stmt = self.db.prepare(
             r"
@@ -619,6 +618,7 @@ impl FileIndex {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn file_count(&self) -> Result<usize> {
         let count: i64 = self
             .db
@@ -729,7 +729,7 @@ impl IndexingService {
     /// * `scopes` - Directories to index.
     /// * `ignore_matcher` - The ignore pattern matcher to use.
     #[must_use]
-    #[allow(clippy::arc_with_non_send_sync)]
+    #[allow(clippy::arc_with_non_send_sync, clippy::needless_pass_by_value)]
     pub fn with_ignore_matcher(
         index: FileIndex,
         scopes: Vec<PathBuf>,
@@ -768,6 +768,7 @@ impl IndexingService {
     /// # Errors
     ///
     /// Returns an error if indexing fails critically (e.g., database error).
+    #[allow(clippy::items_after_statements)]
     pub async fn start_indexing(&self) -> Result<()> {
         // Check if already cancelled before starting
         if self.cancelled.load(Ordering::SeqCst) {
@@ -875,6 +876,7 @@ impl IndexingService {
     /// # Errors
     ///
     /// Returns an error if indexing fails.
+    #[allow(clippy::items_after_statements)]
     pub fn start_indexing_sync(&self) -> Result<()> {
         // Check if already cancelled before starting
         if self.cancelled.load(Ordering::SeqCst) {
@@ -1044,6 +1046,7 @@ impl IndexingService {
 
     /// Returns the current progress as a ratio (0.0 to 1.0).
     #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn progress(&self) -> f32 {
         let total = self.total.load(Ordering::SeqCst);
         if total == 0 {

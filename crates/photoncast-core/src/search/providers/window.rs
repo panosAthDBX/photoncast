@@ -33,7 +33,7 @@ impl WindowProvider {
 }
 
 impl SearchProvider for WindowProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Window Management"
     }
 

@@ -214,6 +214,7 @@ impl Default for IconCache {
 /// # Errors
 ///
 /// Returns an error if the icon cannot be extracted.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub async fn extract_icon(app_path: &Path, cache_dir: &Path) -> Result<PathBuf> {
     // Read Info.plist to get icon file name
     let info_plist_path = app_path.join("Contents/Info.plist");
@@ -315,6 +316,7 @@ fn hash_path(path: &Path) -> u64 {
 
 /// Returns the default icon cache directory.
 #[must_use]
+#[allow(clippy::map_unwrap_or)]
 pub fn default_cache_dir() -> PathBuf {
     directories::ProjectDirs::from("", "", "PhotonCast")
         .map(|dirs| dirs.cache_dir().join("icons"))

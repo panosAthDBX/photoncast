@@ -138,8 +138,7 @@ impl CommandUsageTracker for InMemoryUsageTracker {
             .read()
             .unwrap()
             .get(command_id)
-            .map(|(count, _)| *count)
-            .unwrap_or(0)
+            .map_or(0, |(count, _)| *count)
     }
 
     fn get_last_execution(&self, command_id: &str) -> Option<i64> {
@@ -264,7 +263,7 @@ impl<T: CommandUsageTracker> CommandExecutor<T> {
     pub fn execute_by_id(&self, command_id: &str) -> Result<()> {
         let command = self
             .lookup(command_id)
-            .ok_or_else(|| anyhow::anyhow!("command not found: {}", command_id))?;
+            .ok_or_else(|| anyhow::anyhow!("command not found: {command_id}"))?;
         self.execute(command)
     }
 

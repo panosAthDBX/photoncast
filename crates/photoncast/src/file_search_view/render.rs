@@ -11,8 +11,8 @@ use gpui::*;
 use photoncast_core::platform::spotlight::FileKind;
 
 use crate::constants::{
-    DETAIL_PANEL_WIDTH, LIST_ITEM_HEIGHT, LIST_PANEL_WIDTH, SEARCH_BAR_HEIGHT,
-    SECTION_HEADER_HEIGHT,
+    DETAIL_PANEL_WIDTH, ICON_SIZE_LG, ICON_SIZE_SM, LIST_ITEM_HEIGHT, LIST_PANEL_WIDTH,
+    SEARCH_BAR_HEIGHT, SECTION_HEADER_HEIGHT, TEXT_SIZE_MD,
 };
 
 use super::filter::FileTypeFilter;
@@ -54,7 +54,7 @@ impl FileSearchView {
             .child(
                 div()
                     .flex_1()
-                    .text_size(px(16.0))
+                    .text_size(TEXT_SIZE_MD)
                     .flex()
                     .items_center()
                     .when(self.query.is_empty(), |el| {
@@ -180,8 +180,8 @@ impl FileSearchView {
             // Icon
             .child(
                 div()
-                    .w(px(32.0))
-                    .h(px(32.0))
+                    .w(ICON_SIZE_LG)
+                    .h(ICON_SIZE_LG)
                     .flex()
                     .items_center()
                     .justify_center()
@@ -830,7 +830,7 @@ impl FileSearchView {
                     // Checkmark for selected
                     .child(
                         div()
-                            .w(px(16.0))
+                            .w(ICON_SIZE_SM)
                             .text_size(px(12.0))
                             .when(is_selected, |el| el.text_color(accent).child("✓"))
                             .when(!is_selected, |el| el.child("")),

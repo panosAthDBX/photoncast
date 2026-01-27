@@ -21,7 +21,7 @@ impl ExtensionProvider {
 }
 
 impl SearchProvider for ExtensionProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Extensions"
     }
 

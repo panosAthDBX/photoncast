@@ -47,7 +47,7 @@ impl CommandProvider {
 }
 
 impl SearchProvider for CommandProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Commands"
     }
 
@@ -55,6 +55,7 @@ impl SearchProvider for CommandProvider {
         ResultType::SystemCommand
     }
 
+    #[allow(clippy::match_same_arms)]
     fn search(&self, query: &str, max_results: usize) -> Vec<SearchResult> {
         if query.is_empty() {
             return Vec::new();

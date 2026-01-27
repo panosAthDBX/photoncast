@@ -157,7 +157,7 @@ impl ExtensionWatcher {
         let watcher = self
             .watcher
             .as_mut()
-            .ok_or_else(|| WatcherError::NotStarted)?;
+            .ok_or(WatcherError::NotStarted)?;
 
         // Add to our tracking map
         self.watched_paths.write().insert(
@@ -219,6 +219,7 @@ impl Default for ExtensionWatcher {
 
 /// Errors that can occur during file watching.
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::trivially_copy_pass_by_ref)]
 pub enum WatcherError {
     #[error("failed to initialize watcher: {0}")]
     Init(String),
@@ -229,6 +230,7 @@ pub enum WatcherError {
 }
 
 /// Checks if the event kind is relevant for triggering a reload.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_relevant_event(kind: &EventKind) -> bool {
     matches!(
         kind,

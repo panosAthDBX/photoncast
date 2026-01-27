@@ -45,14 +45,12 @@ impl HotkeyError {
             },
             Self::ConflictDetected { app, suggestion } => {
                 format!(
-                    "The hotkey you selected conflicts with {}. {}",
-                    app, suggestion
+                    "The hotkey you selected conflicts with {app}. {suggestion}"
                 )
             },
             Self::RegistrationFailed { reason } => {
                 format!(
-                    "Failed to register hotkey: {}. Try a different key combination.",
-                    reason
+                    "Failed to register hotkey: {reason}. Try a different key combination."
                 )
             },
             Self::InvalidBinding => {
@@ -102,8 +100,7 @@ impl ConflictInfo {
         let app = app_name.into();
         Self {
             suggestion: format!(
-                "Disable the hotkey in {}'s settings, or choose a different hotkey for PhotonCast.",
-                app
+                "Disable the hotkey in {app}'s settings, or choose a different hotkey for PhotonCast."
             ),
             app_name: app,
             hotkey,
@@ -570,7 +567,7 @@ fn is_spotlight_enabled_from_path(path: &Path) -> bool {
 fn read_spotlight_enabled_status(path: &Path) -> Result<bool, String> {
     // Read and parse the plist file
     let plist_value: plist::Value =
-        plist::from_file(path).map_err(|e| format!("Failed to parse plist: {}", e))?;
+        plist::from_file(path).map_err(|e| format!("Failed to parse plist: {e}"))?;
 
     // Navigate to AppleSymbolicHotKeys -> 64 -> enabled
     let dict = plist_value

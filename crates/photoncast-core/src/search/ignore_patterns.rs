@@ -258,6 +258,7 @@ impl IgnorePattern {
     ///
     /// `true` if the pattern matches the path.
     #[must_use]
+    #[allow(clippy::unused_self)]
     pub fn matches(&self, path: &Path, is_dir: bool) -> bool {
         // Directory-only patterns only match directories
         if self.directory_only && !is_dir {
@@ -288,6 +289,7 @@ impl IgnorePattern {
     }
 
     /// Internal pattern matching implementation.
+    #[allow(clippy::unused_self)]
     fn pattern_matches(&self, pattern: &str, text: &str) -> bool {
         Self::glob_match(pattern, text)
     }
@@ -619,6 +621,7 @@ impl IgnoreMatcher {
     ///
     /// Immediately scans for ignore files in the root directory.
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn with_root(root: PathBuf) -> Self {
         let matcher = Self::new();
         matcher.add_root(root);
@@ -626,6 +629,7 @@ impl IgnoreMatcher {
     }
 
     /// Adds a root directory to scan for ignore patterns.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn add_root(&self, root: PathBuf) {
         self.roots.write().push(root.clone());
         // Load patterns from root
@@ -704,9 +708,7 @@ impl IgnoreMatcher {
         let abs_path = if path.is_absolute() {
             path.to_path_buf()
         } else {
-            std::env::current_dir()
-                .map(|cwd| cwd.join(path))
-                .unwrap_or_else(|_| path.to_path_buf())
+            std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
         };
 
         // Apply global patterns first

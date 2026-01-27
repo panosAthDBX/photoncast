@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 /// Returns the PhotonCast data directory.
 #[must_use]
+#[allow(clippy::map_unwrap_or)]
 pub fn data_dir() -> PathBuf {
     directories::ProjectDirs::from("", "", "PhotonCast")
         .map(|dirs| dirs.data_dir().to_path_buf())
@@ -16,6 +17,7 @@ pub fn data_dir() -> PathBuf {
 
 /// Returns the PhotonCast cache directory.
 #[must_use]
+#[allow(clippy::map_unwrap_or)]
 pub fn cache_dir() -> PathBuf {
     directories::ProjectDirs::from("", "", "PhotonCast")
         .map(|dirs| dirs.cache_dir().to_path_buf())
@@ -28,6 +30,7 @@ pub fn cache_dir() -> PathBuf {
 
 /// Returns the PhotonCast config directory.
 #[must_use]
+#[allow(clippy::map_unwrap_or)]
 pub fn config_dir() -> PathBuf {
     directories::ProjectDirs::from("", "", "PhotonCast")
         .map(|dirs| dirs.config_dir().to_path_buf())
@@ -61,9 +64,7 @@ pub fn expand_tilde(path: &str) -> PathBuf {
     if path == "~" {
         dirs::home_dir().unwrap_or_else(|| PathBuf::from(path))
     } else if let Some(rest) = path.strip_prefix("~/") {
-        dirs::home_dir()
-            .map(|h| h.join(rest))
-            .unwrap_or_else(|| PathBuf::from(path))
+        dirs::home_dir().map_or_else(|| PathBuf::from(path), |h| h.join(rest))
     } else {
         PathBuf::from(path)
     }

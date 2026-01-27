@@ -16,51 +16,25 @@
 //! - [`commands`] - System commands
 //! - [`utils`] - Shared utilities
 
-// Enable warnings for actual implementation, allow certain lints for placeholder code
+// Clippy configuration: warn on all + pedantic, with targeted project-wide exceptions
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
-// Allow certain lints that are expected in placeholder/stub implementations
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::missing_const_for_fn)] // Will add const where appropriate during implementation
-#![allow(clippy::unused_async)] // Async functions will have await once implemented
-#![allow(clippy::map_unwrap_or)] // Style preference, will refactor during implementation
-#![allow(clippy::struct_excessive_bools)] // Will be refactored if needed
-#![allow(clippy::derivable_impls)] // Some Default impls have comments
-#![allow(clippy::doc_markdown)] // Will fix documentation during implementation
-#![allow(clippy::should_implement_trait)] // Will implement traits during development
-#![allow(clippy::match_same_arms)] // Placeholder implementations
-#![allow(clippy::cast_precision_loss)] // Acceptable for frecency calculations
-#![allow(clippy::unnecessary_literal_bound)] // Will fix during implementation
-#![allow(clippy::uninlined_format_args)] // Style preference
-#![allow(clippy::case_sensitive_file_extension_comparisons)] // Will fix during implementation
-#![allow(clippy::missing_errors_doc)] // Will add error docs during implementation
-#![allow(clippy::must_use_candidate)] // Will add #[must_use] where appropriate
-#![allow(clippy::wildcard_imports)] // Used for prelude-style imports
-#![allow(clippy::unused_self)] // Some methods will use self in future
-#![allow(clippy::single_match_else)] // Style preference for explicit matching
+// Project-wide style choices (kept as blanket allows)
+#![allow(clippy::module_name_repetitions)] // Common Rust naming pattern
+#![allow(clippy::must_use_candidate)] // Too noisy for this codebase
+#![allow(clippy::missing_errors_doc)] // Documentation will be added incrementally
+#![allow(clippy::missing_panics_doc)] // Documentation will be added incrementally
+#![allow(clippy::struct_excessive_bools)] // UI state often needs many bools
 #![allow(clippy::type_complexity)] // Complex types acceptable for GPUI elements
-#![allow(clippy::redundant_closure_for_method_calls)] // Style preference
-#![allow(clippy::cast_possible_wrap)] // Acceptable for timestamp conversions
-#![allow(clippy::cast_sign_loss)] // Acceptable for validated conversions
-#![allow(clippy::needless_pass_by_value)] // Some APIs require owned values
-#![allow(clippy::if_not_else)] // Style preference
-#![allow(clippy::match_wildcard_for_single_variants)] // Explicit matching preferred
-#![allow(clippy::significant_drop_tightening)] // MutexGuard across await is intentional
-#![allow(clippy::option_map_or_none)] // Style preference
-#![allow(clippy::useless_format)] // Will fix during implementation
-#![allow(clippy::double_must_use)] // Acceptable for wrapper types
-#![allow(clippy::manual_let_else)] // Style preference
-#![allow(clippy::if_same_then_else)] // Placeholder implementations
-#![allow(clippy::doc_overindented_list_items)] // Will fix docs later
-#![allow(clippy::cast_possible_truncation)] // Validated at runtime
-#![allow(clippy::assigning_clones)] // Style preference
-#![allow(clippy::option_if_let_else)] // Style preference for explicit matching
-#![allow(clippy::redundant_closure)] // Style preference
-#![allow(clippy::manual_filter_map)] // Style preference
-#![allow(clippy::match_wild_err_arm)] // Explicit error handling style
-#![allow(clippy::unit_arg)] // Matching over () is intentional for Result handling
+#![allow(clippy::too_many_lines)] // Pragmatic choice for complex functions
+#![allow(clippy::too_many_arguments)] // Pragmatic choice for builder-style APIs
+#![allow(clippy::cast_possible_wrap)] // Pervasive in timestamp/DB conversions (u64↔i64)
+#![allow(clippy::cast_sign_loss)] // Pervasive in validated timestamp/size conversions
+#![allow(clippy::significant_drop_tightening)] // MutexGuard usage patterns are intentional
 #![allow(clippy::await_holding_lock)] // Intentional for async icon loading with cache
-#![allow(dead_code)] // Expected in placeholder code
+#![allow(clippy::doc_markdown)] // Will fix documentation incrementally
+#![allow(clippy::wildcard_imports)] // Used for prelude-style imports in GPUI
+#![allow(dead_code)] // Expected in placeholder/evolving code
 
 pub mod app;
 pub mod commands;

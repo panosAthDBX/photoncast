@@ -111,6 +111,7 @@ impl MetadataQueryWrapper {
     /// Sets the directories to search.
     ///
     /// If not set, searches the entire system (user-accessible areas).
+    #[allow(clippy::incompatible_msrv)]
     pub fn set_search_scopes(&mut self, scopes: &[PathBuf]) -> &mut Self {
         if scopes.is_empty() {
             return self;
@@ -122,20 +123,21 @@ impl MetadataQueryWrapper {
             .map(NSString::from_str)
             .collect();
 
-        let scope_refs: Vec<&NSString> = ns_scopes.iter().map(|s| s.as_ref()).collect();
+        let scope_refs: Vec<&NSString> = ns_scopes.iter().map(std::convert::AsRef::as_ref).collect();
         let array: Retained<NSArray<NSString>> = NSArray::from_slice(&scope_refs);
 
         // Safety: setSearchScopes expects an array of NSString or NSURL.
         // We cast the typed array to AnyObject array.
         unsafe {
             let any_array: &NSArray<AnyObject> =
-                &*(std::ptr::from_ref::<NSArray<NSString>>(&array) as *const NSArray<AnyObject>);
+                &*std::ptr::from_ref::<NSArray<NSString>>(&array).cast::<NSArray<AnyObject>>();
             self.query.setSearchScopes(any_array);
         }
         self
     }
 
     /// Sets search scopes using URLs.
+    #[allow(clippy::incompatible_msrv)]
     pub fn set_search_scope_urls(&mut self, urls: &[&NSURL]) -> &mut Self {
         if urls.is_empty() {
             return self;
@@ -146,7 +148,7 @@ impl MetadataQueryWrapper {
         // Safety: setSearchScopes expects an array of NSString or NSURL
         unsafe {
             let any_array: &NSArray<AnyObject> =
-                &*(std::ptr::from_ref::<NSArray<NSURL>>(&array) as *const NSArray<AnyObject>);
+                &*std::ptr::from_ref::<NSArray<NSURL>>(&array).cast::<NSArray<AnyObject>>();
             self.query.setSearchScopes(any_array);
         }
         self
@@ -228,6 +230,7 @@ impl MetadataQueryWrapper {
     /// # Returns
     ///
     /// A vector of [`SpotlightResult`] objects, or an error.
+    #[allow(clippy::ptr_as_ptr)]
     pub fn execute_sync(&self, timeout: Duration) -> Result<Vec<SpotlightResult>> {
         // Thread-safe flag to track completion
         let finished = Arc::new(AtomicBool::new(false));
@@ -355,11 +358,13 @@ impl MetadataQueryWrapper {
 
     /// Returns whether the query has been stopped.
     #[must_use]
+    #[allow(clippy::unnecessary_wraps)]
     pub fn is_stopped(&self) -> bool {
         self.query.isStopped()
     }
 
     /// Extracts results from the completed query.
+    #[allow(clippy::unnecessary_wraps)]
     fn extract_results(&self) -> Result<Vec<SpotlightResult>> {
         // Disable updates while reading results
         self.query.disableUpdates();
@@ -369,7 +374,7 @@ impl MetadataQueryWrapper {
         // Safety: NSMetadataQuery.results() returns NSMetadataItem objects
         let typed_results: &NSArray<NSMetadataItem> = unsafe {
             let ptr: *const NSArray = &*results;
-            &*(ptr as *const NSArray<NSMetadataItem>)
+            &*ptr.cast::<NSArray<NSMetadataItem>>()
         };
         let spotlight_results = MetadataExtractor::extract_batch(typed_results);
 

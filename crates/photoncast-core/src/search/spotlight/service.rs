@@ -325,6 +325,7 @@ impl SpotlightSearchService {
     }
 
     /// Executes a query with specific scopes and options.
+    #[allow(clippy::unused_self)]
     fn execute_query_with_scopes(
         &self,
         predicate: &objc2_foundation::NSPredicate,
@@ -390,6 +391,7 @@ impl SpotlightSearchService {
     }
 
     /// Clears the result cache.
+    #[allow(clippy::unused_self)]
     pub fn clear_cache(&self) {
         let mut cache = self.inner.cache.write();
         cache.clear();
@@ -399,6 +401,7 @@ impl SpotlightSearchService {
     // Private Helpers
     // =========================================================================
 
+    #[allow(clippy::unused_self)]
     fn make_cache_key(&self, query: &str, options: &SpotlightSearchOptions) -> u64 {
         let mut hasher = DefaultHasher::new();
         query.hash(&mut hasher);
@@ -432,6 +435,7 @@ impl SpotlightSearchService {
 }
 
 impl Default for SpotlightSearchService {
+    #[allow(clippy::unnecessary_wraps)]
     fn default() -> Self {
         Self::new()
     }
@@ -442,6 +446,7 @@ impl Default for SpotlightSearchService {
 // =============================================================================
 
 /// Converts a FileQuery to an NSPredicate via PredicateBuilder.
+#[allow(clippy::trivially_copy_pass_by_ref, clippy::unnecessary_wraps)]
 fn file_query_to_predicate(
     file_query: &FileQuery,
     apply_exclusions: bool,
@@ -485,6 +490,7 @@ fn file_query_to_predicate(
 }
 
 /// Maps FileCategory to primary UTI string.
+#[allow(clippy::ptr_arg, clippy::trivially_copy_pass_by_ref)]
 fn category_to_uti(category: &FileCategory) -> &'static str {
     match category {
         FileCategory::Documents => "public.document",
@@ -498,6 +504,7 @@ fn category_to_uti(category: &FileCategory) -> &'static str {
 }
 
 /// Resolves a location scope to actual paths.
+#[allow(clippy::ptr_arg)]
 fn resolve_location_scope(location: &PathBuf) -> Vec<PathBuf> {
     if location.exists() {
         vec![location.clone()]

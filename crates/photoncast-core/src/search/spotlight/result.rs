@@ -287,7 +287,7 @@ impl MetadataExtractor {
         value.and_then(|obj| {
             // Try to interpret as NSString
             let ns_string: Option<&NSString> = obj.downcast_ref();
-            ns_string.map(|s| s.to_string())
+            ns_string.map(std::string::ToString::to_string)
         })
     }
 
@@ -301,7 +301,7 @@ impl MetadataExtractor {
         value.and_then(|obj| {
             // Try to interpret as NSNumber
             let ns_number: Option<&NSNumber> = obj.downcast_ref();
-            ns_number.map(|n| n.as_i64())
+            ns_number.map(objc2_foundation::NSNumber::as_i64)
         })
     }
 

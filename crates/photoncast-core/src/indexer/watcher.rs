@@ -55,9 +55,7 @@ impl Default for WatcherConfig {
             .iter()
             .map(|p| {
                 if p.starts_with('~') {
-                    dirs::home_dir()
-                        .map(|h| h.join(&p[2..]))
-                        .unwrap_or_else(|| PathBuf::from(p))
+                    dirs::home_dir().map_or_else(|| PathBuf::from(p), |h| h.join(&p[2..]))
                 } else {
                     PathBuf::from(p)
                 }

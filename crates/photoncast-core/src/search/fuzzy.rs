@@ -75,7 +75,7 @@ impl FuzzyMatcher {
         if self.config.smart_case {
             // Smart case: if query contains uppercase, use case-sensitive matching
             // Otherwise, ignore case
-            if query.chars().any(|c| c.is_uppercase()) {
+            if query.chars().any(char::is_uppercase) {
                 CaseMatching::Respect
             } else {
                 CaseMatching::Ignore
@@ -106,6 +106,7 @@ impl FuzzyMatcher {
     /// A tuple of (score, match_indices) if the query matches, None otherwise.
     /// The score is higher for better matches. Match indices point to the
     /// character positions in the target that matched the query.
+    #[allow(clippy::cast_precision_loss)]
     pub fn score(&mut self, query: &str, target: &str) -> Option<(u32, Vec<usize>)> {
         if query.is_empty() {
             return Some((0, Vec::new()));
@@ -166,6 +167,7 @@ impl FuzzyMatcher {
     }
 
     /// Checks if the query is a prefix of the target.
+    #[allow(clippy::unused_self)]
     fn is_prefix_match(&self, query: &str, target: &str, case_matching: CaseMatching) -> bool {
         match case_matching {
             CaseMatching::Ignore => {

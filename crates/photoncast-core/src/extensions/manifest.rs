@@ -130,7 +130,7 @@ pub fn load_manifest(path: &Path) -> Result<ExtensionManifest, ManifestError> {
         })?;
 
     // Set the runtime directory field based on the manifest path
-    manifest.directory = path.parent().map(|p| p.to_path_buf());
+    manifest.directory = path.parent().map(std::path::Path::to_path_buf);
 
     Ok(manifest)
 }
@@ -279,9 +279,7 @@ pub fn read_manifest_with_cache(
     let modified_at = metadata
         .modified()
         .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or_else(|| Utc::now().timestamp());
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or_else(|| Utc::now().timestamp(), |d| d.as_secs() as i64);
 
     let path_key = manifest_path.to_string_lossy().to_string();
 

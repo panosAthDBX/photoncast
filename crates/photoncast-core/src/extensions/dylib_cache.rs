@@ -135,12 +135,11 @@ impl DylibCache {
 
         let mut versions: Vec<PathBuf> = fs::read_dir(&ext_cache_dir)
             .map_err(DylibCacheError::ReadDir)?
-            .filter_map(|entry| entry.ok())
+            .filter_map(std::result::Result::ok)
             .map(|entry| entry.path())
             .filter(|path| {
                 path.extension()
-                    .map(|e| e == "dylib" || e == "so" || e == "dll")
-                    .unwrap_or(false)
+                    .is_some_and(|e| e == "dylib" || e == "so" || e == "dll")
             })
             .collect();
 
@@ -228,12 +227,11 @@ impl DylibCache {
             .ok()
             .map(|entries| {
                 entries
-                    .filter_map(|entry| entry.ok())
+                    .filter_map(std::result::Result::ok)
                     .map(|entry| entry.path())
                     .filter(|path| {
                         path.extension()
-                            .map(|e| e == "dylib" || e == "so" || e == "dll")
-                            .unwrap_or(false)
+                            .is_some_and(|e| e == "dylib" || e == "so" || e == "dll")
                     })
                     .collect()
             })

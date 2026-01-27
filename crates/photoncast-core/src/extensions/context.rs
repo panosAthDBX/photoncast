@@ -8,6 +8,7 @@ use crate::extensions::runtime::ExtensionRuntimeImpl;
 use crate::extensions::storage::ExtensionStorageImpl;
 use crate::utils::paths;
 
+#[allow(clippy::map_unwrap_or)]
 pub fn make_extension_context(
     host_services: &ExtensionHostServices,
     host: &ExtensionHostImpl,

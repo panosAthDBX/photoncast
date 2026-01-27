@@ -406,7 +406,7 @@ impl FileQuery {
             match file_type {
                 FileTypeFilter::Extension(ext) => {
                     let escaped_ext = Self::escape_spotlight_value(ext);
-                    predicates.push(format!("kMDItemFSName == \"*.{}\"c", escaped_ext));
+                    predicates.push(format!("kMDItemFSName == \"*.{escaped_ext}\"c"));
                 },
                 FileTypeFilter::Category(category) => {
                     if *category == FileCategory::Folders {
@@ -415,7 +415,7 @@ impl FileQuery {
                         let uti_predicates: Vec<String> = category
                             .uti_types()
                             .iter()
-                            .map(|uti| format!("kMDItemContentTypeTree == \"{}\"", uti))
+                            .map(|uti| format!("kMDItemContentTypeTree == \"{uti}\""))
                             .collect();
                         if !uti_predicates.is_empty() {
                             predicates.push(format!("({})", uti_predicates.join(" || ")));
@@ -433,13 +433,13 @@ impl FileQuery {
         // Add exact phrase predicate
         if let Some(ref phrase) = self.exact_phrase {
             let escaped = Self::escape_spotlight_value(phrase);
-            predicates.push(format!("kMDItemDisplayName == \"*{}*\"c", escaped));
+            predicates.push(format!("kMDItemDisplayName == \"*{escaped}*\"c"));
         }
 
         // Add term predicates
         for term in &self.terms {
             let escaped = Self::escape_spotlight_value(term);
-            predicates.push(format!("kMDItemDisplayName == \"*{}*\"c", escaped));
+            predicates.push(format!("kMDItemDisplayName == \"*{escaped}*\"c"));
         }
 
         // Join with AND
@@ -567,7 +567,7 @@ impl FileQuery {
         let mut parts = Vec::new();
 
         if let Some(ref phrase) = self.exact_phrase {
-            parts.push(format!("\"{}\"", phrase));
+            parts.push(format!("\"{phrase}\""));
         }
 
         for term in &self.terms {
@@ -575,7 +575,7 @@ impl FileQuery {
         }
 
         if let Some(FileTypeFilter::Extension(ext)) = &self.file_type {
-            parts.push(format!(".{}", ext));
+            parts.push(format!(".{ext}"));
         }
 
         if let Some(ref location) = self.location {
@@ -583,7 +583,7 @@ impl FileQuery {
         }
 
         if let Some(ref parent) = self.parent_folder {
-            parts.push(format!("in {}/", parent));
+            parts.push(format!("in {parent}/"));
         }
 
         if self.prioritize_folders {

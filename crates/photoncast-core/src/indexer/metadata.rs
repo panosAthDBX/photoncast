@@ -32,6 +32,7 @@ async fn file_metadata(path: &Path) -> Result<std::fs::Metadata> {
 /// # Errors
 ///
 /// Returns an error if the Info.plist cannot be read or parsed.
+#[allow(clippy::map_unwrap_or)]
 pub async fn parse_app_metadata(app_path: &Path) -> Result<IndexedApp> {
     let info_plist_path = app_path.join("Contents/Info.plist");
 
@@ -76,9 +77,7 @@ pub async fn parse_app_metadata(app_path: &Path) -> Result<IndexedApp> {
     // Get last modified time
     let metadata = file_metadata(app_path).await?;
     let last_modified = metadata
-        .modified()
-        .map(chrono::DateTime::<chrono::Utc>::from)
-        .unwrap_or_else(|_| chrono::Utc::now());
+        .modified().map_or_else(|_| chrono::Utc::now(), chrono::DateTime::<chrono::Utc>::from);
 
     debug!(
         "Parsed metadata for {}: bundle_id={}, category={:?}",
@@ -113,9 +112,7 @@ pub fn parse_plist_metadata(
     let name = dict
         .get("CFBundleDisplayName")
         .or_else(|| dict.get("CFBundleName"))
-        .and_then(plist::Value::as_string)
-        .map(String::from)
-        .unwrap_or_else(|| app_name.to_string());
+        .and_then(plist::Value::as_string).map_or_else(|| app_name.to_string(), String::from);
 
     // Extract bundle ID
     let bundle_id = dict

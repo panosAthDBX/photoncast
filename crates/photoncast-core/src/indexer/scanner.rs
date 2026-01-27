@@ -52,9 +52,7 @@ impl AppScanner {
             .iter()
             .map(|p| {
                 if p.starts_with('~') {
-                    dirs::home_dir()
-                        .map(|h: PathBuf| h.join(&p[2..]))
-                        .unwrap_or_else(|| PathBuf::from(p))
+                    dirs::home_dir().map_or_else(|| PathBuf::from(p), |h: PathBuf| h.join(&p[2..]))
                 } else {
                     PathBuf::from(p)
                 }
@@ -105,20 +103,17 @@ impl AppScanner {
 
         let result = timeout(self.timeout, self.scan_all_internal()).await;
 
-        match result {
-            Ok(apps) => {
-                let apps = apps?;
-                info!(
-                    "Completed scan in {:?}, found {} applications",
-                    start.elapsed(),
-                    apps.len()
-                );
-                Ok(apps)
-            },
-            Err(_) => {
-                warn!("Scan timed out after {:?}", self.timeout);
-                anyhow::bail!("Application scan timed out after {:?}", self.timeout);
-            },
+        if let Ok(apps) = result {
+            let apps = apps?;
+            info!(
+                "Completed scan in {:?}, found {} applications",
+                start.elapsed(),
+                apps.len()
+            );
+            Ok(apps)
+        } else {
+            warn!("Scan timed out after {:?}", self.timeout);
+            anyhow::bail!("Application scan timed out after {:?}", self.timeout);
         }
     }
 
@@ -178,6 +173,7 @@ impl AppScanner {
     /// - macOS Finder aliases to .app bundles
     ///
     /// Uses `seen_paths` to deduplicate apps that are linked from multiple locations.
+    #[allow(clippy::manual_let_else)]
     async fn find_app_bundles(
         &self,
         path: &Path,
@@ -251,6 +247,7 @@ impl AppScanner {
     /// Resolves symlinks and aliases to get the actual app path.
     ///
     /// Returns `None` if resolution fails or the target doesn't exist.
+    #[allow(clippy::unused_self)]
     fn resolve_app_path(&self, path: &Path) -> Option<PathBuf> {
         match resolve_path(path) {
             Ok(resolved) => {

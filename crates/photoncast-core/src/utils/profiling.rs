@@ -62,11 +62,11 @@ impl ProfileResult {
     /// Returns the margin as a percentage (0 if target not met).
     #[must_use]
     pub fn margin_percent(&self) -> f64 {
-        if !self.met_target {
-            0.0
-        } else {
+        if self.met_target {
             let margin = self.target.as_secs_f64() - self.duration.as_secs_f64();
             (margin / self.target.as_secs_f64()) * 100.0
+        } else {
+            0.0
         }
     }
 

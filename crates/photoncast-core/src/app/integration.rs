@@ -68,9 +68,9 @@ impl std::fmt::Display for ExtensionLaunchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PermissionsConsentRequired { extension_id, .. } => {
-                write!(f, "Extension {} requires permissions consent", extension_id)
+                write!(f, "Extension {extension_id} requires permissions consent")
             }
-            Self::Other(msg) => write!(f, "{}", msg),
+            Self::Other(msg) => write!(f, "{msg}"),
         }
     }
 }
@@ -310,6 +310,7 @@ impl PhotonCastApp {
     /// Returns `Ok(())` on success, or a structured error on failure.
     /// If the extension requires permissions consent, returns
     /// `ExtensionLaunchError::PermissionsConsentRequired` with the dialog info.
+    #[allow(clippy::result_large_err)]
     pub fn launch_extension_command(
         &self,
         extension_id: &str,
@@ -361,6 +362,7 @@ impl PhotonCastApp {
     /// Accepts permissions for an extension and loads it.
     ///
     /// Call this after the user approves the permissions dialog.
+    #[allow(clippy::result_large_err)]
     pub fn accept_extension_permissions(
         &self,
         extension_id: &str,
@@ -456,7 +458,7 @@ impl PhotonCastApp {
         // Get current state first
         let new_enabled = {
             let record = manager.registry().get(extension_id).ok_or_else(|| {
-                format!("Extension not found: {}", extension_id)
+                format!("Extension not found: {extension_id}")
             })?;
             !record.enabled
         };
@@ -550,32 +552,29 @@ impl PhotonCastApp {
         // Create a timeout wrapper around the search
         let search_future = self.search_engine.search(query);
 
-        match tokio::time::timeout(timeout, search_future).await {
-            Ok(results) => {
-                let elapsed = start.elapsed();
-                if elapsed > timeout {
-                    // Search completed but took longer than expected
-                    warn!(
-                        query = %query,
-                        elapsed_ms = elapsed.as_millis(),
-                        "Search exceeded soft timeout"
-                    );
-                    SearchOutcome::timeout(results)
-                } else {
-                    debug!(
-                        query = %query,
-                        elapsed_ms = elapsed.as_millis(),
-                        result_count = results.total_count,
-                        "Async search completed"
-                    );
-                    SearchOutcome::success(results)
-                }
-            },
-            Err(_) => {
-                // Hard timeout - return empty results
-                warn!(query = %query, "Search hard timeout exceeded");
-                SearchOutcome::timeout(SearchResults::empty())
-            },
+        if let Ok(results) = tokio::time::timeout(timeout, search_future).await {
+            let elapsed = start.elapsed();
+            if elapsed > timeout {
+                // Search completed but took longer than expected
+                warn!(
+                    query = %query,
+                    elapsed_ms = elapsed.as_millis(),
+                    "Search exceeded soft timeout"
+                );
+                SearchOutcome::timeout(results)
+            } else {
+                debug!(
+                    query = %query,
+                    elapsed_ms = elapsed.as_millis(),
+                    result_count = results.total_count,
+                    "Async search completed"
+                );
+                SearchOutcome::success(results)
+            }
+        } else {
+            // Hard timeout - return empty results
+            warn!(query = %query, "Search hard timeout exceeded");
+            SearchOutcome::timeout(SearchResults::empty())
         }
     }
 

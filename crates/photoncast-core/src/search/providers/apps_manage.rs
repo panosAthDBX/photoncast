@@ -32,7 +32,7 @@ impl Default for AppsProvider {
 }
 
 impl SearchProvider for AppsProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "App Management"
     }
 
@@ -62,7 +62,7 @@ impl SearchProvider for AppsProvider {
         for (title, description, id) in generic_commands {
             if let Some((score, indices)) = matcher.score(query, title) {
                 results.push(SearchResult {
-                    id: SearchResultId::new(format!("appmgmt:{}", id)),
+                    id: SearchResultId::new(format!("appmgmt:{id}")),
                     title: title.to_string(),
                     subtitle: description.to_string(),
                     icon: IconSource::SystemIcon {

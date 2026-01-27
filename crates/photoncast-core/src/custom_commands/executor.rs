@@ -67,27 +67,25 @@ impl ExecutorError {
             },
             Self::SpawnFailed(msg) => {
                 format!(
-                    "Failed to start command: {}. Check if the shell and command are correct.",
-                    msg
+                    "Failed to start command: {msg}. Check if the shell and command are correct."
                 )
             },
             Self::WaitFailed(msg) => {
-                format!("Command execution interrupted: {}", msg)
+                format!("Command execution interrupted: {msg}")
             },
             Self::PlaceholderError(e) => {
-                format!("Failed to expand placeholders: {}", e)
+                format!("Failed to expand placeholders: {e}")
             },
             Self::WorkingDirectoryNotFound { path } => {
-                format!("Working directory not found: {}", path)
+                format!("Working directory not found: {path}")
             },
             Self::ShellNotFound { shell } => {
                 format!(
-                    "Shell not found: {}. Check your shell configuration.",
-                    shell
+                    "Shell not found: {shell}. Check your shell configuration."
                 )
             },
             Self::ExecutionFailed { exit_code, message } => {
-                format!("Command failed (exit code {}): {}", exit_code, message)
+                format!("Command failed (exit code {exit_code}): {message}")
             },
         }
     }
@@ -257,6 +255,7 @@ impl CommandExecutor {
         })
         .await;
 
+        #[allow(clippy::cast_possible_truncation)]
         let duration_ms = start.elapsed().as_millis() as u64;
 
         match result {
@@ -369,7 +368,7 @@ fn truncate_output(data: &[u8]) -> (String, bool) {
 
     // If truncated, add indicator
     if truncated {
-        (format!("{}... (truncated)", text), true)
+        (format!("{text}... (truncated)"), true)
     } else {
         (text, false)
     }

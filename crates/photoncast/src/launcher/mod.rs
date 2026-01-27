@@ -33,8 +33,8 @@ use photoncast_timer::commands::TimerManager;
 
 use crate::app_events::{self, AppEvent};
 use crate::constants::{
-    EXPANDED_HEIGHT, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, LIST_ITEM_HEIGHT, SEARCH_BAR_HEIGHT,
-    ThemeColorSet,
+    EXPANDED_HEIGHT, ICON_SIZE_LG, ICON_SIZE_MD, ICON_SIZE_SM, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
+    LIST_ITEM_HEIGHT, SEARCH_BAR_HEIGHT, TEXT_SIZE_LG, TEXT_SIZE_MD, ThemeColorSet,
 };
 use crate::{
     Activate, Cancel, ConfirmDialog, CopyBundleId, CopyFile, CopyPath, ForceQuitApp, HideApp,

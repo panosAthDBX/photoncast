@@ -1,3 +1,27 @@
+//! Extension manager — discovers, loads, and manages extension lifecycles.
+//!
+//! The [`ExtensionManager`] is the central coordinator for all extension
+//! operations: discovery, loading, activation, search integration, command
+//! invocation, hot-reload, and permission management.
+//!
+//! # Security
+//!
+//! **Current limitation:** Extensions run in-process with full host privileges.
+//! A malicious or buggy extension has access to the same memory space and OS
+//! capabilities as the host application.
+//!
+//! **Mitigations in place:**
+//! - **Permissions system:** Extensions declare required permissions in their
+//!   manifest, and the user must grant consent before activation (see
+//!   [`PermissionsStore`] and [`PermissionsDialog`]).
+//! - **Code signature verification:** In non-dev mode, every extension dylib
+//!   is verified against a code signature before loading.
+//! - **Path traversal prevention:** Entry paths are canonicalized and validated
+//!   to prevent escaping the extension's base directory.
+//!
+//! **Future direction:** Consider process-based or WASM-based sandboxing for
+//! untrusted extensions to provide stronger isolation guarantees.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -100,7 +124,7 @@ pub struct CommandInvocationGuard {
 
 impl CommandInvocationGuard {
     pub fn is_invocation_allowed(&self, extension_id: &str, command_id: &str) -> bool {
-        let key = format!("{}:{}", extension_id, command_id);
+        let key = format!("{extension_id}:{command_id}");
         let mut guard = self.active.write();
         if guard.contains(&key) {
             return false;
@@ -110,7 +134,7 @@ impl CommandInvocationGuard {
     }
 
     pub fn complete(&self, extension_id: &str, command_id: &str) {
-        let key = format!("{}:{}", extension_id, command_id);
+        let key = format!("{extension_id}:{command_id}");
         self.active.write().remove(&key);
     }
 }
@@ -203,6 +227,7 @@ impl ExtensionManager {
     /// This should be called after `discover()` to activate extensions for search.
     /// Extensions requiring permissions consent will be skipped and can be loaded
     /// later when the user grants consent.
+    #[allow(clippy::result_large_err)]
     pub fn auto_load_enabled(&mut self) {
         let extension_ids: Vec<String> = self
             .registry
@@ -239,6 +264,7 @@ impl ExtensionManager {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn load_and_activate(&mut self, id: &str) -> Result<(), ExtensionManagerError> {
         let record = self
             .registry
@@ -279,6 +305,9 @@ impl ExtensionManager {
         self.registry.update_state(id, ExtensionState::Loaded)?;
 
         let entry_path = resolve_entry_path(&record.manifest, None)?;
+
+        // TODO: Consider process-based sandboxing for untrusted extensions.
+        // Currently, loaded dylibs run in-process with full host privileges.
 
         // Verify code signature before loading
         if self.dev_mode {
@@ -383,6 +412,7 @@ impl ExtensionManager {
         Ok(())
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn deactivate_and_unload(&mut self, id: &str) -> Result<(), ExtensionManagerError> {
         if let Some(mut loaded) = self.loaded.remove(id) {
             if let Err(err) = loaded.instance.deactivate().into_result() {
@@ -402,6 +432,7 @@ impl ExtensionManager {
     ///
     /// Returns `Some(PermissionsDialog)` if consent is needed, `None` otherwise.
     #[must_use]
+    #[allow(clippy::result_large_err)]
     pub fn check_permissions_consent(&self, id: &str) -> Option<PermissionsDialog> {
         let record = self.registry.get(id)?;
         let permissions = &record.manifest.permissions;
@@ -425,6 +456,7 @@ impl ExtensionManager {
     /// Accepts permissions for an extension, allowing it to be activated.
     ///
     /// Call this method after the user approves the permissions dialog.
+    #[allow(clippy::result_large_err)]
     pub fn accept_permissions(&mut self, id: &str) -> Result<(), ExtensionManagerError> {
         let record = self
             .registry
@@ -444,6 +476,7 @@ impl ExtensionManager {
     /// Revokes permissions for an extension.
     ///
     /// The extension will need to request consent again on next activation.
+    #[allow(clippy::result_large_err)]
     pub fn revoke_permissions(&mut self, id: &str) -> Result<(), ExtensionManagerError> {
         self.permissions_store.revoke_permissions(id);
         self.permissions_store.save()?;
@@ -684,10 +717,10 @@ impl ExtensionManager {
 
         let instance = root_module.instantiate_extension();
 
-        let cached_dylib_path = if load_path != entry_path {
-            Some(load_path)
-        } else {
+        let cached_dylib_path = if load_path == entry_path {
             None
+        } else {
+            Some(load_path)
         };
 
         let mut loaded = LoadedExtension {
@@ -795,9 +828,7 @@ impl ExtensionManager {
     pub fn get_extension_path(&self, id: &str) -> Option<PathBuf> {
         self.registry.get(id).map(|record| {
             PathBuf::from(&record.manifest.entry.path)
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| PathBuf::from("."))
+                .parent().map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf)
         })
     }
 
@@ -827,6 +858,9 @@ impl ExtensionManager {
         }
 
         let mut results = Vec::new();
+        // FuzzyMatcher::default() is cheap (allocates a small nucleo Matcher + config struct).
+        // Caching on the struct would require interior mutability (RefCell) since search() takes
+        // &self, and the added complexity isn't justified for a lightweight allocation per call.
         let mut matcher = crate::search::fuzzy::FuzzyMatcher::default();
         let mut command_matcher = crate::search::fuzzy::FuzzyMatcher::default();
 
@@ -847,7 +881,7 @@ impl ExtensionManager {
                         subtitle: item
                             .subtitle
                             .clone()
-                            .map(|s| s.into_string())
+                            .map(photoncast_extension_api::RString::into_string)
                             .unwrap_or_default(),
                         icon: map_extension_icon(item.icon),
                         result_type: ResultType::Extension,
@@ -877,7 +911,7 @@ impl ExtensionManager {
                     }
                 }
 
-                for keyword in command.keywords.iter() {
+                for keyword in &command.keywords {
                     if let Some((score, indices)) = command_matcher.score(query, keyword.as_str()) {
                         match &best_score {
                             Some((best, _, _)) if score <= *best => {},
@@ -895,10 +929,9 @@ impl ExtensionManager {
                 let subtitle = command
                     .subtitle
                     .clone()
-                    .into_option()
-                    .map(|s| s.into_string())
-                    .unwrap_or_else(|| loaded.manifest.extension.name.clone());
+                    .into_option().map_or_else(|| loaded.manifest.extension.name.clone(), photoncast_extension_api::RString::into_string);
 
+                #[allow(clippy::map_unwrap_or)]
                 let icon = command
                     .icon
                     .clone()
@@ -917,7 +950,7 @@ impl ExtensionManager {
                     score: f64::from(score),
                     match_indices: if name_match { indices } else { Vec::new() },
                     action: SearchAction::ExecuteExtensionCommand {
-                        extension_id: extension_id.to_string(),
+                        extension_id: extension_id.clone(),
                         command_id: command.id.to_string(),
                     },
                     requires_permissions: false,
@@ -970,12 +1003,13 @@ impl ExtensionManager {
 
                 let subtitle = command.subtitle.clone().unwrap_or_else(|| {
                     if needs_consent {
-                        format!("{} (requires permissions)", extension_name)
+                        format!("{extension_name} (requires permissions)")
                     } else {
                         extension_name.clone()
                     }
                 });
 
+                #[allow(clippy::map_unwrap_or)]
                 let icon = command
                     .icon
                     .clone()
@@ -993,7 +1027,7 @@ impl ExtensionManager {
                     score: f64::from(score),
                     match_indices: if name_match { indices } else { Vec::new() },
                     action: SearchAction::ExecuteExtensionCommand {
-                        extension_id: extension_id.to_string(),
+                        extension_id: extension_id.clone(),
                         command_id: command.id.clone(),
                     },
                     requires_permissions: needs_consent,
@@ -1010,6 +1044,7 @@ impl ExtensionManager {
         results
     }
 
+    #[allow(clippy::manual_let_else)]
     pub fn launch_command(
         &mut self,
         extension_id: &str,
@@ -1019,8 +1054,7 @@ impl ExtensionManager {
         if !self
             .registry
             .get(extension_id)
-            .map(|r| r.enabled)
-            .unwrap_or(false)
+            .is_some_and(|r| r.enabled)
         {
             return Err(ExtensionApiError::message("extension disabled")).into();
         }
@@ -1106,6 +1140,7 @@ fn map_extension_icon(icon: photoncast_extension_api::IconSource) -> IconSource 
     }
 }
 
+#[allow(clippy::manual_let_else, clippy::result_large_err)]
 fn resolve_entry_path(
     manifest: &ExtensionManifest,
     override_path: Option<&Path>,
@@ -1116,9 +1151,7 @@ fn resolve_entry_path(
 
     // Use the manifest's directory (set during discovery) to resolve the entry path
     let base_dir = manifest
-        .directory
-        .as_ref()
-        .map(|p| p.as_path())
+        .directory.as_deref()
         .unwrap_or_else(|| Path::new("."));
 
     let joined = base_dir.join(&manifest.entry.path);

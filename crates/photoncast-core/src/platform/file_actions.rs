@@ -109,7 +109,7 @@ impl FileActionError {
     pub fn user_message(&self) -> String {
         match self {
             Self::NotFound { path } => {
-                format!("The file or folder '{}' doesn't exist", path)
+                format!("The file or folder '{path}' doesn't exist")
             },
             Self::PermissionDenied { path } => {
                 format!(
@@ -118,7 +118,7 @@ impl FileActionError {
                 )
             },
             Self::InvalidFilename { name, reason } => {
-                format!("'{}' is not a valid name: {}", name, reason)
+                format!("'{name}' is not a valid name: {reason}")
             },
             Self::AlreadyExists { path } => {
                 format!(
@@ -127,16 +127,16 @@ impl FileActionError {
                 )
             },
             Self::OperationFailed { operation, reason } => {
-                format!("Couldn't {}: {}", operation, reason)
+                format!("Couldn't {operation}: {reason}")
             },
             Self::ClipboardError { reason } => {
-                format!("Couldn't copy to clipboard: {}", reason)
+                format!("Couldn't copy to clipboard: {reason}")
             },
             Self::CompressionFailed { reason } => {
-                format!("Couldn't create archive: {}", reason)
+                format!("Couldn't create archive: {reason}")
             },
             Self::IoError { reason } => {
-                format!("An error occurred: {}", reason)
+                format!("An error occurred: {reason}")
             },
         }
     }
@@ -154,6 +154,7 @@ impl FileActionError {
 
     /// Returns a suggested action for the error.
     #[must_use]
+    #[allow(clippy::match_same_arms)]
     pub fn action_hint(&self) -> Option<&'static str> {
         match self {
             Self::NotFound { .. } => Some("Refresh file list"),
@@ -332,7 +333,7 @@ pub fn validate_filename(name: &str) -> Result<()> {
             };
             return Err(FileActionError::invalid_filename(
                 name,
-                format!("cannot contain {}", char_desc),
+                format!("cannot contain {char_desc}"),
             ));
         }
     }
@@ -346,7 +347,7 @@ pub fn validate_filename(name: &str) -> Result<()> {
     if name.len() > MAX_FILENAME_LENGTH {
         return Err(FileActionError::invalid_filename(
             name,
-            format!("name too long (max {} characters)", MAX_FILENAME_LENGTH),
+            format!("name too long (max {MAX_FILENAME_LENGTH} characters)"),
         ));
     }
 
@@ -404,7 +405,7 @@ pub fn copy_file_to_clipboard(path: &Path) -> Result<()> {
     // Use osascript to set the clipboard to the file
     // This properly uses NSPasteboard under the hood
     let escaped_path = escape_applescript_string(&path.display().to_string());
-    let script = format!(r#"set the clipboard to (POSIX file "{}")"#, escaped_path);
+    let script = format!(r#"set the clipboard to (POSIX file "{escaped_path}")"#);
 
     let output = Command::new("osascript")
         .args(["-e", &script])
@@ -462,8 +463,7 @@ pub fn move_to_trash(path: &Path) -> Result<PathBuf> {
     // Use AppleScript to move to trash (uses proper NSFileManager)
     let escaped_path = escape_applescript_string(&path.display().to_string());
     let script = format!(
-        r#"tell application "Finder" to delete POSIX file "{}""#,
-        escaped_path
+        r#"tell application "Finder" to delete POSIX file "{escaped_path}""#
     );
 
     let output = Command::new("osascript")
@@ -606,7 +606,7 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
         use framework "AppKit"
         use scripting additions
         
-        set fileURL to current application's NSURL's fileURLWithPath:"{}"
+        set fileURL to current application's NSURL's fileURLWithPath:"{escaped_path}"
         set workspace to current application's NSWorkspace's sharedWorkspace()
         set appURLs to workspace's URLsForApplicationsToOpenURL:fileURL
         
@@ -632,8 +632,7 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
         
         set AppleScript's text item delimiters to linefeed
         return appList as text
-        "#,
-        escaped_path
+        "#
     );
 
     let output = Command::new("osascript")
@@ -666,13 +665,12 @@ pub fn get_apps_for_file(path: &Path) -> Result<Vec<AppInfo>> {
         let default_script = format!(
             r#"
             tell application "System Events"
-                set defaultApp to default application of (POSIX file "{}" as alias)
+                set defaultApp to default application of (POSIX file "{escaped_path}" as alias)
                 set appPath to POSIX path of (defaultApp as alias)
                 set appName to name of defaultApp
             end tell
             return appPath & "|" & appName
-            "#,
-            escaped_path
+            "#
         );
 
         if let Ok(output) = Command::new("osascript")
@@ -956,9 +954,9 @@ fn find_unique_copy_name(parent: &Path, stem: &str, extension: Option<&str>) -> 
     // First try "name copy.ext"
     let make_name = |suffix: &str| {
         if let Some(ext) = extension {
-            parent.join(format!("{}{}.{}", stem, suffix, ext))
+            parent.join(format!("{stem}{suffix}.{ext}"))
         } else {
-            parent.join(format!("{}{}", stem, suffix))
+            parent.join(format!("{stem}{suffix}"))
         }
     };
 
@@ -969,7 +967,7 @@ fn find_unique_copy_name(parent: &Path, stem: &str, extension: Option<&str>) -> 
 
     // Try "name copy 2", "name copy 3", etc.
     for i in 2..=100 {
-        let path = make_name(&format!(" copy {}", i));
+        let path = make_name(&format!(" copy {i}"));
         if !path.exists() {
             return Ok(path);
         }
@@ -1050,9 +1048,7 @@ pub fn get_file_info(path: &Path) -> Result<FileInfo> {
             "Folder".to_string()
         } else {
             path.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| format!("{} file", e.to_uppercase()))
-                .unwrap_or_else(|| "Document".to_string())
+                .and_then(|e| e.to_str()).map_or_else(|| "Document".to_string(), |e| format!("{} file", e.to_uppercase()))
         }
     });
 
@@ -1215,13 +1211,13 @@ pub fn compress(path: &Path) -> Result<PathBuf> {
 /// Finds a unique name for an archive.
 #[cfg(target_os = "macos")]
 fn find_unique_archive_name(parent: &Path, stem: &str) -> Result<PathBuf> {
-    let first_try = parent.join(format!("{}.zip", stem));
+    let first_try = parent.join(format!("{stem}.zip"));
     if !first_try.exists() {
         return Ok(first_try);
     }
 
     for i in 2..=100 {
-        let path = parent.join(format!("{} {}.zip", stem, i));
+        let path = parent.join(format!("{stem} {i}.zip"));
         if !path.exists() {
             return Ok(path);
         }

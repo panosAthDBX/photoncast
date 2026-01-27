@@ -33,7 +33,7 @@ impl CalendarProvider {
 }
 
 impl SearchProvider for CalendarProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Calendar"
     }
 

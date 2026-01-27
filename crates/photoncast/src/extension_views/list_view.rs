@@ -22,6 +22,7 @@ use super::actions::{execute_and_maybe_close, CLOSE_VIEW_ACTION};
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
 use super::preview::ExtensionPreviewPane;
+use crate::constants::ICON_SIZE_LG;
 use super::ActionCallback;
 
 // ============================================================================
@@ -724,8 +725,8 @@ impl ExtensionListView {
         match icon {
             IconSource::Emoji { glyph } => {
                 div()
-                    .w(px(32.0))
-                    .h(px(32.0))
+                    .w(ICON_SIZE_LG)
+                    .h(ICON_SIZE_LG)
                     .flex()
                     .items_center()
                     .justify_center()
@@ -735,8 +736,8 @@ impl ExtensionListView {
             IconSource::SystemIcon { name } => {
                 let emoji = Self::system_icon_to_emoji(name.as_str());
                 div()
-                    .w(px(32.0))
-                    .h(px(32.0))
+                    .w(ICON_SIZE_LG)
+                    .h(ICON_SIZE_LG)
                     .flex()
                     .items_center()
                     .justify_center()
@@ -746,17 +747,17 @@ impl ExtensionListView {
             IconSource::AppIcon { icon_path, .. } => {
                 if let ROption::RSome(path) = icon_path {
                     div()
-                        .w(px(32.0))
-                        .h(px(32.0))
+                        .w(ICON_SIZE_LG)
+                        .h(ICON_SIZE_LG)
                         .child(
                             img(SharedString::from(path.to_string()))
-                                .w(px(32.0))
-                                .h(px(32.0))
+                                .w(ICON_SIZE_LG)
+                                .h(ICON_SIZE_LG)
                         )
                 } else {
                     div()
-                        .w(px(32.0))
-                        .h(px(32.0))
+                        .w(ICON_SIZE_LG)
+                        .h(ICON_SIZE_LG)
                         .flex()
                         .items_center()
                         .justify_center()
@@ -766,8 +767,8 @@ impl ExtensionListView {
             },
             IconSource::FileIcon { path } => {
                 div()
-                    .w(px(32.0))
-                    .h(px(32.0))
+                    .w(ICON_SIZE_LG)
+                    .h(ICON_SIZE_LG)
                     .flex()
                     .items_center()
                     .justify_center()

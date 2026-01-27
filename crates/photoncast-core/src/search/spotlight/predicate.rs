@@ -299,7 +299,7 @@ impl PredicateBuilder {
         if !term.is_empty() {
             let escaped = escape_predicate_string(term);
             self.clauses
-                .push(format!(r#"{} CONTAINS[cd] "{}""#, MD_ITEM_FS_NAME, escaped));
+                .push(format!(r#"{MD_ITEM_FS_NAME} CONTAINS[cd] "{escaped}""#));
         }
         self
     }
@@ -324,7 +324,7 @@ impl PredicateBuilder {
     pub fn any_file(mut self) -> Self {
         // Match any indexed item by checking it has a non-empty name
         // This is the most reliable way to match "all files" in Spotlight
-        self.clauses.push(format!(r#"{} != """#, MD_ITEM_FS_NAME));
+        self.clauses.push(format!(r#"{MD_ITEM_FS_NAME} != """#));
         self
     }
 
@@ -337,72 +337,60 @@ impl PredicateBuilder {
         // public.content includes source code which we don't want
         let conditions = [
             // PDF
-            format!(r#"{} == "com.adobe.pdf""#, MD_ITEM_CONTENT_TYPE_TREE),
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.adobe.pdf""#),
             // Images
-            format!(r#"{} == "{}""#, MD_ITEM_CONTENT_TYPE_TREE, UTI_IMAGE),
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "{UTI_IMAGE}""#),
             // Audio
-            format!(r#"{} == "{}""#, MD_ITEM_CONTENT_TYPE_TREE, UTI_AUDIO),
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "{UTI_AUDIO}""#),
             // Video
-            format!(r#"{} == "{}""#, MD_ITEM_CONTENT_TYPE_TREE, UTI_MOVIE),
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "{UTI_MOVIE}""#),
             // Archives (zip, dmg, etc.)
-            format!(r#"{} == "{}""#, MD_ITEM_CONTENT_TYPE_TREE, UTI_ARCHIVE),
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "{UTI_ARCHIVE}""#),
             // macOS apps
             format!(
-                r#"{} == "com.apple.application-bundle""#,
-                MD_ITEM_CONTENT_TYPE
+                r#"{MD_ITEM_CONTENT_TYPE} == "com.apple.application-bundle""#
             ),
             // Office documents - specific types
             format!(
-                r#"{} == "org.openxmlformats.wordprocessingml.document""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.openxmlformats.wordprocessingml.document""#
             ), // docx
             format!(
-                r#"{} == "com.microsoft.word.doc""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.word.doc""#
             ), // doc
             format!(
-                r#"{} == "org.openxmlformats.spreadsheetml.sheet""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.openxmlformats.spreadsheetml.sheet""#
             ), // xlsx
             format!(
-                r#"{} == "com.microsoft.excel.xls""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.excel.xls""#
             ), // xls
             format!(
-                r#"{} == "org.openxmlformats.presentationml.presentation""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.openxmlformats.presentationml.presentation""#
             ), // pptx
             format!(
-                r#"{} == "com.microsoft.powerpoint.ppt""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.powerpoint.ppt""#
             ), // ppt
             format!(
-                r#"{} == "com.apple.iwork.pages.sffpages""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.pages.sffpages""#
             ), // pages
             format!(
-                r#"{} == "com.apple.iwork.numbers.sffnumbers""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.numbers.sffnumbers""#
             ), // numbers
             format!(
-                r#"{} == "com.apple.iwork.keynote.sffkey""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.keynote.sffkey""#
             ), // keynote
             format!(
-                r#"{} == "public.comma-separated-values-text""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "public.comma-separated-values-text""#
             ), // csv
-            format!(r#"{} == "public.rtf""#, MD_ITEM_CONTENT_TYPE_TREE), // rtf
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "public.rtf""#), // rtf
             // Ebooks
             format!(
-                r#"{} == "org.idpf.epub-container""#,
-                MD_ITEM_CONTENT_TYPE_TREE
+                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.idpf.epub-container""#
             ), // epub
         ];
         self.clauses.push(format!("({})", conditions.join(" OR ")));
         // Exclude hidden files
         self.clauses
-            .push(format!(r#"NOT ({} BEGINSWITH ".")"#, MD_ITEM_FS_NAME));
+            .push(format!(r#"NOT ({MD_ITEM_FS_NAME} BEGINSWITH ".")"#));
         self
     }
 
@@ -451,7 +439,7 @@ impl PredicateBuilder {
         if !name.is_empty() {
             let escaped = escape_predicate_string(name);
             self.clauses
-                .push(format!(r#"{} ==[cd] "{}""#, MD_ITEM_FS_NAME, escaped));
+                .push(format!(r#"{MD_ITEM_FS_NAME} ==[cd] "{escaped}""#));
         }
         self
     }
@@ -481,7 +469,7 @@ impl PredicateBuilder {
             let ext = ext.strip_prefix('.').unwrap_or(ext);
             let escaped = escape_predicate_string(ext);
             self.clauses
-                .push(format!(r#"{} ENDSWITH[c] ".{}""#, MD_ITEM_FS_NAME, escaped));
+                .push(format!(r#"{MD_ITEM_FS_NAME} ENDSWITH[c] ".{escaped}""#));
         }
         self
     }
@@ -509,7 +497,7 @@ impl PredicateBuilder {
     pub fn content_type(mut self, uti: &str) -> Self {
         if !uti.is_empty() {
             self.clauses
-                .push(format!(r#"{} == "{}""#, MD_ITEM_CONTENT_TYPE, uti));
+                .push(format!(r#"{MD_ITEM_CONTENT_TYPE} == "{uti}""#));
         }
         self
     }
@@ -538,7 +526,7 @@ impl PredicateBuilder {
     pub fn content_type_tree(mut self, uti: &str) -> Self {
         if !uti.is_empty() {
             self.clauses
-                .push(format!(r#"{} == "{}""#, MD_ITEM_CONTENT_TYPE_TREE, uti));
+                .push(format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "{uti}""#));
         }
         self
     }
@@ -566,8 +554,7 @@ impl PredicateBuilder {
             // Use $time.now(-days) which is supported by MDQuery
             // Format: kMDItemFSContentChangeDate >= $time.now(-7d)
             self.clauses.push(format!(
-                "{} >= $time.now(-{}d)",
-                MD_ITEM_FS_CONTENT_CHANGE_DATE, days
+                "{MD_ITEM_FS_CONTENT_CHANGE_DATE} >= $time.now(-{days}d)"
             ));
         }
         self
@@ -586,8 +573,7 @@ impl PredicateBuilder {
         let timestamp = system_time_to_timestamp(date);
         // NSPredicate date comparison using CAST to convert timestamp
         self.clauses.push(format!(
-            "{} > CAST({}, \"NSDate\")",
-            MD_ITEM_FS_CONTENT_CHANGE_DATE, timestamp
+            "{MD_ITEM_FS_CONTENT_CHANGE_DATE} > CAST({timestamp}, \"NSDate\")"
         ));
         self
     }
@@ -603,8 +589,7 @@ impl PredicateBuilder {
     pub fn modified_before(mut self, date: SystemTime) -> Self {
         let timestamp = system_time_to_timestamp(date);
         self.clauses.push(format!(
-            "{} < CAST({}, \"NSDate\")",
-            MD_ITEM_FS_CONTENT_CHANGE_DATE, timestamp
+            "{MD_ITEM_FS_CONTENT_CHANGE_DATE} < CAST({timestamp}, \"NSDate\")"
         ));
         self
     }
@@ -628,7 +613,7 @@ impl PredicateBuilder {
     #[must_use]
     pub fn size_greater_than(mut self, bytes: u64) -> Self {
         self.clauses
-            .push(format!("{} > {}", MD_ITEM_FS_SIZE, bytes));
+            .push(format!("{MD_ITEM_FS_SIZE} > {bytes}"));
         self
     }
 
@@ -651,7 +636,7 @@ impl PredicateBuilder {
     #[must_use]
     pub fn size_less_than(mut self, bytes: u64) -> Self {
         self.clauses
-            .push(format!("{} < {}", MD_ITEM_FS_SIZE, bytes));
+            .push(format!("{MD_ITEM_FS_SIZE} < {bytes}"));
         self
     }
 
@@ -768,8 +753,7 @@ impl PredicateBuilder {
             let escaped = escape_predicate_string(dir_name);
             // Match both /dirname/ (middle of path) and /dirname (end of path)
             self.clauses.push(format!(
-                r#"NOT ({} CONTAINS "/{}/")"#,
-                MD_ITEM_PATH, escaped
+                r#"NOT ({MD_ITEM_PATH} CONTAINS "/{escaped}/")"#
             ));
         }
         self
@@ -797,8 +781,7 @@ impl PredicateBuilder {
             let ext = ext.strip_prefix('.').unwrap_or(ext);
             let escaped = escape_predicate_string(ext);
             self.clauses.push(format!(
-                r#"NOT ({} ENDSWITH[c] ".{}")"#,
-                MD_ITEM_FS_NAME, escaped
+                r#"NOT ({MD_ITEM_FS_NAME} ENDSWITH[c] ".{escaped}")"#
             ));
         }
         self
@@ -819,7 +802,7 @@ impl PredicateBuilder {
     #[must_use]
     pub fn exclude_hidden_files(mut self) -> Self {
         self.clauses
-            .push(format!(r#"NOT ({} BEGINSWITH ".")"#, MD_ITEM_FS_NAME));
+            .push(format!(r#"NOT ({MD_ITEM_FS_NAME} BEGINSWITH ".")"#));
         self
     }
 
@@ -846,16 +829,16 @@ impl PredicateBuilder {
 
         // Add directory exclusions
         for dir in DEFAULT_EXCLUDED_DIRS {
-            conditions.push(format!(r#"{} CONTAINS "/{}/""#, MD_ITEM_PATH, dir));
+            conditions.push(format!(r#"{MD_ITEM_PATH} CONTAINS "/{dir}/""#));
         }
 
         // Add extension exclusions
         for ext in DEFAULT_EXCLUDED_EXTENSIONS {
-            conditions.push(format!(r#"{} ENDSWITH[c] ".{}""#, MD_ITEM_FS_NAME, ext));
+            conditions.push(format!(r#"{MD_ITEM_FS_NAME} ENDSWITH[c] ".{ext}""#));
         }
 
         // Add hidden file exclusion
-        conditions.push(format!(r#"{} BEGINSWITH ".""#, MD_ITEM_FS_NAME));
+        conditions.push(format!(r#"{MD_ITEM_FS_NAME} BEGINSWITH ".""#));
 
         if !conditions.is_empty() {
             self.clauses
@@ -871,8 +854,7 @@ impl PredicateBuilder {
     #[must_use]
     pub fn exclude_library_caches(mut self) -> Self {
         self.clauses.push(format!(
-            r#"NOT ({} CONTAINS "/Library/Caches/" OR {} CONTAINS "/Library/Logs/" OR {} CONTAINS "/Library/Application Support/CrashReporter/")"#,
-            MD_ITEM_PATH, MD_ITEM_PATH, MD_ITEM_PATH
+            r#"NOT ({MD_ITEM_PATH} CONTAINS "/Library/Caches/" OR {MD_ITEM_PATH} CONTAINS "/Library/Logs/" OR {MD_ITEM_PATH} CONTAINS "/Library/Application Support/CrashReporter/")"#
         ));
         self
     }
@@ -969,7 +951,7 @@ impl OrPredicateBuilder {
 
         // Build each builder's predicate
         let predicates: Vec<Retained<NSPredicate>> =
-            self.builders.into_iter().map(|b| b.build()).collect();
+            self.builders.into_iter().map(PredicateBuilder::build).collect();
 
         // Combine with OR
         let array = NSArray::from_retained_slice(&predicates);

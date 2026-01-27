@@ -190,6 +190,7 @@ impl FileKind {
 
     /// Returns an icon name for this file kind.
     #[must_use]
+    #[allow(clippy::match_same_arms)]
     pub const fn icon_name(&self) -> &'static str {
         match self {
             Self::File => "doc",
@@ -291,18 +292,15 @@ impl SpotlightQuery {
 
         // Execute with timeout
         let timeout = Duration::from_millis(self.timeout_ms);
-        let output = match tokio::time::timeout(timeout, cmd.output()).await {
-            Ok(result) => result?,
-            Err(_) => {
-                warn!(
-                    query = %self.query,
-                    timeout_ms = self.timeout_ms,
-                    "Spotlight query timed out"
-                );
-                return Err(SpotlightError::Timeout {
-                    timeout_ms: self.timeout_ms,
-                });
-            },
+        let output = if let Ok(result) = tokio::time::timeout(timeout, cmd.output()).await { result? } else {
+            warn!(
+                query = %self.query,
+                timeout_ms = self.timeout_ms,
+                "Spotlight query timed out"
+            );
+            return Err(SpotlightError::Timeout {
+                timeout_ms: self.timeout_ms,
+            });
         };
 
         if !output.status.success() {

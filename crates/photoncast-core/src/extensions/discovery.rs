@@ -5,25 +5,19 @@ use crate::extensions::manifest::{ManifestError, SUPPORTED_API_VERSION};
 use crate::utils::paths;
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct DiscoveryOptions {
     pub dev_mode: bool,
     pub dev_paths: Vec<PathBuf>,
 }
 
-impl Default for DiscoveryOptions {
-    fn default() -> Self {
-        Self {
-            dev_mode: false,
-            dev_paths: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct ExtensionDiscovery {
     manifest_cache: ManifestCache,
 }
 
+#[allow(clippy::new_without_default)]
 impl ExtensionDiscovery {
     #[must_use]
     pub fn new() -> Self {

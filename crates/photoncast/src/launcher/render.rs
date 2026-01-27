@@ -23,7 +23,7 @@ impl LauncherWindow {
             // Show block cursor at start (no placeholder text)
             return div()
                 .w_full()
-                .text_size(px(16.0))
+                .text_size(TEXT_SIZE_MD)
                 .flex()
                 .items_center()
                 .when(show_cursor, |el| {
@@ -59,7 +59,7 @@ impl LauncherWindow {
 
         div()
             .w_full()
-            .text_size(px(16.0))
+            .text_size(TEXT_SIZE_MD)
             .text_color(text_color)
             .flex()
             .items_center()
@@ -571,7 +571,7 @@ impl LauncherWindow {
 
     /// Render the icon for a result item with status indicators
     pub(super) fn render_icon(&self, result: &ResultItem) -> impl IntoElement {
-        let icon_size = px(32.0);
+        let icon_size = ICON_SIZE_LG;
 
         // Check if app is running and has auto-quit enabled
         let is_running = result
@@ -605,7 +605,7 @@ impl LauncherWindow {
                             )
                         } else {
                             // Fall back to emoji
-                            el.text_size(px(24.0)).child(result.icon_emoji.clone())
+                            el.text_size(TEXT_SIZE_LG).child(result.icon_emoji.clone())
                         }
                     }),
             )
@@ -857,13 +857,13 @@ impl LauncherWindow {
             // Calendar icon
             .child(
                 div()
-                    .size(px(32.0))
+                    .size(ICON_SIZE_LG)
                     .rounded(px(6.0))
                     .bg(colors.accent.opacity(0.2))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(16.0))
+                    .text_size(TEXT_SIZE_MD)
                     .child("📅"),
             )
             // Meeting info
@@ -974,7 +974,7 @@ impl LauncherWindow {
                                             .object_fit(ObjectFit::Contain),
                                     )
                                 } else {
-                                    el.text_size(px(24.0)).child("📱")
+                                    el.text_size(TEXT_SIZE_LG).child("📱")
                                 }
                             }),
                     )
@@ -1107,7 +1107,7 @@ impl LauncherWindow {
                             // Warning icon
                             .child(
                                 div()
-                                    .size(px(48.0))
+                                    .size(SEARCH_BAR_HEIGHT)
                                     .flex()
                                     .items_center()
                                     .justify_center()
@@ -1116,14 +1116,14 @@ impl LauncherWindow {
                                     .bg(colors.warning.opacity(0.15))
                                     .child(
                                         div()
-                                            .text_size(px(24.0))
+                                            .text_size(TEXT_SIZE_LG)
                                             .child("⚠️"),
                                     ),
                             )
                             // Title
                             .child(
                                 div()
-                                    .text_size(px(16.0))
+                                    .text_size(TEXT_SIZE_MD)
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(colors.text)
                                     .child(dialog.title.clone()),
@@ -1700,7 +1700,7 @@ impl LauncherWindow {
                                     .py_1()
                                     .child(
                                         div()
-                                            .size(px(24.0))
+                                            .size(ICON_SIZE_MD)
                                             .flex()
                                             .items_center()
                                             .justify_center()
@@ -1967,7 +1967,7 @@ impl LauncherWindow {
                                                     .object_fit(ObjectFit::Contain),
                                             )
                                         } else {
-                                            el.text_size(px(32.0)).child("📦")
+                                            el.text_size(ICON_SIZE_LG).child("📦")
                                         }
                                     }),
                             )
@@ -2228,7 +2228,7 @@ impl LauncherWindow {
                                             .absolute()
                                             .top(px(2.0))
                                             .left(if is_enabled { px(18.0) } else { px(2.0) })
-                                            .size(px(16.0))
+                                            .size(ICON_SIZE_SM)
                                             .rounded_full()
                                             .bg(text),
                                     ),
@@ -2491,7 +2491,7 @@ impl LauncherWindow {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().text_size(px(16.0)).child("✓"))
+                    .child(div().text_size(TEXT_SIZE_MD).child("✓"))
                     .child(
                         div()
                             .text_size(px(13.0))

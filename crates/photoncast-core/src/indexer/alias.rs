@@ -172,32 +172,29 @@ fn resolve_macos_alias(path: &Path) -> Option<PathBuf> {
 
     let resolved = NSURL::URLByResolvingAliasFileAtURL_options_error(&url, options);
 
-    match resolved {
-        Ok(resolved_url) => {
-            // Get the path from the resolved URL
-            let resolved_path = resolved_url.path();
-            resolved_path.and_then(|p| {
-                let resolved = PathBuf::from(p.to_string());
-                // Only consider it an alias if the resolved path is different from the original.
-                // URLByResolvingAliasFileAtURL can succeed for regular files/directories,
-                // returning the same path (or its canonical form).
-                let original_canonical = std::fs::canonicalize(path).ok();
-                let resolved_canonical = std::fs::canonicalize(&resolved).ok();
+    if let Ok(resolved_url) = resolved {
+        // Get the path from the resolved URL
+        let resolved_path = resolved_url.path();
+        resolved_path.and_then(|p| {
+            let resolved = PathBuf::from(p.to_string());
+            // Only consider it an alias if the resolved path is different from the original.
+            // URLByResolvingAliasFileAtURL can succeed for regular files/directories,
+            // returning the same path (or its canonical form).
+            let original_canonical = std::fs::canonicalize(path).ok();
+            let resolved_canonical = std::fs::canonicalize(&resolved).ok();
 
-                match (original_canonical, resolved_canonical) {
-                    (Some(orig), Some(res)) if orig != res => Some(resolved),
-                    _ => None,
-                }
-            })
-        },
-        Err(_) => {
-            // This is expected for non-alias files, so only log at trace level
-            trace!(
-                "Could not resolve as alias (likely not an alias): {}",
-                path.display()
-            );
-            None
-        },
+            match (original_canonical, resolved_canonical) {
+                (Some(orig), Some(res)) if orig != res => Some(resolved),
+                _ => None,
+            }
+        })
+    } else {
+        // This is expected for non-alias files, so only log at trace level
+        trace!(
+            "Could not resolve as alias (likely not an alias): {}",
+            path.display()
+        );
+        None
     }
 }
 

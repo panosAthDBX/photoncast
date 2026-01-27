@@ -125,6 +125,9 @@ const LAUNCHER_TOP_OFFSET_PERCENT: f32 = 0.20;
 struct ClipboardState {
     storage: ClipboardStorage,
     config: ClipboardConfig,
+    // Field is intentionally kept for its Drop side-effect.
+    // The `Arc<ClipboardMonitor>` owns the background clipboard monitoring task;
+    // dropping it would stop clipboard change detection.
     #[allow(dead_code)]
     monitor: Option<Arc<ClipboardMonitor>>,
 }

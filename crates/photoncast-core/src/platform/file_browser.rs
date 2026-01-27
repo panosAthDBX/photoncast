@@ -186,6 +186,7 @@ impl FileBrowser {
     ///
     /// * `path` - The path string potentially containing environment variables
     #[must_use]
+    #[allow(clippy::format_push_string)]
     pub fn expand_env_vars(path: &str) -> String {
         let mut result = String::with_capacity(path.len());
         let mut chars = path.chars().peekable();
@@ -207,7 +208,7 @@ impl FileBrowser {
                         result.push_str(&value);
                     } else {
                         // Keep original if not found
-                        result.push_str(&format!("${{{}}}", var_name));
+                        result.push_str(&format!("${{{var_name}}}"));
                     }
                 } else {
                     // $VAR syntax - collect alphanumeric and underscore using peek
@@ -332,6 +333,7 @@ impl FileBrowser {
     /// # Arguments
     ///
     /// * `entry` - The directory entry to enter
+    #[allow(clippy::assigning_clones)]
     pub fn enter_folder(&mut self, entry: &DirectoryEntry) -> bool {
         if entry.is_directory() {
             self.current_path = entry.path.clone();
@@ -359,19 +361,20 @@ impl FileBrowser {
     ///
     /// * `entry` - The directory entry (potentially a symlink)
     #[must_use]
+    #[allow(clippy::map_unwrap_or)]
     pub fn resolve_symlink(entry: &DirectoryEntry) -> PathBuf {
         if entry.is_symlink() {
             std::fs::read_link(&entry.path)
-                .and_then(|target| {
+                .map(|target| {
                     // If relative, resolve against parent
                     if target.is_relative() {
                         if let Some(parent) = entry.path.parent() {
-                            Ok(parent.join(&target).canonicalize().unwrap_or(target))
+                            parent.join(&target).canonicalize().unwrap_or(target)
                         } else {
-                            Ok(target)
+                            target
                         }
                     } else {
-                        Ok(target)
+                        target
                     }
                 })
                 .unwrap_or_else(|_| entry.path.clone())

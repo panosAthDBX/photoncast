@@ -137,6 +137,7 @@ impl FileProvider {
     }
 
     /// Converts a Spotlight FileResult to a SearchResult.
+    #[allow(clippy::unused_self)]
     fn convert_to_search_result(
         &self,
         file_result: crate::platform::spotlight::FileResult,
@@ -150,9 +151,7 @@ impl FileProvider {
 
         let subtitle = file_result
             .path
-            .parent()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| file_result.path.display().to_string());
+            .parent().map_or_else(|| file_result.path.display().to_string(), |p| p.display().to_string());
 
         SearchResult {
             id: SearchResultId::new(format!("file:{}", file_result.path.display())),
@@ -173,7 +172,7 @@ impl FileProvider {
 }
 
 impl SearchProvider for FileProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Files"
     }
 

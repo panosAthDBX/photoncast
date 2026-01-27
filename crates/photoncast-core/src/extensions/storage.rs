@@ -188,11 +188,13 @@ impl PreferenceStoreTrait for PreferenceStoreImpl {
         Ok(()).into()
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     fn definitions(&self) -> RVec<PreferenceDefinition> {
         self.definitions.read().clone().into()
     }
 }
 
+#[allow(clippy::match_same_arms, clippy::needless_pass_by_value)]
 fn to_preference_kind(kind: String, options: Vec<ManifestSelectOption>) -> PreferenceKind {
     match kind.as_str() {
         "string" => PreferenceKind::String,

@@ -147,17 +147,15 @@ impl LoginItemManager {
 
         // Use osascript to add to login items
         // Full implementation would use SMAppService FFI
-        let script = format!(
-            r#"
+        let script = r#"
             tell application "System Events"
-                make new login item at end of login items with properties {{
+                make new login item at end of login items with properties {
                     name: "PhotonCast",
                     path: (path to application "PhotonCast") as text,
                     hidden: false
-                }}
+                }
             end tell
-            "#
-        );
+            "#.to_string();
 
         match Command::new("osascript").args(["-e", &script]).output() {
             Ok(output) => {

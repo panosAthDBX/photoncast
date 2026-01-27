@@ -60,14 +60,13 @@ impl FrecencyScore {
     #[must_use]
     pub fn calculate(launch_count: u32, last_used: Option<SystemTime>) -> Self {
         let recency = last_used
-            .map(|t| {
+            .map_or(0.0, |t| {
                 let elapsed = SystemTime::now()
                     .duration_since(t)
                     .unwrap_or(Duration::ZERO);
                 let hours = elapsed.as_secs_f64() / 3600.0;
                 0.5_f64.powf(hours / Self::HALF_LIFE_HOURS)
-            })
-            .unwrap_or(0.0);
+            });
 
         Self {
             frequency: launch_count,

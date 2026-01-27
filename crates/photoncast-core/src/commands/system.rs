@@ -214,12 +214,13 @@ impl SystemCommand {
                         {
                             let entry = entry.context("failed to read trash entry")?;
                             let path = entry.path();
+                            #[allow(clippy::unnecessary_debug_formatting)]
                             if path.is_dir() {
                                 std::fs::remove_dir_all(&path)
-                                    .with_context(|| format!("failed to remove {:?}", path))?;
+                                    .with_context(|| format!("failed to remove {path:?}"))?;
                             } else {
                                 std::fs::remove_file(&path)
-                                    .with_context(|| format!("failed to remove {:?}", path))?;
+                                    .with_context(|| format!("failed to remove {path:?}"))?;
                             }
                         }
                     }

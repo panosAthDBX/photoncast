@@ -151,6 +151,7 @@ pub fn expand_placeholders(
 }
 
 /// Expands environment variable placeholders.
+#[allow(clippy::manual_let_else, clippy::while_let_loop)]
 fn expand_env_placeholders(command: &str) -> Result<String, PlaceholderError> {
     let mut result = command.to_string();
 
@@ -178,8 +179,7 @@ fn expand_env_placeholders(command: &str) -> Result<String, PlaceholderError> {
         // Validate variable name (alphanumeric and underscores, starting with letter or underscore)
         if var_name.is_empty() || !is_valid_env_var_name(var_name) {
             return Err(PlaceholderError::InvalidSyntax(format!(
-                "invalid environment variable name: {}",
-                var_name
+                "invalid environment variable name: {var_name}"
             )));
         }
 
@@ -189,7 +189,7 @@ fn expand_env_placeholders(command: &str) -> Result<String, PlaceholderError> {
         })?;
 
         // Replace the placeholder
-        let full_match = format!("{{env:{}}}", var_name);
+        let full_match = format!("{{env:{var_name}}}");
         result = result.replace(&full_match, &shell_escape(&value));
     }
 
@@ -256,13 +256,13 @@ fn get_clipboard_contents() -> Result<String, String> {
 
     let output = Command::new("pbpaste")
         .output()
-        .map_err(|e| format!("failed to run pbpaste: {}", e))?;
+        .map_err(|e| format!("failed to run pbpaste: {e}"))?;
 
     if !output.status.success() {
         return Err("pbpaste failed".to_string());
     }
 
-    String::from_utf8(output.stdout).map_err(|e| format!("clipboard contains invalid UTF-8: {}", e))
+    String::from_utf8(output.stdout).map_err(|e| format!("clipboard contains invalid UTF-8: {e}"))
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -306,15 +306,15 @@ fn get_selected_text() -> Result<String, String> {
     let output = Command::new("osascript")
         .args(["-e", script])
         .output()
-        .map_err(|e| format!("failed to run osascript: {}", e))?;
+        .map_err(|e| format!("failed to run osascript: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("osascript failed: {}", stderr));
+        return Err(format!("osascript failed: {stderr}"));
     }
 
     let text = String::from_utf8(output.stdout)
-        .map_err(|e| format!("selection contains invalid UTF-8: {}", e))?;
+        .map_err(|e| format!("selection contains invalid UTF-8: {e}"))?;
 
     Ok(text.trim().to_string())
 }
@@ -355,7 +355,7 @@ pub fn list_placeholders(command: &str) -> Vec<String> {
         if let Some(end_offset) = command[abs_start + 5..].find('}') {
             let var_name = &command[abs_start + 5..abs_start + 5 + end_offset];
             if !var_name.is_empty() && is_valid_env_var_name(var_name) {
-                let placeholder = format!("{{env:{}}}", var_name);
+                let placeholder = format!("{{env:{var_name}}}");
                 if !placeholders.contains(&placeholder) {
                     placeholders.push(placeholder);
                 }

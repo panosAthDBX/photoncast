@@ -115,7 +115,7 @@ impl OptimizedAppProvider {
 }
 
 impl SearchProvider for OptimizedAppProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Applications (Optimized)"
     }
 

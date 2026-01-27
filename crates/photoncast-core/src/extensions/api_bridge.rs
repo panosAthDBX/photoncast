@@ -67,16 +67,18 @@ impl HostViewHandle {
         self.inner.read().error.clone()
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn update(&self, view: ExtensionView) {
         let mut state = self.inner.write();
         state.view = Some(view);
         state.error = None;
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn update_items(&self, items: RVec<photoncast_extension_api::ListItem>) {
         let mut state = self.inner.write();
         if let Some(ExtensionView::List(mut list_view)) = state.view.clone() {
-            for section in list_view.sections.iter_mut() {
+            for section in &mut list_view.sections {
                 section.items = items.clone();
             }
             state.view = Some(ExtensionView::List(list_view));
@@ -129,7 +131,7 @@ impl ViewHandleTrait for HostViewHandleApi {
     }
 
     fn set_error(&self, error: ROption<RString>) {
-        let error = error.into_option().map(|s| s.into_string());
+        let error = error.into_option().map(photoncast_extension_api::RString::into_string);
         self.handle.set_error(error);
     }
 }

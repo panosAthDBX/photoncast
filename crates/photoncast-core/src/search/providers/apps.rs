@@ -74,7 +74,7 @@ impl AppProvider {
 }
 
 impl SearchProvider for AppProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Applications"
     }
 

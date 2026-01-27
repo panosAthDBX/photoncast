@@ -161,6 +161,7 @@ impl SpotlightPrefetcher {
     ///
     /// This is safe to call multiple times - it will be throttled based on `min_interval`.
     /// Returns a cancellation token that can be used to stop the pre-fetch.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn trigger(&self) -> CancellationToken {
         // Check throttling
         let now = Instant::now();
@@ -236,10 +237,9 @@ impl SpotlightPrefetcher {
             }
 
             // Record completion time
-            last_run.store(
-                Instant::now().elapsed().as_millis() as u64,
-                Ordering::SeqCst,
-            );
+            #[allow(clippy::cast_possible_truncation)]
+            let elapsed = Instant::now().elapsed().as_millis() as u64;
+            last_run.store(elapsed, Ordering::SeqCst);
         });
 
         token

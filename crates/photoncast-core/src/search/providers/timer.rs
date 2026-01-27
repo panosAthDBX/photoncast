@@ -29,12 +29,13 @@ impl TimerProvider {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(clippy::trivially_copy_pass_by_ref, dead_code)]
     fn score_match(&mut self, query: &str, target: &str) -> Option<(u32, Vec<usize>)> {
         self.matcher.score(query, target)
     }
 
     /// Get command info for a parsed timer action
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     fn command_for_action(action: &TimerAction) -> Option<TimerCommand> {
         TimerCommand::all()
             .into_iter()
@@ -64,7 +65,7 @@ fn command_action(command: &TimerCommand, query: &str, is_fuzzy_match: bool) -> 
 }
 
 impl SearchProvider for TimerProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Sleep Timer"
     }
 
@@ -170,10 +171,10 @@ impl SearchProvider for TimerProvider {
                 let action = command_action(&cmd, query, true);
 
                 // For fuzzy matches, show example in subtitle
-                let subtitle = if !cmd.examples.is_empty() {
-                    format!("{} (e.g., \"{}\")", cmd.description, cmd.examples[0])
-                } else {
+                let subtitle = if cmd.examples.is_empty() {
                     cmd.description.to_string()
+                } else {
+                    format!("{} (e.g., \"{}\")", cmd.description, cmd.examples[0])
                 };
 
                 results.push(SearchResult {

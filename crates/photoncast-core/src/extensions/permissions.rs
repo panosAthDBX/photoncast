@@ -181,7 +181,7 @@ pub fn extract_permission_items(permissions: &Permissions) -> Vec<PermissionItem
         items.push(PermissionItem {
             id: PermissionType::Filesystem,
             name: PermissionType::Filesystem.name().to_string(),
-            description: format!("Access files in: {}", paths_str),
+            description: format!("Access files in: {paths_str}"),
             icon: PermissionType::Filesystem.icon().to_string(),
         });
     }
@@ -190,6 +190,7 @@ pub fn extract_permission_items(permissions: &Permissions) -> Vec<PermissionItem
 }
 
 /// Formats filesystem paths for display (e.g., "~/Documents, ~/Downloads").
+#[allow(clippy::items_after_statements)]
 fn format_filesystem_paths(paths: &[String]) -> String {
     if paths.is_empty() {
         return "none".to_string();
@@ -201,7 +202,7 @@ fn format_filesystem_paths(paths: &[String]) -> String {
     let display_paths: Vec<&str> = paths
         .iter()
         .take(MAX_DISPLAY_PATHS)
-        .map(|s| s.as_str())
+        .map(std::string::String::as_str)
         .collect();
 
     if paths.len() > MAX_DISPLAY_PATHS {

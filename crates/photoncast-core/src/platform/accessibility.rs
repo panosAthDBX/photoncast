@@ -210,6 +210,7 @@ impl PermissionPoller {
 
     /// Returns whether polling is currently active.
     #[must_use]
+    #[allow(clippy::unused_async)]
     pub fn is_polling(&self) -> bool {
         self.is_polling.load(Ordering::Relaxed)
     }
@@ -224,6 +225,7 @@ impl PermissionPoller {
     /// * `on_granted` - Callback to invoke when permission is granted.
     /// * `timeout` - Optional timeout after which polling stops even if permission
     ///   is not granted.
+    #[allow(clippy::unused_async)]
     pub async fn start_polling<F>(&self, on_granted: F, timeout: Option<Duration>)
     where
         F: FnOnce() + Send + 'static,

@@ -67,16 +67,16 @@ impl LaunchError {
     pub fn user_message(&self) -> String {
         match self {
             Self::NotFound { bundle_id } => {
-                format!("Application '{}' is no longer installed", bundle_id)
+                format!("Application '{bundle_id}' is no longer installed")
             },
             Self::LaunchFailed { app, reason } => {
-                format!("Couldn't open {}: {}", app, reason)
+                format!("Couldn't open {app}: {reason}")
             },
             Self::Damaged { app } => {
-                format!("{} is damaged and can't be opened. Try reinstalling.", app)
+                format!("{app} is damaged and can't be opened. Try reinstalling.")
             },
             Self::UrlNotAllowed { url } => {
-                format!("Blocked unsafe URL: {}", url)
+                format!("Blocked unsafe URL: {url}")
             },
         }
     }
@@ -362,6 +362,7 @@ pub fn open_url(url: &str) -> Result<(), LaunchError> {
     }
 }
 
+#[allow(clippy::manual_let_else)]
 fn is_allowed_url(url: &url::Url) -> bool {
     if !matches!(url.scheme(), "http" | "https" | "mailto" | "tel") {
         return false;

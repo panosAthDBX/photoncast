@@ -293,6 +293,7 @@ impl SystemCommand {
 
     /// Returns the icon name for the command.
     #[must_use]
+    #[allow(clippy::match_same_arms)]
     pub const fn icon(&self) -> &'static str {
         match self {
             Self::SearchFiles => "magnifyingglass",

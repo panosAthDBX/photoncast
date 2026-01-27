@@ -64,19 +64,18 @@ impl HotkeySettingsError {
     pub fn user_message(&self) -> String {
         match self {
             Self::InvalidBinding { reason } => {
-                format!("The hotkey you entered is not valid: {}", reason)
+                format!("The hotkey you entered is not valid: {reason}")
             },
             Self::SaveFailed { reason } => {
-                format!("Failed to save your hotkey settings: {}", reason)
+                format!("Failed to save your hotkey settings: {reason}")
             },
             Self::LoadFailed { reason } => {
-                format!("Failed to load hotkey settings: {}", reason)
+                format!("Failed to load hotkey settings: {reason}")
             },
             Self::ReservedKey { key } => {
                 format!(
-                    "The key '{}' is reserved by the system and cannot be used as a hotkey. \
-                     Please choose a different key.",
-                    key
+                    "The key '{key}' is reserved by the system and cannot be used as a hotkey. \
+                     Please choose a different key."
                 )
             },
             Self::SingleModifier => {
@@ -164,8 +163,7 @@ pub fn validate_binding(
         if !is_valid_modifier(modifier) {
             return Err(HotkeySettingsError::InvalidBinding {
                 reason: format!(
-                    "'{}' is not a valid modifier. Use Command, Option, Control, or Shift.",
-                    modifier
+                    "'{modifier}' is not a valid modifier. Use Command, Option, Control, or Shift."
                 ),
             });
         }
@@ -343,7 +341,7 @@ impl fmt::Display for KeyCaptureState {
                 } else {
                     format!("{} + ", self.captured_modifiers.join(" + "))
                 };
-                write!(f, "{}{}", mods, key)
+                write!(f, "{mods}{key}")
             } else {
                 write!(f, "Press a key combination...")
             }
@@ -434,6 +432,7 @@ impl HotkeySettings {
     /// - No binding has been captured
     /// - The binding is invalid
     /// - The binding conflicts with another app
+    #[allow(clippy::needless_pass_by_value)]
     pub fn apply_captured_binding(&mut self) -> Result<HotkeyConfig, HotkeySettingsError> {
         let (key, modifiers) = self.capture_state.get_captured_binding().ok_or_else(|| {
             HotkeySettingsError::InvalidBinding {
@@ -480,6 +479,7 @@ impl HotkeySettings {
     }
 
     /// Sets the double-tap modifier.
+    #[allow(clippy::assigning_clones, clippy::needless_pass_by_value)]
     pub fn set_double_tap_modifier(&mut self, modifier: Option<String>) {
         self.current_config.double_tap_modifier = modifier.clone();
         self.double_tap_enabled = modifier.is_some();
@@ -658,24 +658,24 @@ pub fn save_hotkey_config(
     // Serialize to TOML
     let toml_str =
         toml::to_string_pretty(&config).map_err(|e| HotkeySettingsError::SaveFailed {
-            reason: format!("failed to serialize config: {}", e),
+            reason: format!("failed to serialize config: {e}"),
         })?;
 
     // Ensure parent directory exists
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| HotkeySettingsError::SaveFailed {
-            reason: format!("failed to create config directory: {}", e),
+            reason: format!("failed to create config directory: {e}"),
         })?;
     }
 
     // Write atomically using a temp file
     let temp_path = config_path.with_extension("toml.tmp");
     std::fs::write(&temp_path, &toml_str).map_err(|e| HotkeySettingsError::SaveFailed {
-        reason: format!("failed to write temp config file: {}", e),
+        reason: format!("failed to write temp config file: {e}"),
     })?;
 
     std::fs::rename(&temp_path, config_path).map_err(|e| HotkeySettingsError::SaveFailed {
-        reason: format!("failed to rename temp config file: {}", e),
+        reason: format!("failed to rename temp config file: {e}"),
     })?;
 
     debug!("Saved hotkey config to {:?}", config_path);
@@ -690,11 +690,11 @@ pub fn save_hotkey_config(
 pub fn load_config(config_path: &Path) -> Result<Config, HotkeySettingsError> {
     let content =
         std::fs::read_to_string(config_path).map_err(|e| HotkeySettingsError::LoadFailed {
-            reason: format!("failed to read config file: {}", e),
+            reason: format!("failed to read config file: {e}"),
         })?;
 
     let config: Config = toml::from_str(&content).map_err(|e| HotkeySettingsError::LoadFailed {
-        reason: format!("failed to parse config file: {}", e),
+        reason: format!("failed to parse config file: {e}"),
     })?;
 
     debug!("Loaded config from {:?}", config_path);
