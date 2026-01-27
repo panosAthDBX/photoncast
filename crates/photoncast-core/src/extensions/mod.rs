@@ -13,6 +13,7 @@ pub mod manifest;
 pub mod permissions;
 pub mod registry;
 pub mod runtime;
+pub mod signing;
 pub mod storage;
 pub mod watcher;
 

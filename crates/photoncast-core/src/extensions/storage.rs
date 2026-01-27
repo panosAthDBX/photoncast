@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use abi_stable::std_types::{ROption, RString, RVec};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use photoncast_extension_api::RStr;
 use photoncast_extension_api::{
     ExtensionApiError, ExtensionApiResult, ExtensionStorage, ExtensionStorageTrait,
@@ -24,15 +24,12 @@ pub enum ExtensionStorageError {
 
 #[derive(Clone)]
 pub struct ExtensionStorageImpl {
-    conn: Arc<RwLock<Connection>>,
+    // Using Mutex instead of RwLock because rusqlite::Connection is Send but not Sync.
+    // Mutex<T>: Sync only requires T: Send, so this makes ExtensionStorageImpl
+    // automatically Send + Sync without needing unsafe impls.
+    conn: Arc<Mutex<Connection>>,
     namespace: String,
 }
-
-// SAFETY: ExtensionStorageImpl wraps a rusqlite Connection behind Arc<RwLock<>>,
-// which provides thread-safe access. The RwLock ensures exclusive write access
-// and shared read access, making it safe to send and share across threads.
-unsafe impl Send for ExtensionStorageImpl {}
-unsafe impl Sync for ExtensionStorageImpl {}
 
 impl ExtensionStorageImpl {
     pub fn new(path: PathBuf, namespace: impl Into<String>) -> Result<Self, ExtensionStorageError> {
@@ -53,7 +50,7 @@ impl ExtensionStorageImpl {
             ",
         )?;
         Ok(Self {
-            conn: Arc::new(RwLock::new(conn)),
+            conn: Arc::new(Mutex::new(conn)),
             namespace: namespace.into(),
         })
     }
@@ -66,7 +63,7 @@ impl ExtensionStorageImpl {
 
 impl ExtensionStorageTrait for ExtensionStorageImpl {
     fn get(&self, key: RStr<'_>) -> ExtensionApiResult<ROption<RString>> {
-        let conn = self.conn.read();
+        let conn = self.conn.lock();
         let value: Option<String> = match conn
             .query_row(
                 "SELECT value FROM extension_storage WHERE namespace = ?1 AND key = ?2",
@@ -82,7 +79,7 @@ impl ExtensionStorageTrait for ExtensionStorageImpl {
     }
 
     fn set(&self, key: RStr<'_>, value: RStr<'_>) -> ExtensionApiResult<()> {
-        let conn = self.conn.write();
+        let conn = self.conn.lock();
         let now = chrono::Utc::now().timestamp();
         if let Err(e) = conn.execute(
             "INSERT INTO extension_storage (namespace, key, value, updated_at) VALUES (?1, ?2, ?3, ?4)\
@@ -95,7 +92,7 @@ impl ExtensionStorageTrait for ExtensionStorageImpl {
     }
 
     fn delete(&self, key: RStr<'_>) -> ExtensionApiResult<()> {
-        let conn = self.conn.write();
+        let conn = self.conn.lock();
         if let Err(e) = conn.execute(
             "DELETE FROM extension_storage WHERE namespace = ?1 AND key = ?2",
             params![self.namespace, key.as_str()],
@@ -106,7 +103,7 @@ impl ExtensionStorageTrait for ExtensionStorageImpl {
     }
 
     fn list(&self) -> ExtensionApiResult<RVec<RString>> {
-        let conn = self.conn.read();
+        let conn = self.conn.lock();
         let mut stmt = match conn
             .prepare("SELECT key FROM extension_storage WHERE namespace = ?1 ORDER BY key ASC")
         {

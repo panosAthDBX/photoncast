@@ -51,6 +51,10 @@ pub enum ExtensionManagerError {
     },
     #[error("permissions error: {0}")]
     Permissions(#[from] crate::extensions::permissions::PermissionsError),
+    #[error("path traversal detected: resolved path {resolved} escapes base directory {base}")]
+    PathTraversal { resolved: String, base: String },
+    #[error("code signature error: {0}")]
+    CodeSignature(#[from] crate::extensions::signing::CodeSignatureError),
 }
 
 /// Result of an extension reload operation.
@@ -274,7 +278,19 @@ impl ExtensionManager {
 
         self.registry.update_state(id, ExtensionState::Loaded)?;
 
-        let entry_path = resolve_entry_path(&record.manifest, None);
+        let entry_path = resolve_entry_path(&record.manifest, None)?;
+
+        // Verify code signature before loading
+        if self.dev_mode {
+            tracing::warn!(
+                extension_id = id,
+                path = %entry_path.display(),
+                "Skipping code signature verification in dev mode"
+            );
+        } else {
+            super::signing::verify_code_signature(&entry_path)?;
+        }
+
         let library = ExtensionLoader::load(&entry_path)?;
         let api_version = ExtensionLoader::resolve_api_version(library.raw())?;
         ExtensionLoader::check_api_version(api_version)?;
@@ -521,7 +537,42 @@ impl ExtensionManager {
         self.registry.insert(manifest.clone(), true);
 
         // Step 3: Create versioned copy of dylib for hot-reload
-        let entry_path = resolve_entry_path(&manifest, None);
+        let entry_path = match resolve_entry_path(&manifest, None) {
+            Ok(p) => p,
+            Err(err) => {
+                let duration = start.elapsed();
+                let error_msg = format!("Path resolution failed: {err}");
+                tracing::error!(
+                    extension_id = id,
+                    duration_ms = duration.as_millis(),
+                    error = %err,
+                    "Extension reload failed resolving entry path"
+                );
+                self.mark_failed(id, &error_msg);
+                return ReloadResult::failure(id.to_string(), duration, error_msg);
+            },
+        };
+
+        // Verify code signature before loading
+        if self.dev_mode {
+            tracing::warn!(
+                extension_id = id,
+                path = %entry_path.display(),
+                "Skipping code signature verification in dev mode"
+            );
+        } else if let Err(err) = super::signing::verify_code_signature(&entry_path) {
+            let duration = start.elapsed();
+            let error_msg = format!("Code signature verification failed: {err}");
+            tracing::error!(
+                extension_id = id,
+                duration_ms = duration.as_millis(),
+                error = %err,
+                "Extension reload failed code signature verification"
+            );
+            self.mark_failed(id, &error_msg);
+            return ReloadResult::failure(id.to_string(), duration, error_msg);
+        }
+
         let load_path = if self.dev_mode {
             match self.dylib_cache.create_versioned_copy(id, &entry_path) {
                 Ok(cached_path) => {
@@ -1055,9 +1106,12 @@ fn map_extension_icon(icon: photoncast_extension_api::IconSource) -> IconSource 
     }
 }
 
-fn resolve_entry_path(manifest: &ExtensionManifest, override_path: Option<&Path>) -> PathBuf {
+fn resolve_entry_path(
+    manifest: &ExtensionManifest,
+    override_path: Option<&Path>,
+) -> Result<PathBuf, ExtensionManagerError> {
     if let Some(path) = override_path {
-        return path.to_path_buf();
+        return Ok(path.to_path_buf());
     }
 
     // Use the manifest's directory (set during discovery) to resolve the entry path
@@ -1067,7 +1121,28 @@ fn resolve_entry_path(manifest: &ExtensionManifest, override_path: Option<&Path>
         .map(|p| p.as_path())
         .unwrap_or_else(|| Path::new("."));
 
-    base_dir.join(&manifest.entry.path)
+    let joined = base_dir.join(&manifest.entry.path);
+
+    // Canonicalize both paths to resolve symlinks and ".." components.
+    // If the paths don't exist yet we fall back to the joined path without
+    // the traversal check (e.g. during tests with synthetic manifests).
+    let canonical_base = match std::fs::canonicalize(base_dir) {
+        Ok(p) => p,
+        Err(_) => return Ok(joined),
+    };
+    let canonical_resolved = match std::fs::canonicalize(&joined) {
+        Ok(p) => p,
+        Err(_) => return Ok(joined),
+    };
+
+    if !canonical_resolved.starts_with(&canonical_base) {
+        return Err(ExtensionManagerError::PathTraversal {
+            resolved: canonical_resolved.display().to_string(),
+            base: canonical_base.display().to_string(),
+        });
+    }
+
+    Ok(canonical_resolved)
 }
 
 #[cfg(test)]

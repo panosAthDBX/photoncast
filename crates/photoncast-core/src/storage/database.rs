@@ -121,7 +121,7 @@ impl Database {
 
         conn.execute(
             "INSERT INTO schema_version (version, applied_at) VALUES (?1, ?2)",
-            [&version, &(now as i32)],
+            rusqlite::params![version, now],
         )
         .context("failed to record schema version")?;
 

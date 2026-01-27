@@ -32,14 +32,11 @@ pub struct ExtensionHostServices {
     pub allowed_filesystem_paths: Vec<PathBuf>,
 }
 
-// SAFETY: ExtensionHostServices contains only thread-safe types:
-// - PreferenceStoreImpl: immutable after construction
-// - Arc<Mutex<ExtensionStorageImpl>>: mutex provides exclusive access
-// - CommandInvocationGuard: uses internal synchronization
-// - Vec<PathBuf>: immutable after construction
-// All fields are either immutable or behind synchronization primitives.
-unsafe impl Send for ExtensionHostServices {}
-unsafe impl Sync for ExtensionHostServices {}
+// ExtensionHostServices is automatically Send + Sync because all fields are:
+// - PreferenceStoreImpl: Arc<RwLock<Vec<...>>> fields — Send + Sync
+// - Arc<Mutex<ExtensionStorageImpl>>: Mutex<T>: Sync requires T: Send — satisfied
+// - CommandInvocationGuard: Arc<RwLock<HashSet<String>>> — Send + Sync
+// - Vec<PathBuf>: Send + Sync
 
 impl ExtensionHostImpl {
     #[must_use]
