@@ -283,11 +283,20 @@ impl ResultRanker {
     #[must_use]
     pub fn calculate_match_boost(&self, query: &str, title: &str) -> f64 {
         let query_lower = query.to_lowercase();
+        self.calculate_match_boost_precomputed(&query_lower, title)
+    }
+
+    /// Like [`calculate_match_boost`] but accepts a pre-lowercased query.
+    ///
+    /// Use this in hot loops where the same query is compared against many titles
+    /// to avoid re-computing `query.to_lowercase()` per result.
+    #[must_use]
+    fn calculate_match_boost_precomputed(&self, query_lower: &str, title: &str) -> f64 {
         let title_lower = title.to_lowercase();
 
         if query_lower == title_lower {
             self.boost_config.exact_match_boost
-        } else if title_lower.starts_with(&query_lower) {
+        } else if title_lower.starts_with(query_lower) {
             self.boost_config.prefix_match_boost
         } else {
             1.0
@@ -310,6 +319,20 @@ impl ResultRanker {
     pub fn apply_boosts(&self, score: f64, query: &str, title: &str, path: Option<&Path>) -> f64 {
         let path_boost = self.calculate_path_boost(path);
         let match_boost = self.calculate_match_boost(query, title);
+        score * path_boost * match_boost
+    }
+
+    /// Like [`apply_boosts`] but accepts a pre-lowercased query for hot loops.
+    #[must_use]
+    fn apply_boosts_precomputed(
+        &self,
+        score: f64,
+        query_lower: &str,
+        title: &str,
+        path: Option<&Path>,
+    ) -> f64 {
+        let path_boost = self.calculate_path_boost(path);
+        let match_boost = self.calculate_match_boost_precomputed(query_lower, title);
         score * path_boost * match_boost
     }
 
@@ -430,17 +453,20 @@ impl ResultRanker {
         FU: Fn(&str) -> UsageData,
         FP: Fn(&str) -> Option<std::path::PathBuf>,
     {
-        // Calculate combined scores
+        // Pre-compute lowercased query once for all results
+        let query_lower = query.to_lowercase();
+
+        // Calculate combined scores using pre-lowered query
         for result in results.iter_mut() {
             let frecency = get_frecency(result.id.as_str());
             let path = get_path(result.id.as_str());
-            result.score = self.calculate_combined_score(
-                result.score,
-                &frecency,
-                query,
-                &result.title,
-                path.as_deref(),
-            );
+
+            let base_score = frecency
+                .score()
+                .mul_add(Self::FRECENCY_MULTIPLIER, result.score);
+
+            result.score =
+                self.apply_boosts_precomputed(base_score, &query_lower, &result.title, path.as_deref());
         }
 
         // Sort with tiebreaking

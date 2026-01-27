@@ -20,7 +20,8 @@ use photoncast_extension_api::{
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 /// Supported image extensions
@@ -49,6 +50,9 @@ fn thumbnail_cache_key(path: &PathBuf, modified: SystemTime) -> String {
 
 /// Gets or generates a thumbnail for an image.
 /// Returns the thumbnail path if successful, or None if generation failed.
+///
+/// **Warning:** This function performs image I/O (loading + resizing) and should
+/// only be called from background threads to avoid blocking the UI.
 fn get_or_create_thumbnail(path: &PathBuf, modified: SystemTime) -> Option<PathBuf> {
     let cache_dir = get_thumbnail_cache_dir();
     let cache_key = thumbnail_cache_key(path, modified);
@@ -86,6 +90,19 @@ fn get_or_create_thumbnail(path: &PathBuf, modified: SystemTime) -> Option<PathB
     }
 
     Some(thumbnail_path)
+}
+
+/// Looks up a cached thumbnail without performing any image I/O.
+/// Returns `Some(path)` if a cached thumbnail exists, `None` otherwise.
+fn get_cached_thumbnail(path: &Path) -> Option<PathBuf> {
+    let thumb_dir = get_thumbnail_cache_dir();
+    let file_name = path.file_name()?.to_str()?;
+    let thumb_path = thumb_dir.join(format!("thumb_{file_name}"));
+    if thumb_path.exists() {
+        Some(thumb_path)
+    } else {
+        None
+    }
 }
 
 /// Represents a screenshot file
@@ -257,10 +274,10 @@ impl Screenshot {
         }
     }
 
-    /// Creates a preview for this screenshot using a thumbnail for large images
+    /// Creates a preview for this screenshot using a cached thumbnail if available.
+    /// Falls back to the original image path rather than generating a thumbnail inline.
     fn preview(&self) -> Preview {
-        // Use thumbnail for preview (generates if needed, falls back to original)
-        let preview_path = get_or_create_thumbnail(&self.path, self.modified)
+        let preview_path = get_cached_thumbnail(&self.path)
             .unwrap_or_else(|| self.path.clone());
         let path_str = preview_path.to_string_lossy().to_string();
         Preview::Image {
@@ -281,6 +298,15 @@ fn extension_color(ext: &str) -> TagColor {
         _ => TagColor::Default,
     }
 }
+
+/// Cached result of a directory scan.
+struct CachedScan {
+    screenshots: Vec<Screenshot>,
+    dir_modified: std::time::SystemTime,
+}
+
+/// Thread-safe cache for directory scan results.
+type ScanCache = Arc<Mutex<Option<CachedScan>>>;
 
 /// Scans a directory for screenshot files
 fn scan_screenshots(folder: &str) -> Vec<Screenshot> {
@@ -314,8 +340,55 @@ fn scan_screenshots(folder: &str) -> Vec<Screenshot> {
     screenshots
 }
 
+/// Resolves the folder path (expanding `~`) to an absolute [`PathBuf`].
+fn resolve_folder_path(folder: &str) -> PathBuf {
+    if folder.starts_with('~') {
+        dirs::home_dir()
+            .map(|home| home.join(&folder[2..]))
+            .unwrap_or_else(|| PathBuf::from(folder))
+    } else {
+        PathBuf::from(folder)
+    }
+}
+
+/// Returns screenshots from cache if the directory has not been modified since the last scan.
+/// Falls back to a full `scan_screenshots` on cache miss.
+fn scan_screenshots_cached(folder: &str, cache: &ScanCache) -> Vec<Screenshot> {
+    let path = resolve_folder_path(folder);
+
+    // Check if cache is valid
+    let dir_modified = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok();
+
+    if let Some(ref dir_mod) = dir_modified {
+        let cached = cache.lock().unwrap();
+        if let Some(ref scan) = *cached {
+            if scan.dir_modified == *dir_mod {
+                return scan.screenshots.clone();
+            }
+        }
+    }
+
+    // Cache miss — perform full scan
+    let screenshots = scan_screenshots(folder);
+
+    // Update cache
+    if let Some(dir_mod) = dir_modified {
+        let mut cached = cache.lock().unwrap();
+        *cached = Some(CachedScan {
+            screenshots: screenshots.clone(),
+            dir_modified: dir_mod,
+        });
+    }
+
+    screenshots
+}
+
 /// Command handler for browsing screenshots
-struct BrowseScreenshotsHandler;
+struct BrowseScreenshotsHandler {
+    scan_cache: ScanCache,
+}
 
 impl CommandHandlerTrait for BrowseScreenshotsHandler {
     fn handle(&self, ctx: ExtensionContext, args: CommandArguments) -> ExtensionApiResult<()> {
@@ -340,8 +413,8 @@ impl CommandHandlerTrait for BrowseScreenshotsHandler {
             })
             .unwrap_or_else(|| "~/Documents/screenshots".to_string());
 
-        // Scan for screenshots
-        let screenshots = scan_screenshots(&folder);
+        // Scan for screenshots (uses cache when directory is unchanged)
+        let screenshots = scan_screenshots_cached(&folder, &self.scan_cache);
 
         // Filter by query if provided
         let query = args.query.as_ref().map(|s| s.as_str()).unwrap_or("");
@@ -392,11 +465,15 @@ impl CommandHandlerTrait for BrowseScreenshotsHandler {
 /// Screenshot Browser Extension
 pub struct ScreenshotBrowserExtension {
     ctx: Option<ExtensionContext>,
+    scan_cache: ScanCache,
 }
 
 impl ScreenshotBrowserExtension {
     fn new() -> Self {
-        Self { ctx: None }
+        Self {
+            ctx: None,
+            scan_cache: Arc::new(Mutex::new(None)),
+        }
     }
 }
 
@@ -422,6 +499,10 @@ impl Extension for ScreenshotBrowserExtension {
 
     fn deactivate(&mut self) -> ExtensionApiResult<()> {
         self.ctx = None;
+        // Clear the scan cache
+        if let Ok(mut cached) = self.scan_cache.lock() {
+            *cached = None;
+        }
         ExtensionApiResult::ROk(())
     }
 
@@ -447,18 +528,32 @@ impl Extension for ScreenshotBrowserExtension {
             })
             .unwrap_or_else(|| "~/Documents/screenshots".to_string());
 
-        // Spawn background task to generate thumbnails
+        // Spawn background task to pre-populate scan cache and generate thumbnails
+        let scan_cache = Arc::clone(&self.scan_cache);
         std::thread::spawn(move || {
             let screenshots = scan_screenshots(&folder);
-            let mut cached = 0;
-            for screenshot in screenshots {
-                if get_or_create_thumbnail(&screenshot.path, screenshot.modified).is_some() {
-                    cached += 1;
+
+            // Pre-populate the scan cache
+            let path = resolve_folder_path(&folder);
+            if let Ok(dir_mod) = std::fs::metadata(&path).and_then(|m| m.modified()) {
+                if let Ok(mut cached) = scan_cache.lock() {
+                    *cached = Some(CachedScan {
+                        screenshots: screenshots.clone(),
+                        dir_modified: dir_mod,
+                    });
                 }
             }
-            if cached > 0 {
+
+            // Generate thumbnails in the background
+            let mut thumb_count = 0;
+            for screenshot in &screenshots {
+                if get_or_create_thumbnail(&screenshot.path, screenshot.modified).is_some() {
+                    thumb_count += 1;
+                }
+            }
+            if thumb_count > 0 {
                 tracing::debug!(
-                    count = cached,
+                    count = thumb_count,
                     folder = folder.as_str(),
                     "Pre-cached screenshot thumbnails"
                 );
@@ -484,7 +579,9 @@ impl Extension for ScreenshotBrowserExtension {
                 RString::from("capture"),
                 RString::from("snip"),
             ]),
-            handler: CommandHandler::new(BrowseScreenshotsHandler),
+            handler: CommandHandler::new(BrowseScreenshotsHandler {
+                scan_cache: Arc::clone(&self.scan_cache),
+            }),
             icon: ROption::RSome(IconSource::SystemIcon {
                 name: RString::from("photo.on.rectangle"),
             }),

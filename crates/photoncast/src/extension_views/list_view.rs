@@ -86,8 +86,8 @@ pub struct ExtensionListView {
     selected_index: usize,
     /// All items flattened for navigation.
     flat_items: Vec<FlatListItem>,
-    /// Filtered items (when search is active).
-    filtered_items: Vec<FlatListItem>,
+    /// Filtered item indices (when search is active).
+    filtered_indices: Vec<usize>,
     /// Search debounce generation.
     search_generation: u64,
     /// Focus handle for keyboard navigation.
@@ -130,6 +130,7 @@ impl ExtensionListView {
         cx.focus(&focus_handle);
 
         let flat_items = Self::flatten_items(&list_view.sections);
+        let filtered_indices = (0..flat_items.len()).collect();
 
         let view = Self {
             list_view,
@@ -137,8 +138,8 @@ impl ExtensionListView {
             cursor_position: 0,
             cursor_blink_epoch: Instant::now(),
             selected_index: 0,
-            flat_items: flat_items.clone(),
-            filtered_items: flat_items,
+            flat_items,
+            filtered_indices,
             search_generation: 0,
             focus_handle,
             scroll_handle: ScrollHandle::new(),
@@ -165,7 +166,7 @@ impl ExtensionListView {
         // Re-flatten and filter
         self.flat_items = Self::flatten_items(&self.list_view.sections);
         self.apply_search_filter();
-        self.selected_index = self.selected_index.min(self.filtered_items.len().saturating_sub(1));
+        self.selected_index = self.selected_index.min(self.filtered_indices.len().saturating_sub(1));
 
         cx.notify();
     }
@@ -206,13 +207,14 @@ impl ExtensionListView {
     /// Applies the search filter to the items.
     fn apply_search_filter(&mut self) {
         if self.search_query.is_empty() {
-            self.filtered_items = self.flat_items.clone();
+            self.filtered_indices = (0..self.flat_items.len()).collect();
         } else {
             let query_lower = self.search_query.to_lowercase();
-            self.filtered_items = self
+            self.filtered_indices = self
                 .flat_items
                 .iter()
-                .filter(|item| {
+                .enumerate()
+                .filter(|(_, item)| {
                     item.item.title.to_lowercase().contains(&query_lower)
                         || item
                             .item
@@ -220,9 +222,14 @@ impl ExtensionListView {
                             .as_ref()
                             .map_or(false, |s| s.to_lowercase().contains(&query_lower))
                 })
-                .cloned()
+                .map(|(i, _)| i)
                 .collect();
         }
+    }
+
+    /// Returns a reference to a filtered item by display index.
+    fn filtered_item(&self, idx: usize) -> Option<&FlatListItem> {
+        self.filtered_indices.get(idx).and_then(|&i| self.flat_items.get(i))
     }
 
     /// Starts the cursor blink timer.
@@ -312,7 +319,7 @@ impl ExtensionListView {
 
     /// Gets the currently selected item.
     fn selected_item(&self) -> Option<&FlatListItem> {
-        self.filtered_items.get(self.selected_index)
+        self.filtered_item(self.selected_index)
     }
 
     /// Activates the selected item.
@@ -325,7 +332,7 @@ impl ExtensionListView {
 
     /// Activates an item at a specific index.
     fn activate_at_index(&mut self, index: usize, cx: &mut ViewContext<Self>) {
-        let item = self.filtered_items.get(index).map(|i| i.item.clone());
+        let item = self.filtered_item(index).map(|i| i.item.clone());
         if let Some(item) = item {
             self.selected_index = index;
             self.handle_item_activation(&item, cx);
@@ -367,8 +374,8 @@ impl ExtensionListView {
             return;
         }
         
-        if !self.filtered_items.is_empty() {
-            self.selected_index = (self.selected_index + 1) % self.filtered_items.len();
+        if !self.filtered_indices.is_empty() {
+            self.selected_index = (self.selected_index + 1) % self.filtered_indices.len();
             self.ensure_selected_visible(cx);
             cx.notify();
         }
@@ -391,9 +398,9 @@ impl ExtensionListView {
             return;
         }
         
-        if !self.filtered_items.is_empty() {
+        if !self.filtered_indices.is_empty() {
             self.selected_index = if self.selected_index == 0 {
-                self.filtered_items.len() - 1
+                self.filtered_indices.len() - 1
             } else {
                 self.selected_index - 1
             };
@@ -598,7 +605,9 @@ impl ExtensionListView {
         let mut current_section = None;
         let mut elements: Vec<gpui::AnyElement> = Vec::new();
 
-        for (idx, flat_item) in self.filtered_items.iter().enumerate() {
+        for (display_idx, &flat_idx) in self.filtered_indices.iter().enumerate() {
+            let flat_item = &self.flat_items[flat_idx];
+
             // Add section header if section changed
             if current_section != Some(flat_item.section_index) {
                 current_section = Some(flat_item.section_index);
@@ -613,9 +622,9 @@ impl ExtensionListView {
             }
 
             // Add item
-            let is_selected = idx == self.selected_index;
+            let is_selected = display_idx == self.selected_index;
             elements.push(
-                self.render_list_item(&flat_item.item, idx, is_selected, colors, cx)
+                self.render_list_item(&flat_item.item, display_idx, is_selected, colors, cx)
                     .into_any_element()
             );
         }
@@ -1238,7 +1247,7 @@ impl Render for ExtensionListView {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = ExtensionViewColors::from_context(cx);
         let has_search = self.list_view.search_bar.is_some();
-        let is_empty = self.filtered_items.is_empty();
+        let is_empty = self.filtered_indices.is_empty();
         let has_empty_state = self.list_view.empty_state.is_some();
         let show_actions_menu = self.show_actions_menu;
 

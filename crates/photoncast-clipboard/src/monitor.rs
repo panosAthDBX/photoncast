@@ -230,6 +230,8 @@ impl ClipboardMonitor {
     /// Reads clipboard content and returns the appropriate content type.
     #[cfg(target_os = "macos")]
     fn read_clipboard_content(&self) -> Result<ClipboardContentType> {
+        use std::collections::HashSet;
+
         use objc2_app_kit::NSPasteboard;
 
         // Get pasteboard
@@ -240,10 +242,16 @@ impl ClipboardMonitor {
             return Err(ClipboardError::clipboard_access("No types available"));
         };
 
+        // Collect all type strings once into a HashSet for O(1) lookups
+        // instead of iterating the NSArray for each has_type call.
+        let available_types: HashSet<String> = (0..types.count())
+            .map(|i| types.objectAtIndex(i).to_string())
+            .collect();
+
         // Check for image first (PNG, TIFF, JPEG)
-        if self.config.store_images && has_type(&types, "public.png")
-            || has_type(&types, "public.tiff")
-            || has_type(&types, "public.jpeg")
+        if self.config.store_images && has_type_set(&available_types, "public.png")
+            || has_type_set(&available_types, "public.tiff")
+            || has_type_set(&available_types, "public.jpeg")
         {
             if let Some(content_type) = self.read_image_content(&pasteboard)? {
                 return Ok(content_type);
@@ -251,21 +259,27 @@ impl ClipboardMonitor {
         }
 
         // Check for files
-        if has_type(&types, "NSFilenamesPboardType") || has_type(&types, "public.file-url") {
+        if has_type_set(&available_types, "NSFilenamesPboardType")
+            || has_type_set(&available_types, "public.file-url")
+        {
             if let Some(content_type) = Self::read_file_content(&pasteboard) {
                 return Ok(content_type);
             }
         }
 
         // Check for rich text (HTML, RTF)
-        if has_type(&types, "public.html") || has_type(&types, "public.rtf") {
+        if has_type_set(&available_types, "public.html")
+            || has_type_set(&available_types, "public.rtf")
+        {
             if let Some(content_type) = Self::read_rich_text_content(&pasteboard) {
                 return Ok(content_type);
             }
         }
 
         // Check for plain text
-        if has_type(&types, "public.utf8-plain-text") || has_type(&types, "NSStringPboardType") {
+        if has_type_set(&available_types, "public.utf8-plain-text")
+            || has_type_set(&available_types, "NSStringPboardType")
+        {
             if let Some(content_type) = self.read_text_content(&pasteboard) {
                 return Ok(content_type);
             }
@@ -472,6 +486,7 @@ fn get_source_app_info() -> (Option<String>, Option<String>) {
 
 /// Checks if a type array contains a specific type.
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn has_type(
     types: &objc2_foundation::NSArray<objc2_foundation::NSString>,
     type_name: &str,
@@ -483,6 +498,15 @@ fn has_type(
         }
     }
     false
+}
+
+/// Set-based variant of [`has_type`] for pre-collected type strings.
+///
+/// Uses substring matching (via `contains`) to stay consistent with
+/// the original `has_type` behaviour.
+#[cfg(target_os = "macos")]
+fn has_type_set(available: &std::collections::HashSet<String>, type_name: &str) -> bool {
+    available.iter().any(|t| t.contains(type_name))
 }
 
 #[cfg(test)]

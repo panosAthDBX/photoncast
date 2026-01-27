@@ -16,6 +16,8 @@
 //! - Throttling to avoid excessive resource usage
 //! - Optional battery-awareness (skip on battery power)
 
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -278,6 +280,12 @@ fn run_prefetch_queries(
 
         // Query for common letters that appear in most filenames
         // Using vowels and common consonants to get diverse results
+        // Build a set of seen paths for O(1) dedup instead of O(n) linear scan
+        let mut seen: HashSet<PathBuf> = {
+            let files = recent_files.lock();
+            files.iter().map(|f| f.path.clone()).collect()
+        };
+
         for pattern in ["a", "e", "o", "s", "t", "n"] {
             if token.is_cancelled() {
                 break;
@@ -285,9 +293,9 @@ fn run_prefetch_queries(
             if let Ok(results) = service.search_with_options(pattern, &options) {
                 if !results.is_empty() {
                     let mut files = recent_files.lock();
-                    // Merge results, avoiding duplicates
+                    // Merge results, avoiding duplicates via HashSet
                     for result in results {
-                        if !files.iter().any(|f| f.path == result.path) {
+                        if seen.insert(result.path.clone()) {
                             files.push(result);
                             if files.len() >= config.recent_files_limit {
                                 break;

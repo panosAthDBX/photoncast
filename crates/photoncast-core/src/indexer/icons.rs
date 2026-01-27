@@ -4,14 +4,15 @@
 //! bundles and caching them to disk with an LRU eviction policy.
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use lru::LruCache;
 use once_cell::sync::OnceCell;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use tracing::{debug, warn};
 
 /// Default LRU cache capacity (number of icons).
@@ -54,24 +55,17 @@ impl LazyIcon {
     }
 }
 
-/// LRU cache entry.
-struct CacheEntry {
-    /// The lazy icon.
-    icon: Arc<LazyIcon>,
-    /// Access order (higher = more recent).
-    access_order: u64,
-}
-
 /// LRU icon cache with configurable capacity.
+///
+/// Uses the `lru` crate for automatic least-recently-used eviction,
+/// replacing the previous manual `HashMap` + access-counter approach.
 pub struct IconCache {
     /// Cache directory on disk.
     cache_dir: PathBuf,
-    /// In-memory LRU cache.
-    cache: RwLock<HashMap<String, CacheEntry>>,
-    /// Maximum number of icons to cache.
+    /// In-memory LRU cache. Uses `Mutex` because `LruCache::get` requires `&mut self`.
+    cache: Mutex<LruCache<String, Arc<LazyIcon>>>,
+    /// Maximum number of icons to cache (kept for `capacity` field access in tests).
     capacity: usize,
-    /// Counter for access ordering.
-    access_counter: RwLock<u64>,
 }
 
 impl IconCache {
@@ -84,22 +78,22 @@ impl IconCache {
     /// Creates a new icon cache with custom capacity.
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
+        let cap = NonZeroUsize::new(capacity).unwrap_or(NonZeroUsize::new(1).unwrap());
         Self {
             cache_dir: default_cache_dir(),
-            cache: RwLock::new(HashMap::new()),
+            cache: Mutex::new(LruCache::new(cap)),
             capacity,
-            access_counter: RwLock::new(0),
         }
     }
 
     /// Creates a new icon cache with custom directory and capacity.
     #[must_use]
     pub fn with_dir_and_capacity(cache_dir: PathBuf, capacity: usize) -> Self {
+        let cap = NonZeroUsize::new(capacity).unwrap_or(NonZeroUsize::new(1).unwrap());
         Self {
             cache_dir,
-            cache: RwLock::new(HashMap::new()),
+            cache: Mutex::new(LruCache::new(cap)),
             capacity,
-            access_counter: RwLock::new(0),
         }
     }
 
@@ -136,54 +130,25 @@ impl IconCache {
     }
 
     /// Gets an icon from the cache if present.
+    ///
+    /// Automatically promotes the entry to most-recently-used.
     #[must_use]
     pub fn get(&self, bundle_id: &str) -> Option<Arc<LazyIcon>> {
-        let mut cache = self.cache.write();
-
-        if let Some(entry) = cache.get_mut(bundle_id) {
-            // Update access order
-            let mut counter = self.access_counter.write();
-            *counter += 1;
-            entry.access_order = *counter;
-            return Some(Arc::clone(&entry.icon));
-        }
-
-        None
+        let mut cache = self.cache.lock();
+        cache.get(bundle_id).map(Arc::clone)
     }
 
     /// Inserts an icon into the cache.
+    ///
+    /// If the cache is at capacity, the least-recently-used entry is
+    /// automatically evicted (and its cached file removed from disk).
     pub fn insert(&self, bundle_id: String, icon: Arc<LazyIcon>) {
-        let mut cache = self.cache.write();
+        let mut cache = self.cache.lock();
 
-        // Evict if at capacity
-        if cache.len() >= self.capacity {
-            self.evict_lru(&mut cache);
-        }
-
-        let mut counter = self.access_counter.write();
-        *counter += 1;
-
-        cache.insert(
-            bundle_id,
-            CacheEntry {
-                icon,
-                access_order: *counter,
-            },
-        );
-    }
-
-    /// Evicts the least recently used entry.
-    fn evict_lru(&self, cache: &mut HashMap<String, CacheEntry>) {
-        if let Some((key, entry)) = cache
-            .iter()
-            .min_by_key(|(_, entry)| entry.access_order)
-            .map(|(k, v)| (k.clone(), v.icon.cached_path.clone()))
-        {
-            debug!("Evicting LRU icon: {}", key);
-            cache.remove(&key);
-
-            // Optionally delete the file from disk
-            if let Err(e) = std::fs::remove_file(&entry) {
+        // `put` auto-evicts the LRU entry when at capacity
+        if let Some((evicted_key, evicted_icon)) = cache.push(bundle_id, icon) {
+            debug!("Evicting LRU icon: {}", evicted_key);
+            if let Err(e) = std::fs::remove_file(&evicted_icon.cached_path) {
                 warn!("Failed to remove evicted icon file: {}", e);
             }
         }
@@ -192,13 +157,13 @@ impl IconCache {
     /// Returns the number of icons currently cached.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.cache.read().len()
+        self.cache.lock().len()
     }
 
     /// Returns true if the cache is empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.cache.read().is_empty()
+        self.cache.lock().is_empty()
     }
 
     /// Clears all icons from the cache and disk.
@@ -207,7 +172,7 @@ impl IconCache {
     ///
     /// Returns an error if the cache directory cannot be cleared.
     pub async fn clear(&self) -> Result<()> {
-        let mut cache = self.cache.write();
+        let mut cache = self.cache.lock();
         cache.clear();
 
         // Clear disk cache

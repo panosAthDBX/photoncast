@@ -937,6 +937,13 @@ impl LauncherWindow {
     }
 
     /// Static version of `get_app_icon_path` for use in async context.
+    ///
+    /// # Threading Model
+    ///
+    /// This function performs synchronous I/O (filesystem checks and `sips` process
+    /// spawning). It must only be called from a background thread — never from the
+    /// main/UI thread. All current call sites dispatch through
+    /// `cx.background_executor().spawn()` which satisfies this requirement.
     fn get_app_icon_path_static(app_path: &std::path::Path) -> Option<std::path::PathBuf> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -989,6 +996,9 @@ impl LauncherWindow {
     }
 
     /// Extracts an app icon to the cache path.
+    ///
+    /// Spawns a synchronous `sips` process to convert `.icns` to `.png`.
+    /// Must be called from a background thread (see `get_app_icon_path_static`).
     fn extract_icon_to_cache(
         app_path: &std::path::Path,
         cache_path: &std::path::Path,

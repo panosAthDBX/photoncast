@@ -14,7 +14,9 @@
 //! - **Recency sorting**: Results are sorted by last used date.
 //! - **Caching**: Recent searches are cached to avoid redundant queries.
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -221,7 +223,7 @@ pub struct SpotlightSearchService {
 
 struct SpotlightSearchServiceInner {
     default_options: SpotlightSearchOptions,
-    cache: RwLock<LruCache<String, CachedResult>>,
+    cache: RwLock<LruCache<u64, CachedResult>>,
 }
 
 impl SpotlightSearchService {
@@ -271,7 +273,7 @@ impl SpotlightSearchService {
         // Check cache first
         if options.use_cache {
             let cache_key = self.make_cache_key(query, options);
-            if let Some(cached) = self.get_cached(&cache_key, options.cache_ttl) {
+            if let Some(cached) = self.get_cached(cache_key, options.cache_ttl) {
                 return Ok(cached);
             }
         }
@@ -316,7 +318,7 @@ impl SpotlightSearchService {
         // Cache results
         if options.use_cache {
             let cache_key = self.make_cache_key(query, options);
-            self.cache_results(&cache_key, results.clone());
+            self.cache_results(cache_key, results.clone());
         }
 
         Ok(results)
@@ -397,26 +399,25 @@ impl SpotlightSearchService {
     // Private Helpers
     // =========================================================================
 
-    fn make_cache_key(&self, query: &str, options: &SpotlightSearchOptions) -> String {
-        format!(
-            "{}:{}:{}:{}:{}",
-            query,
-            options.max_results,
-            options.apply_exclusions,
-            options.sort_by_recency,
-            options
-                .primary_scopes
-                .iter()
-                .chain(options.secondary_scopes.iter())
-                .map(|p| p.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(",")
-        )
+    fn make_cache_key(&self, query: &str, options: &SpotlightSearchOptions) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        query.hash(&mut hasher);
+        options.max_results.hash(&mut hasher);
+        options.apply_exclusions.hash(&mut hasher);
+        options.sort_by_recency.hash(&mut hasher);
+        for scope in options
+            .primary_scopes
+            .iter()
+            .chain(options.secondary_scopes.iter())
+        {
+            scope.hash(&mut hasher);
+        }
+        hasher.finish()
     }
 
-    fn get_cached(&self, key: &str, ttl: Duration) -> Option<Vec<SpotlightResult>> {
+    fn get_cached(&self, key: u64, ttl: Duration) -> Option<Vec<SpotlightResult>> {
         let mut cache = self.inner.cache.write();
-        if let Some(cached) = cache.get(key) {
+        if let Some(cached) = cache.get(&key) {
             if !cached.is_expired(ttl) {
                 return Some(cached.results.clone());
             }
@@ -424,9 +425,9 @@ impl SpotlightSearchService {
         None
     }
 
-    fn cache_results(&self, key: &str, results: Vec<SpotlightResult>) {
+    fn cache_results(&self, key: u64, results: Vec<SpotlightResult>) {
         let mut cache = self.inner.cache.write();
-        cache.put(key.to_string(), CachedResult::new(results));
+        cache.put(key, CachedResult::new(results));
     }
 }
 

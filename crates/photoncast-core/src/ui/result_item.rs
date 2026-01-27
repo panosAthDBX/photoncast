@@ -288,18 +288,6 @@ impl IntoElement for ResultItem {
 /// A builder for creating result items from search results.
 impl From<&crate::search::SearchResult> for ResultItem {
     fn from(result: &crate::search::SearchResult) -> Self {
-        let _match_ranges: Vec<Range<usize>> = result
-            .match_indices
-            .windows(2)
-            .filter_map(|w| {
-                if w[1] == w[0] + 1 {
-                    None // Part of a continuous range, will be handled
-                } else {
-                    Some(w[0]..w[0] + 1)
-                }
-            })
-            .collect();
-
         // Convert match indices to ranges (consecutive indices form ranges)
         let ranges = indices_to_ranges(&result.match_indices);
 
@@ -321,10 +309,12 @@ fn indices_to_ranges(indices: &[usize]) -> Vec<Range<usize>> {
         return Vec::new();
     }
 
+    debug_assert!(
+        indices.windows(2).all(|w| w[0] <= w[1]),
+        "indices must be sorted"
+    );
+
     let mut ranges = Vec::new();
-    let mut indices = indices.to_vec();
-    indices.sort_unstable();
-    indices.dedup();
 
     let mut start = indices[0];
     let mut end = indices[0];

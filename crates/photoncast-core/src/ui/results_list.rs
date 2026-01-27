@@ -5,6 +5,8 @@
 //! Results are displayed grouped by type (Apps, Commands, Files) with
 //! section headers showing the group name and keyboard shortcut range.
 
+use std::sync::Arc;
+
 use gpui::*;
 
 use crate::search::{GroupedResult, SearchResult, SearchResults};
@@ -24,8 +26,8 @@ const OVERSCAN: usize = 2;
 pub struct ResultsList {
     /// The grouped results to display.
     grouped_results: Vec<GroupedResult>,
-    /// Flat list of results for quick index access.
-    flat_results: Vec<SearchResult>,
+    /// Flat list of results for quick index access (Arc-wrapped to avoid cloning).
+    flat_results: Vec<Arc<SearchResult>>,
     /// Currently selected index (flat index across all groups).
     selected_index: usize,
     /// Current scroll offset.
@@ -70,7 +72,7 @@ impl ResultsList {
     /// This automatically groups results by type and calculates shortcut ranges.
     pub fn set_results(&mut self, results: SearchResults) {
         self.grouped_results = results.grouped();
-        self.flat_results = results.iter().cloned().collect();
+        self.flat_results = results.iter().map(|r| Arc::new(r.clone())).collect();
         self.search_results = results;
         self.selected_index = 0;
         self.scroll_offset = 0.0;
@@ -80,7 +82,7 @@ impl ResultsList {
     ///
     /// For backwards compatibility. Prefer `set_results()` with `SearchResults`.
     pub fn set_flat_results(&mut self, results: Vec<SearchResult>) {
-        self.flat_results = results;
+        self.flat_results = results.into_iter().map(Arc::new).collect();
         self.grouped_results = Vec::new();
         self.search_results = SearchResults::empty();
         self.selected_index = 0;
@@ -89,7 +91,7 @@ impl ResultsList {
 
     /// Returns the flat results.
     #[must_use]
-    pub fn results(&self) -> &[SearchResult] {
+    pub fn results(&self) -> &[Arc<SearchResult>] {
         &self.flat_results
     }
 
@@ -180,7 +182,7 @@ impl ResultsList {
     /// Gets the currently selected result.
     #[must_use]
     pub fn selected(&self) -> Option<&SearchResult> {
-        self.flat_results.get(self.selected_index)
+        self.flat_results.get(self.selected_index).map(|arc| arc.as_ref())
     }
 
     /// Returns true if the list is empty.
@@ -345,7 +347,7 @@ impl Render for ResultsList {
                 };
 
                 elements.push(
-                    ResultItem::from(result)
+                    ResultItem::from(result.as_ref())
                         .selected(is_selected)
                         .hovered(is_hovered)
                         .shortcut(shortcut.unwrap_or_default())
