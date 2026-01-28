@@ -113,8 +113,8 @@ impl FileSearchView {
 
                 // Update query to show full path
                 let display_path = if let Some(home) = dirs::home_dir() {
-                    if path.starts_with(&home) {
-                        format!("~/{}", path.strip_prefix(&home).unwrap().display())
+                    if let Ok(stripped) = path.strip_prefix(&home) {
+                        format!("~/{}", stripped.display())
                     } else {
                         path.display().to_string()
                     }
@@ -137,8 +137,8 @@ impl FileSearchView {
             } else {
                 // File selected - expand to full path in query
                 let display_path = if let Some(home) = dirs::home_dir() {
-                    if path.starts_with(&home) {
-                        format!("~/{}", path.strip_prefix(&home).unwrap().display())
+                    if let Ok(stripped) = path.strip_prefix(&home) {
+                        format!("~/{}", stripped.display())
                     } else {
                         path.display().to_string()
                     }
@@ -173,8 +173,10 @@ impl FileSearchView {
                     if parent.starts_with(&home) {
                         if parent == home {
                             "~/".to_string()
+                        } else if let Ok(stripped) = parent.strip_prefix(&home) {
+                            format!("~/{}/", stripped.display())
                         } else {
-                            format!("~/{}/", parent.strip_prefix(&home).unwrap().display())
+                            format!("{}/", parent.display())
                         }
                     } else {
                         format!("{}/", parent.display())

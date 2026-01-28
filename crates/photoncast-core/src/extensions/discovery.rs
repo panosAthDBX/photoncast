@@ -101,3 +101,108 @@ pub fn ensure_supported_api(manifest: &ExtensionManifest) -> Result<(), Manifest
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_discovery_options_default() {
+        let opts = DiscoveryOptions::default();
+        assert!(!opts.dev_mode);
+        assert!(opts.dev_paths.is_empty());
+    }
+
+    #[test]
+    fn test_discovery_empty_directory() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        // Discover in a completely empty directory — should produce no results
+        // (The discover method reads from extensions_root_dir(), but we test find_manifest)
+        assert!(find_manifest(dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_find_manifest_with_valid_extension() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let manifest_path = dir.path().join("extension.toml");
+        std::fs::write(&manifest_path, "# placeholder").expect("failed to write");
+
+        let found = find_manifest(dir.path());
+        assert!(found.is_some());
+        assert_eq!(found.unwrap(), manifest_path);
+    }
+
+    #[test]
+    fn test_find_manifest_missing() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        // Create a random file, but not extension.toml
+        std::fs::write(dir.path().join("README.md"), "# hello").expect("failed to write");
+
+        assert!(find_manifest(dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_is_allowed_dev_path() {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+        let allowed = home.join("my-extension");
+        assert!(is_allowed_dev_path(&allowed));
+
+        // A path outside home should not be allowed
+        let disallowed = PathBuf::from("/nonexistent_root_path/ext");
+        assert!(!is_allowed_dev_path(&disallowed));
+    }
+
+    #[test]
+    fn test_ensure_supported_api_valid() {
+        let manifest = ExtensionManifest {
+            schema_version: 1,
+            extension: crate::extensions::manifest::ExtensionInfo {
+                id: "test-ext".to_string(),
+                name: "Test Extension".to_string(),
+                version: "0.1.0".to_string(),
+                description: "A test extension".to_string(),
+                author: None,
+                license: None,
+                homepage: None,
+                min_photoncast_version: None,
+                api_version: SUPPORTED_API_VERSION,
+            },
+            entry: crate::extensions::manifest::ExtensionEntry {
+                kind: "dylib".to_string(),
+                path: "libtest.dylib".to_string(),
+            },
+            permissions: Default::default(),
+            commands: vec![],
+            preferences: vec![],
+            directory: None,
+        };
+        assert!(ensure_supported_api(&manifest).is_ok());
+    }
+
+    #[test]
+    fn test_ensure_supported_api_invalid() {
+        let manifest = ExtensionManifest {
+            schema_version: 1,
+            extension: crate::extensions::manifest::ExtensionInfo {
+                id: "test-ext".to_string(),
+                name: "Test Extension".to_string(),
+                version: "0.1.0".to_string(),
+                description: "A test extension".to_string(),
+                author: None,
+                license: None,
+                homepage: None,
+                min_photoncast_version: None,
+                api_version: 999,
+            },
+            entry: crate::extensions::manifest::ExtensionEntry {
+                kind: "dylib".to_string(),
+                path: "libtest.dylib".to_string(),
+            },
+            permissions: Default::default(),
+            commands: vec![],
+            preferences: vec![],
+            directory: None,
+        };
+        assert!(ensure_supported_api(&manifest).is_err());
+    }
+}

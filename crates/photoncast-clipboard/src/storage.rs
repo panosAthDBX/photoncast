@@ -30,21 +30,23 @@ pub struct ClipboardStorage {
     path: Option<PathBuf>,
 }
 
-type PreparedContent = (
-    String,
-    Option<Vec<u8>>,
-    Option<Vec<u8>>,
-    Option<Vec<u8>>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
+/// Holds the prepared (and possibly encrypted) content fields for a clipboard
+/// item, ready to be inserted into the SQLite `clipboard_items` table.
+struct PreparedContent {
+    content_type: String,
+    encrypted_text: Option<Vec<u8>>,
+    encrypted_html: Option<Vec<u8>>,
+    encrypted_rtf: Option<Vec<u8>>,
+    image_path: Option<String>,
+    thumbnail_path: Option<String>,
+    file_paths: Option<String>,
+    url: Option<String>,
+    link_title: Option<String>,
+    favicon_path: Option<String>,
+    color_hex: Option<String>,
+    color_rgb: Option<String>,
+    color_name: Option<String>,
+}
 
 impl Clone for ClipboardStorage {
     fn clone(&self) -> Self {
@@ -271,21 +273,7 @@ impl ClipboardStorage {
         let conn = self.conn.lock();
 
         // Prepare encrypted content based on type
-        let (
-            content_type,
-            text_content,
-            html_content,
-            rtf_content,
-            image_path,
-            thumbnail_path,
-            file_paths,
-            url,
-            link_title,
-            favicon_path,
-            color_hex,
-            color_rgb,
-            color_name,
-        ) = self.prepare_content_for_storage(&item.content_type)?;
+        let prepared = self.prepare_content_for_storage(&item.content_type)?;
 
         let search_text = if self.config.store_search_text {
             item.search_text()
@@ -311,19 +299,19 @@ impl ClipboardStorage {
             ",
             params![
                 item.id.as_str(),
-                content_type,
-                text_content,
-                html_content,
-                rtf_content,
-                image_path,
-                thumbnail_path,
-                file_paths,
-                url,
-                link_title,
-                favicon_path,
-                color_hex,
-                color_rgb,
-                color_name,
+                prepared.content_type,
+                prepared.encrypted_text,
+                prepared.encrypted_html,
+                prepared.encrypted_rtf,
+                prepared.image_path,
+                prepared.thumbnail_path,
+                prepared.file_paths,
+                prepared.url,
+                prepared.link_title,
+                prepared.favicon_path,
+                prepared.color_hex,
+                prepared.color_rgb,
+                prepared.color_name,
                 item.source_app,
                 item.source_bundle_id,
                 size_bytes,
@@ -711,21 +699,21 @@ impl ClipboardStorage {
         match content_type {
             ClipboardContentType::Text { content, .. } => {
                 let encrypted = self.encryption.encrypt_string(content)?;
-                Ok((
-                    "text".to_string(),
-                    Some(encrypted),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                ))
+                Ok(PreparedContent {
+                    content_type: "text".to_string(),
+                    encrypted_text: Some(encrypted),
+                    encrypted_html: None,
+                    encrypted_rtf: None,
+                    image_path: None,
+                    thumbnail_path: None,
+                    file_paths: None,
+                    url: None,
+                    link_title: None,
+                    favicon_path: None,
+                    color_hex: None,
+                    color_rgb: None,
+                    color_name: None,
+                })
             },
             ClipboardContentType::RichText { plain, html, rtf } => {
                 let encrypted_plain = self.encryption.encrypt_string(plain)?;
@@ -737,100 +725,100 @@ impl ClipboardStorage {
                     .as_ref()
                     .map(|r| self.encryption.encrypt_string(r))
                     .transpose()?;
-                Ok((
-                    "rich_text".to_string(),
-                    Some(encrypted_plain),
+                Ok(PreparedContent {
+                    content_type: "rich_text".to_string(),
+                    encrypted_text: Some(encrypted_plain),
                     encrypted_html,
                     encrypted_rtf,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                ))
+                    image_path: None,
+                    thumbnail_path: None,
+                    file_paths: None,
+                    url: None,
+                    link_title: None,
+                    favicon_path: None,
+                    color_hex: None,
+                    color_rgb: None,
+                    color_name: None,
+                })
             },
             ClipboardContentType::Image {
                 path,
                 thumbnail_path,
                 ..
-            } => Ok((
-                "image".to_string(),
-                None,
-                None,
-                None,
-                Some(path.to_string_lossy().to_string()),
-                Some(thumbnail_path.to_string_lossy().to_string()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            )),
+            } => Ok(PreparedContent {
+                content_type: "image".to_string(),
+                encrypted_text: None,
+                encrypted_html: None,
+                encrypted_rtf: None,
+                image_path: Some(path.to_string_lossy().to_string()),
+                thumbnail_path: Some(thumbnail_path.to_string_lossy().to_string()),
+                file_paths: None,
+                url: None,
+                link_title: None,
+                favicon_path: None,
+                color_hex: None,
+                color_rgb: None,
+                color_name: None,
+            }),
             ClipboardContentType::File { paths, icons, .. } => {
                 let paths_json = serde_json::to_string(paths)?;
                 let icons_json = serde_json::to_string(icons)?;
-                Ok((
-                    "file".to_string(),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(paths_json),
-                    None,
-                    None,
-                    Some(icons_json), // Store icons in favicon_path field
-                    None,
-                    None,
-                    None,
-                ))
+                Ok(PreparedContent {
+                    content_type: "file".to_string(),
+                    encrypted_text: None,
+                    encrypted_html: None,
+                    encrypted_rtf: None,
+                    image_path: None,
+                    thumbnail_path: None,
+                    file_paths: Some(paths_json),
+                    url: None,
+                    link_title: None,
+                    favicon_path: Some(icons_json), // Store icons in favicon_path field
+                    color_hex: None,
+                    color_rgb: None,
+                    color_name: None,
+                })
             },
             ClipboardContentType::Link {
                 url,
                 title,
                 favicon_path,
-            } => Ok((
-                "link".to_string(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(url.clone()),
-                title.clone(),
-                favicon_path
+            } => Ok(PreparedContent {
+                content_type: "link".to_string(),
+                encrypted_text: None,
+                encrypted_html: None,
+                encrypted_rtf: None,
+                image_path: None,
+                thumbnail_path: None,
+                file_paths: None,
+                url: Some(url.clone()),
+                link_title: title.clone(),
+                favicon_path: favicon_path
                     .as_ref()
                     .map(|p| p.to_string_lossy().to_string()),
-                None,
-                None,
-                None,
-            )),
+                color_hex: None,
+                color_rgb: None,
+                color_name: None,
+            }),
             ClipboardContentType::Color {
                 hex,
                 rgb,
                 display_name,
-            } => Ok((
-                "color".to_string(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(hex.clone()),
-                Some(format!("{},{},{}", rgb.0, rgb.1, rgb.2)),
-                display_name.clone(),
-            )),
+            } => Ok(PreparedContent {
+                content_type: "color".to_string(),
+                encrypted_text: None,
+                encrypted_html: None,
+                encrypted_rtf: None,
+                image_path: None,
+                thumbnail_path: None,
+                file_paths: None,
+                url: None,
+                link_title: None,
+                favicon_path: None,
+                color_hex: Some(hex.clone()),
+                color_rgb: Some(format!("{},{},{}", rgb.0, rgb.1, rgb.2)),
+                color_name: display_name.clone(),
+            }),
         }
     }
 
@@ -1003,7 +991,11 @@ fn prepare_fts_query(query: &str) -> String {
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('*', "\\*")
-        .replace(':', "\\:");
+        .replace(':', "\\:")
+        .replace('(', "")
+        .replace(')', "")
+        .replace('{', "")
+        .replace('}', "");
 
     // Add prefix matching for partial words
     let terms: Vec<String> = escaped

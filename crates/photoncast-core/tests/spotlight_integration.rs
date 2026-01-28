@@ -289,6 +289,7 @@ fn test_spotlight_result_helper_methods() {
     let result = SpotlightResult {
         path: PathBuf::from("/Applications/Safari.app"),
         display_name: "Safari".to_string(),
+        display_name_lower: "safari".to_string(),
         file_size: Some(100_000_000),
         content_type: Some("com.apple.application-bundle".to_string()),
         content_type_tree: vec![

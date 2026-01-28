@@ -122,6 +122,9 @@ pub struct SpotlightResult {
     /// Display name of the file (may differ from filename).
     pub display_name: String,
 
+    /// Pre-computed lowercase display name for fast search filtering.
+    pub display_name_lower: String,
+
     /// File size in bytes (None for directories or if unavailable).
     pub file_size: Option<u64>,
 
@@ -242,9 +245,11 @@ impl MetadataExtractor {
         let created_date = Self::get_date_attribute(item, keys::fs_creation_date());
         let last_used_date = Self::get_date_attribute(item, keys::last_used_date());
 
+        let display_name_lower = display_name.to_lowercase();
         Some(SpotlightResult {
             path,
             display_name,
+            display_name_lower,
             file_size,
             content_type,
             content_type_tree,
@@ -445,6 +450,7 @@ mod tests {
         let result = SpotlightResult {
             path: PathBuf::from("/Users/test/document.pdf"),
             display_name: "document.pdf".to_string(),
+            display_name_lower: "document.pdf".to_string(),
             file_size: Some(1024),
             content_type: Some("com.adobe.pdf".to_string()),
             content_type_tree: vec![
@@ -467,6 +473,7 @@ mod tests {
         let result = SpotlightResult {
             path: PathBuf::from("/Users/test/Makefile"),
             display_name: "Makefile".to_string(),
+            display_name_lower: "makefile".to_string(),
             file_size: Some(512),
             content_type: None,
             content_type_tree: vec![],
@@ -485,6 +492,7 @@ mod tests {
         let result = SpotlightResult {
             path: PathBuf::from("/Users/test/image.jpg"),
             display_name: "image.jpg".to_string(),
+            display_name_lower: "image.jpg".to_string(),
             file_size: Some(2048),
             content_type: Some("public.jpeg".to_string()),
             content_type_tree: vec![
@@ -512,6 +520,7 @@ mod tests {
         let result = SpotlightResult {
             path: PathBuf::from("/Applications/Safari.app"),
             display_name: "Safari".to_string(),
+            display_name_lower: "safari".to_string(),
             file_size: None,
             content_type: Some("com.apple.application-bundle".to_string()),
             content_type_tree: vec![
@@ -536,6 +545,7 @@ mod tests {
         let result = SpotlightResult {
             path: PathBuf::from("/Users/test/Documents"),
             display_name: "Documents".to_string(),
+            display_name_lower: "documents".to_string(),
             file_size: None,
             content_type: Some("public.folder".to_string()),
             content_type_tree: vec![

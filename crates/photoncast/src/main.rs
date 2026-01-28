@@ -28,9 +28,8 @@
 
 use std::cell::RefCell;
 use std::sync::mpsc;
-use std::time::Duration;
-
 use std::sync::Arc;
+use std::time::Duration;
 
 use gpui::*;
 use parking_lot::RwLock;
@@ -205,7 +204,12 @@ fn init_hotkeys(event_tx: &mpsc::Sender<AppEvent>) {
 
 /// Initializes clipboard storage, starts the background monitor, and returns
 /// the shared clipboard state (or `None` if storage failed to open).
-fn init_clipboard() -> Option<Arc<RwLock<ClipboardState>>> {
+///
+/// Uses the provided runtime handle for the background clipboard monitoring thread
+/// instead of creating a separate Tokio runtime.
+fn init_clipboard(
+    runtime_handle: &tokio::runtime::Handle,
+) -> Option<Arc<RwLock<ClipboardState>>> {
     let clipboard_config = ClipboardConfig::default();
 
     let clipboard_storage = match ClipboardStorage::open(&clipboard_config) {
@@ -229,21 +233,11 @@ fn init_clipboard() -> Option<Arc<RwLock<ClipboardState>>> {
         monitor
     });
 
-    // Spawn background thread for clipboard monitoring
+    // Spawn background thread for clipboard monitoring using the shared runtime handle
     if let Some(monitor) = clipboard_monitor.clone() {
+        let handle = runtime_handle.clone();
         std::thread::spawn(move || {
-            let rt = match tokio::runtime::Runtime::new() {
-                Ok(rt) => rt,
-                Err(e) => {
-                    error!(
-                        "Failed to create Tokio runtime for clipboard monitor: {}",
-                        e
-                    );
-                    return;
-                },
-            };
-
-            if let Err(e) = rt.block_on(monitor.start()) {
+            if let Err(e) = handle.block_on(monitor.start()) {
                 error!("Clipboard monitor stopped with error: {}", e);
             }
         });
@@ -277,8 +271,15 @@ fn main() {
     // Register global hotkeys (non-blocking, requires accessibility permission)
     init_hotkeys(&event_tx);
 
+    // Create a single shared Tokio runtime for the entire application.
+    // All async work (clipboard, quicklinks, timers, etc.) uses this runtime
+    // instead of creating separate runtimes per subsystem.
+    let shared_runtime = Arc::new(
+        tokio::runtime::Runtime::new().expect("Failed to create shared Tokio runtime"),
+    );
+
     // Initialize clipboard subsystem (storage + background monitor)
-    let clipboard_state = init_clipboard();
+    let clipboard_state = init_clipboard(shared_runtime.handle());
 
     // Pre-initialize live file index for instant file search
     // This takes ~7s to populate, so starting early ensures it's ready
@@ -355,13 +356,8 @@ fn main() {
                 warn!("Failed to populate bundled quicklinks: {}", e);
             }
 
-            let quicklinks_runtime = tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-                error!("Failed to create quick links runtime: {}", e);
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("failed to create quick links runtime")
-            });
+            // Use the shared runtime for all async operations (quicklinks, timers, etc.)
+            let shared_rt = Arc::clone(&shared_runtime);
 
             let app_manager =
                 photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default());
@@ -370,7 +366,7 @@ fn main() {
             // Timer polling setup (runs on main thread, executes actions in background)
             let timer_manager = launcher_state_for_events.timer_manager();
             let timer_event_tx = event_tx.clone();
-            let timer_runtime = tokio::runtime::Runtime::new().ok();
+            let shared_handle = shared_rt.handle().clone();
             let mut last_timer_check = std::time::Instant::now();
 
             loop {
@@ -382,33 +378,29 @@ fn main() {
                 // Check timer every second (database read is fast, action executes in background)
                 if last_timer_check.elapsed() >= Duration::from_secs(1) {
                     last_timer_check = std::time::Instant::now();
-                    if let Some(ref rt) = timer_runtime {
-                        // Check if timer expired (fast database read)
-                        let expired_action = rt.block_on(async {
-                            let mgr = timer_manager.read().await;
-                            mgr.check_expired().await
-                        });
+                    // Check if timer expired (fast database read)
+                    let expired_action = shared_handle.block_on(async {
+                        let mgr = timer_manager.read().await;
+                        mgr.check_expired().await
+                    });
 
-                        // If expired, execute action in background thread (no rusqlite crossing)
-                        if let Ok(Some(action)) = expired_action {
-                            let tx = timer_event_tx.clone();
-                            let action_name = action.display_name().to_string();
-                            std::thread::spawn(move || {
-                                if let Ok(rt) = tokio::runtime::Runtime::new() {
-                                    rt.block_on(async {
-                                        if let Err(e) =
-                                            photoncast_timer::TimerScheduler::execute_action(action)
-                                                .await
-                                        {
-                                            error!("Timer action failed: {}", e);
-                                        }
-                                    });
+                    // If expired, execute action in background thread (no rusqlite crossing)
+                    if let Ok(Some(action)) = expired_action {
+                        let tx = timer_event_tx.clone();
+                        let action_name = action.display_name().to_string();
+                        let handle_for_action = shared_handle.clone();
+                        std::thread::spawn(move || {
+                            handle_for_action.block_on(async {
+                                if let Err(e) =
+                                    photoncast_timer::TimerScheduler::execute_action(action).await
+                                {
+                                    error!("Timer action failed: {}", e);
                                 }
-                                let _ = tx.send(AppEvent::TimerExpired {
-                                    action: action_name,
-                                });
                             });
-                        }
+                            let _ = tx.send(AppEvent::TimerExpired {
+                                action: action_name,
+                            });
+                        });
                     }
                 }
 
@@ -528,7 +520,7 @@ fn main() {
                         let mut activated = false;
                         if let Some(ref h) = quicklinks_handle {
                             if h.update(&mut cx, |view, cx| {
-                                let links = quicklinks_runtime
+                                let links = shared_rt
                                     .block_on(quicklinks_storage.load_all())
                                     .unwrap_or_default();
                                 view.set_links(links, cx);
@@ -545,7 +537,7 @@ fn main() {
 
                         if !activated {
                             let storage = quicklinks_storage.clone();
-                            let runtime = quicklinks_runtime.handle().clone();
+                            let runtime = shared_rt.handle().clone();
                             let _ = cx.update(|cx| {
                                 if let Some(handle) = open_quicklinks_window(cx) {
                                     let _ = handle.update(cx, |view, cx| {
@@ -657,7 +649,7 @@ fn main() {
                         let _ = cx.update(|cx| {
                             // Try to activate existing window
                             if let Some(ref h) = create_quicklink_handle {
-                                if h.update(cx, |_, cx| {
+                                if h.update(cx, |_: &mut CreateQuicklinkView, cx: &mut ViewContext<CreateQuicklinkView>| {
                                     cx.activate(true);
                                     cx.activate_window();
                                 })
@@ -672,9 +664,10 @@ fn main() {
                                 if let Some(handle) = open_create_quicklink_window(
                                     cx,
                                     quicklinks_storage.clone(),
+                                    shared_rt.handle().clone(),
                                     &launcher_state_for_events,
                                 ) {
-                                    let _ = handle.update(cx, |_, cx| {
+                                    let _ = handle.update(cx, |_: &mut CreateQuicklinkView, cx: &mut ViewContext<CreateQuicklinkView>| {
                                         cx.activate(true);
                                         cx.activate_window();
                                     });
@@ -690,7 +683,7 @@ fn main() {
                             if let Some(ref h) = manage_quicklinks_handle {
                                 if h.update(cx, |view, cx| {
                                     // Load fresh quicklinks data
-                                    let links = quicklinks_runtime
+                                    let links = shared_rt
                                         .block_on(quicklinks_storage.load_all())
                                         .unwrap_or_default();
                                     view.set_quicklinks(links, cx);
@@ -708,7 +701,7 @@ fn main() {
                                 if let Some(handle) = open_manage_quicklinks_window(
                                     cx,
                                     quicklinks_storage.clone(),
-                                    &quicklinks_runtime,
+                                    &shared_rt,
                                     false,
                                     &launcher_state_for_events,
                                 ) {
@@ -728,7 +721,7 @@ fn main() {
                             if let Some(ref h) = manage_quicklinks_handle {
                                 if h.update(cx, |view, cx| {
                                     // Load fresh quicklinks data
-                                    let links = quicklinks_runtime
+                                    let links = shared_rt
                                         .block_on(quicklinks_storage.load_all())
                                         .unwrap_or_default();
                                     view.set_quicklinks(links, cx);
@@ -750,7 +743,7 @@ fn main() {
                                 if let Some(handle) = open_manage_quicklinks_window(
                                     cx,
                                     quicklinks_storage.clone(),
-                                    &quicklinks_runtime,
+                                    &shared_rt,
                                     true, // show_library
                                     &launcher_state_for_events,
                                 ) {
@@ -783,7 +776,7 @@ fn main() {
                             // Load quicklink and open argument input UI
                             let storage = quicklinks_storage.clone();
                             let _ = cx.update(|cx| {
-                                if let Ok(links) = quicklinks_runtime.block_on(storage.load_all()) {
+                                if let Ok(links) = shared_rt.block_on(storage.load_all()) {
                                     if let Some(link) =
                                         links.into_iter().find(|l| l.id.as_str() == id)
                                     {
@@ -1389,6 +1382,7 @@ fn open_preferences_window(
 fn open_create_quicklink_window(
     cx: &mut AppContext,
     storage: photoncast_quicklinks::QuickLinksStorage,
+    runtime_handle: tokio::runtime::Handle,
     launcher_state: &LauncherSharedState,
 ) -> Option<WindowHandle<CreateQuicklinkView>> {
     let launcher_state = launcher_state.clone();
@@ -1412,6 +1406,7 @@ fn open_create_quicklink_window(
         move |cx| {
             cx.activate(true);
             let storage_clone = storage.clone();
+            let handle = runtime_handle.clone();
             cx.new_view(|cx| {
                 let mut view = CreateQuicklinkView::new(cx);
                 view.on_event(move |event, cx| {
@@ -1419,48 +1414,30 @@ fn open_create_quicklink_window(
                     match event {
                         CreateQuicklinkEvent::Created(link) => {
                             info!("Creating quicklink: {}", link.name);
-                            let rt = tokio::runtime::Handle::try_current().ok().or_else(|| {
-                                tokio::runtime::Runtime::new().ok().map(|rt| {
-                                    let handle = rt.handle().clone();
-                                    std::mem::forget(rt);
-                                    handle
-                                })
+                            let storage = storage_clone.clone();
+                            let link = link.clone();
+                            handle.spawn(async move {
+                                if let Err(e) = storage.store(&link).await {
+                                    error!("Failed to store quicklink: {}", e);
+                                } else {
+                                    info!("Quicklink created successfully");
+                                }
                             });
-                            if let Some(handle) = rt {
-                                let storage = storage_clone.clone();
-                                let link = link.clone();
-                                handle.spawn(async move {
-                                    if let Err(e) = storage.store(&link).await {
-                                        error!("Failed to store quicklink: {}", e);
-                                    } else {
-                                        info!("Quicklink created successfully");
-                                    }
-                                });
-                            }
                             // Invalidate quicklinks cache so new quicklink appears in search
                             launcher_state.invalidate_quicklinks_cache();
                             cx.remove_window();
                         },
                         CreateQuicklinkEvent::Updated(link) => {
                             info!("Updating quicklink: {}", link.name);
-                            let rt = tokio::runtime::Handle::try_current().ok().or_else(|| {
-                                tokio::runtime::Runtime::new().ok().map(|rt| {
-                                    let handle = rt.handle().clone();
-                                    std::mem::forget(rt);
-                                    handle
-                                })
+                            let storage = storage_clone.clone();
+                            let link = link.clone();
+                            handle.spawn(async move {
+                                if let Err(e) = storage.update(&link).await {
+                                    error!("Failed to update quicklink: {}", e);
+                                } else {
+                                    info!("Quicklink updated successfully");
+                                }
                             });
-                            if let Some(handle) = rt {
-                                let storage = storage_clone.clone();
-                                let link = link.clone();
-                                handle.spawn(async move {
-                                    if let Err(e) = storage.update(&link).await {
-                                        error!("Failed to update quicklink: {}", e);
-                                    } else {
-                                        info!("Quicklink updated successfully");
-                                    }
-                                });
-                            }
                             // Invalidate quicklinks cache so updated quicklink appears in search
                             launcher_state.invalidate_quicklinks_cache();
                             cx.remove_window();
@@ -1530,11 +1507,12 @@ fn open_argument_input_window(
 fn open_manage_quicklinks_window(
     cx: &mut AppContext,
     storage: photoncast_quicklinks::QuickLinksStorage,
-    runtime: &tokio::runtime::Runtime,
+    runtime: &Arc<tokio::runtime::Runtime>,
     show_library: bool,
     launcher_state: &LauncherSharedState,
 ) -> Option<WindowHandle<QuicklinksManageView>> {
     let launcher_state = launcher_state.clone();
+    let runtime = Arc::clone(runtime);
 
     // Load quicklinks
     let links = runtime.block_on(storage.load_all()).unwrap_or_default();
@@ -1560,12 +1538,7 @@ fn open_manage_quicklinks_window(
             cx.activate(true);
             cx.new_view(|cx| {
                 let mut view = QuicklinksManageView::new(cx);
-                view.set_storage(
-                    storage.clone(),
-                    std::sync::Arc::new(
-                        tokio::runtime::Runtime::new().expect("Failed to create runtime"),
-                    ),
-                );
+                view.set_storage(storage.clone(), runtime);
                 view.set_quicklinks(links.clone(), cx);
                 if show_library {
                     view.toggle_library(cx);

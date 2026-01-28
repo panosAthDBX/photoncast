@@ -364,8 +364,7 @@ impl LauncherWindow {
                                             .truncate()
                                             .child(event.title.clone()),
                                     )
-                                    .when(relative_time.is_some(), |el| {
-                                        let rt = relative_time.clone().unwrap();
+                                    .when_some(relative_time.clone(), |el, rt| {
                                         // Use themed colors for time indicators (success=now, warning=soon)
                                         let color = if rt == "now" { colors.success } else { colors.warning };
                                         el.child(
@@ -481,15 +480,17 @@ impl LauncherWindow {
         // Check if we're showing suggestions (query is empty)
         let is_suggestions = self.search.query.is_empty() && !self.search.suggestions.is_empty();
 
-        // Group results by type
+        // Group results by type, counting groups during the single pass.
         let mut current_type: Option<ResultType> = None;
         let mut elements: Vec<gpui::AnyElement> = Vec::new();
         let mut shown_suggestions_header = false;
+        let mut group_count: usize = 0;
 
         for (idx, result) in self.search.results.iter().enumerate() {
             // Add group header when type changes
             if current_type != Some(result.result_type) {
                 current_type = Some(result.result_type);
+                group_count += 1;
 
                 // Show "Suggestions" header instead of type when showing suggestions
                 if is_suggestions && !shown_suggestions_header {
@@ -512,12 +513,6 @@ impl LauncherWindow {
 
         // Calculate height: items + group headers (24px each)
         let result_count = self.search.results.len().min(MAX_VISIBLE_RESULTS);
-        let group_count = self
-            .search.results
-            .iter()
-            .map(|r| r.result_type)
-            .collect::<std::collections::HashSet<_>>()
-            .len();
         let group_header_height = 24.0;
         let total_height = (result_count as f32 * RESULT_ITEM_HEIGHT.0)
             + (group_count as f32 * group_header_height);

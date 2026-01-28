@@ -11,46 +11,16 @@ pub use create_view::{AppInfo, CreateQuicklinkEvent, CreateQuicklinkFocus, Creat
 pub use manage_view::{ManageViewEvent, QuicklinksManageView};
 
 use gpui::prelude::*;
-use gpui::{div, px, Hsla, IntoElement, ParentElement, Styled, ViewContext};
-use photoncast_theme::PhotonTheme;
+use gpui::{div, px, IntoElement, ParentElement, Styled, ViewContext};
+use photoncast_theme::GpuiThemeColors;
 
 use crate::models::QuickLink;
 
 /// Theme-aware colors for Quick Links UI.
-#[derive(Clone)]
-struct QuickLinksColors {
-    background: Hsla,
-    item_bg: Hsla,
-    item_hover: Hsla,
-    title_text: Hsla,
-    url_text: Hsla,
-    tag_bg: Hsla,
-    tag_text: Hsla,
-    keyword_text: Hsla,
-    dynamic_badge: Hsla,
-    badge_text: Hsla,
-}
-
-impl QuickLinksColors {
-    fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            background: theme.colors.background.to_gpui(),
-            item_bg: theme.colors.surface.to_gpui(),
-            item_hover: theme.colors.surface_hover.to_gpui(),
-            title_text: theme.colors.text.to_gpui(),
-            url_text: theme.colors.text_muted.to_gpui(),
-            tag_bg: theme.colors.selection.to_gpui(),
-            tag_text: theme.colors.accent.to_gpui(),
-            keyword_text: theme.colors.success.to_gpui(),
-            dynamic_badge: theme.colors.warning.to_gpui(),
-            badge_text: theme.colors.background.to_gpui(),
-        }
-    }
-}
+type QuickLinksColors = GpuiThemeColors;
 
 fn get_quicklinks_colors<V: 'static>(cx: &ViewContext<V>) -> QuickLinksColors {
-    let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
-    QuickLinksColors::from_theme(&theme)
+    GpuiThemeColors::from_context(cx)
 }
 
 /// Quick links list view.
@@ -124,16 +94,16 @@ impl QuickLinksView {
         colors: &QuickLinksColors,
     ) -> impl IntoElement {
         let bg = if is_selected {
-            colors.item_hover
+            colors.surface_hover
         } else {
-            colors.item_bg
+            colors.surface
         };
-        let title_text = colors.title_text;
-        let url_text = colors.url_text;
-        let dynamic_badge = colors.dynamic_badge;
-        let badge_text = colors.badge_text;
-        let tag_bg = colors.tag_bg;
-        let tag_text = colors.tag_text;
+        let title_text = colors.text;
+        let url_text = colors.text_muted;
+        let dynamic_badge = colors.warning;
+        let badge_text = colors.background;
+        let tag_bg = colors.selection;
+        let tag_text = colors.accent;
 
         let title = link.name.clone();
         let url = link.link.clone();
@@ -215,7 +185,7 @@ impl Render for QuickLinksView {
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_color(colors.url_text)
+                .text_color(colors.text_muted)
                 .child("No quick links found");
         }
 
@@ -267,7 +237,7 @@ impl Render for QuickLinkItem {
                     .w(px(32.0))
                     .h(px(32.0))
                     .rounded_md()
-                    .bg(colors.item_bg)
+                    .bg(colors.surface)
                     .flex()
                     .items_center()
                     .justify_center()
@@ -291,7 +261,7 @@ impl Render for QuickLinkItem {
                                 div()
                                     .text_base()
                                     .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(colors.title_text)
+                                    .text_color(colors.text)
                                     .text_ellipsis()
                                     .child(self.link.name.clone()),
                             )
@@ -301,9 +271,9 @@ impl Render for QuickLinkItem {
                                         .px(px(4.0))
                                         .py(px(1.0))
                                         .rounded(px(3.0))
-                                        .bg(colors.dynamic_badge)
+                                        .bg(colors.warning)
                                         .text_xs()
-                                        .text_color(colors.badge_text)
+                                        .text_color(colors.background)
                                         .child("{...}"),
                                 )
                             }),
@@ -311,7 +281,7 @@ impl Render for QuickLinkItem {
                     .child(
                         div()
                             .text_sm()
-                            .text_color(colors.url_text)
+                            .text_color(colors.text_muted)
                             .text_ellipsis()
                             .child(self.link.link.clone()),
                     ),
@@ -371,7 +341,7 @@ impl Render for DynamicUrlPrompt {
                         div()
                             .text_base()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(colors.title_text)
+                            .text_color(colors.text)
                             .child(self.link.name.clone()),
                     ),
             )
@@ -379,14 +349,14 @@ impl Render for DynamicUrlPrompt {
                 // Preview URL
                 div()
                     .text_sm()
-                    .text_color(colors.url_text)
+                    .text_color(colors.text_muted)
                     .child(format!("URL: {}", preview_url)),
             )
             .child(
                 // Hint
                 div()
                     .text_xs()
-                    .text_color(colors.keyword_text)
+                    .text_color(colors.success)
                     .child("Type your search query and press Enter"),
             )
     }
@@ -431,21 +401,21 @@ impl Render for QuickLinksManagementView {
                 div()
                     .text_lg()
                     .font_weight(gpui::FontWeight::BOLD)
-                    .text_color(colors.title_text)
+                    .text_color(colors.text)
                     .child("Manage Quick Links"),
             )
             .child(
                 // Link count
                 div()
                     .text_sm()
-                    .text_color(colors.url_text)
+                    .text_color(colors.text_muted)
                     .child(format!("{} links", self.links.len())),
             )
             .child(
                 // Actions hint
                 div()
                     .text_xs()
-                    .text_color(colors.keyword_text)
+                    .text_color(colors.success)
                     .child("Use Preferences to add, edit, or remove quick links"),
             )
     }

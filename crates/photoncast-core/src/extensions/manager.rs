@@ -77,6 +77,8 @@ pub enum ExtensionManagerError {
     Permissions(#[from] crate::extensions::permissions::PermissionsError),
     #[error("path traversal detected: resolved path {resolved} escapes base directory {base}")]
     PathTraversal { resolved: String, base: String },
+    #[error("failed to resolve extension path: {reason}")]
+    PathResolutionFailed { reason: String },
     #[error("code signature error: {0}")]
     CodeSignature(#[from] crate::extensions::signing::CodeSignatureError),
 }
@@ -351,16 +353,8 @@ impl ExtensionManager {
                 .join(&record.manifest.extension.id),
         );
 
-        let extension_data_dir = paths::data_dir()
-            .join("extensions")
-            .join(&record.manifest.extension.id);
-        let extension_cache_dir = paths::cache_dir()
-            .join("extensions")
-            .join(&record.manifest.extension.id);
-        let extension_assets_dir = extension_data_dir.join("assets");
-        let _ = std::fs::create_dir_all(&extension_data_dir);
-        let _ = std::fs::create_dir_all(&extension_cache_dir);
-        let _ = std::fs::create_dir_all(&extension_assets_dir);
+        // Note: directory creation for extension data/cache/assets is handled
+        // by `make_extension_context()` in context.rs, so we don't duplicate it here.
 
         let root_module = ExtensionLoader::load_root_module(&library)?;
         let instance = root_module.instantiate_extension();
@@ -858,11 +852,16 @@ impl ExtensionManager {
         }
 
         let mut results = Vec::new();
-        // FuzzyMatcher::default() is cheap (allocates a small nucleo Matcher + config struct).
-        // Caching on the struct would require interior mutability (RefCell) since search() takes
-        // &self, and the added complexity isn't justified for a lightweight allocation per call.
-        let mut matcher = crate::search::fuzzy::FuzzyMatcher::default();
-        let mut command_matcher = crate::search::fuzzy::FuzzyMatcher::default();
+
+        thread_local! {
+            static MATCHER: std::cell::RefCell<crate::search::fuzzy::FuzzyMatcher> =
+                std::cell::RefCell::new(crate::search::fuzzy::FuzzyMatcher::default());
+            static COMMAND_MATCHER: std::cell::RefCell<crate::search::fuzzy::FuzzyMatcher> =
+                std::cell::RefCell::new(crate::search::fuzzy::FuzzyMatcher::default());
+        }
+
+        MATCHER.with_borrow_mut(|matcher| {
+        COMMAND_MATCHER.with_borrow_mut(|command_matcher| {
 
         for loaded in self.loaded.values() {
             let extension_id = loaded.manifest.extension.id.clone();
@@ -1035,6 +1034,9 @@ impl ExtensionManager {
             }
         }
 
+        }); // COMMAND_MATCHER
+        }); // MATCHER
+
         results.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
@@ -1157,16 +1159,24 @@ fn resolve_entry_path(
     let joined = base_dir.join(&manifest.entry.path);
 
     // Canonicalize both paths to resolve symlinks and ".." components.
-    // If the paths don't exist yet we fall back to the joined path without
-    // the traversal check (e.g. during tests with synthetic manifests).
-    let canonical_base = match std::fs::canonicalize(base_dir) {
-        Ok(p) => p,
-        Err(_) => return Ok(joined),
-    };
-    let canonical_resolved = match std::fs::canonicalize(&joined) {
-        Ok(p) => p,
-        Err(_) => return Ok(joined),
-    };
+    // Fail closed: if either path cannot be canonicalized (e.g. doesn't exist),
+    // reject rather than returning the unchecked joined path.
+    let canonical_base = std::fs::canonicalize(base_dir).map_err(|e| {
+        ExtensionManagerError::PathResolutionFailed {
+            reason: format!(
+                "failed to canonicalize base directory '{}': {e}",
+                base_dir.display()
+            ),
+        }
+    })?;
+    let canonical_resolved = std::fs::canonicalize(&joined).map_err(|e| {
+        ExtensionManagerError::PathResolutionFailed {
+            reason: format!(
+                "failed to canonicalize entry path '{}': {e}",
+                joined.display()
+            ),
+        }
+    })?;
 
     if !canonical_resolved.starts_with(&canonical_base) {
         return Err(ExtensionManagerError::PathTraversal {

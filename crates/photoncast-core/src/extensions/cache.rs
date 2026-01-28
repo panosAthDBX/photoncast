@@ -64,24 +64,31 @@ impl ExtensionCache {
 impl CacheTrait for ExtensionCache {
     fn get(&self, key: RStr<'_>) -> ROption<RawValueBox> {
         let key = key.as_str();
-        let mut cache = self.inner.write();
-        if let Some(entry) = cache.get(key) {
-            if let Some(exp) = entry.expires_at {
-                if Instant::now() > exp {
-                    cache.remove(key);
-                    return ROption::RNone;
+
+        // Fast path: read lock only — covers cache hits with no expiry or still-valid TTL.
+        {
+            let cache = self.inner.read();
+            if let Some(entry) = cache.get(key) {
+                if let Some(exp) = entry.expires_at {
+                    if Instant::now() > exp {
+                        // Entry expired — drop read lock, acquire write lock to remove.
+                        drop(cache);
+                        self.inner.write().remove(key);
+                        return ROption::RNone;
+                    }
                 }
+                let value = serde_json::to_string(&entry.value).ok();
+                return value
+                    .and_then(|json| RawValueBox::try_from_string(json).ok())
+                    .into();
             }
-            let value = serde_json::to_string(&entry.value).ok();
-            return value
-                .and_then(|json| RawValueBox::try_from_string(json).ok())
-                .into();
         }
 
+        // Miss in memory — try disk, then insert under write lock.
         let disk_path = self.cache_path(key);
         if let Ok(contents) = std::fs::read_to_string(&disk_path) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents) {
-                cache.insert(
+                self.inner.write().insert(
                     key.to_string(),
                     CacheEntry {
                         value: value.clone(),

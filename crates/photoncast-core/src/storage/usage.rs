@@ -173,7 +173,7 @@ impl UsageTracker {
         let conn = self.db.connection();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock before UNIX epoch")
+            .unwrap_or_default()
             .as_secs() as i64;
 
         let sql = format!(

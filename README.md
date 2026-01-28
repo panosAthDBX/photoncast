@@ -4,16 +4,25 @@ A lightning-fast macOS launcher built in pure Rust using [GPUI](https://github.c
 
 ## Features
 
-- Fuzzy search across applications, commands, and files
-- Frecency-based ranking (frequency + recency)
-- Catppuccin theming support
-- Smooth animations with reduce-motion support
-- Global hotkey activation
+- **Fuzzy search** across applications, commands, files, and extensions
+- **Frecency-based ranking** (frequency + recency) for personalized results
+- **Catppuccin theming** with auto light/dark mode sync
+- **Smooth animations** with reduce-motion support
+- **Global hotkey** activation (CGEventTap)
+- **Clipboard history** with AES-256-GCM encryption and full-text search
+- **Calculator & unit converter** with currency conversion and datetime math
+- **Window management** — tiling, cycling, layout presets, and overlay
+- **Calendar integration** — next meeting display, conference link detection (EventKit)
+- **Native extension system** — ABI-stable dynamic library extensions with code signing
+- **Quick links** — bookmarks with placeholder-based URL expansion
+- **File search** — Spotlight-powered live file index with browsing
+- **App management** — auto-quit, force quit, uninstaller with leftover detection
+- **Sleep timer** — configurable timer with system actions (sleep, shutdown, etc.)
 
 ## Requirements
 
 - macOS 12.0+
-- Rust 1.75+ (see `rust-toolchain.toml`)
+- Rust stable toolchain (MSRV: 1.75)
 
 ## Building
 
@@ -33,18 +42,27 @@ cargo run
 ```
 photoncast/
 ├── crates/
-│   ├── photoncast/           # Main binary
-│   └── photoncast-core/      # Core library (search, indexing, UI components)
-├── tests/                    # Integration tests
-└── droidz/                   # Product specs and standards
+│   ├── photoncast/                        # Main binary (launcher UI, event loop)
+│   ├── photoncast-core/                   # Core library (search, indexing, extensions, platform)
+│   ├── photoncast-apps/                   # App management (uninstaller, force quit, auto quit, sleep)
+│   ├── photoncast-calculator/             # Calculator (math, currency, units, datetime)
+│   ├── photoncast-calendar/               # Calendar integration (EventKit, conference links)
+│   ├── photoncast-clipboard/              # Clipboard history (encrypted storage, monitoring)
+│   ├── photoncast-ext-github/             # GitHub search extension
+│   ├── photoncast-ext-screenshots/        # Screenshot browser extension
+│   ├── photoncast-ext-system-preferences/ # System preferences extension
+│   ├── photoncast-extension-api/          # ABI-stable extension API
+│   ├── photoncast-quicklinks/             # Quick links management
+│   ├── photoncast-theme/                  # Catppuccin theming
+│   ├── photoncast-timer/                  # Sleep timer
+│   └── photoncast-window/                 # Window management (tiling, cycling, animations)
+├── tests/                                 # Integration tests
+└── droidz/                                # Product specs and standards
 ```
 
-## Development Status
+## Architecture
 
-This is an early-stage project. The following features are currently stubbed:
-
-- **Global hotkey registration** - CGEventTap integration pending
-- **Result activation** - Launch/execute functionality pending
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architecture overview including crate dependency graph, data flow, and key design decisions.
 
 ## Testing
 
@@ -57,6 +75,9 @@ cargo test -- --nocapture
 
 # Run specific test
 cargo test test_name
+
+# Run benchmarks
+cargo bench
 ```
 
 ## License

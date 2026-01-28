@@ -782,7 +782,11 @@ impl ViewHandleTrait for NavigationViewHandle {
     }
 }
 
-// Implement Send + Sync for the handle
+// SAFETY: NavigationViewHandle contains only an Arc<AtomicBool> (Send+Sync),
+// a u64 (Send+Sync), and an Arc<Mutex<Sender<ViewUpdate>>> (Send+Sync).
+// It communicates with the NavigationContainer exclusively via message passing
+// through the mpsc channel. The handle itself does not access any non-thread-safe
+// state directly.
 unsafe impl Send for NavigationViewHandle {}
 unsafe impl Sync for NavigationViewHandle {}
 

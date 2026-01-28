@@ -3,8 +3,8 @@
 //! This module centralizes window dimensions and other UI constants
 //! to avoid duplication across modules.
 
-use gpui::{px, Hsla, Pixels};
-use photoncast_core::theme::PhotonTheme;
+use gpui::{px, Pixels};
+use photoncast_core::theme::GpuiThemeColors;
 
 // =============================================================================
 // Window Dimensions
@@ -97,6 +97,7 @@ pub const SECTION_GAP: Pixels = px(16.0);
 // =============================================================================
 
 /// Overlay alpha value — used for modal overlays and dimming.
+#[allow(dead_code)]
 pub const OVERLAY_ALPHA: f32 = 0.6;
 
 // =============================================================================
@@ -142,46 +143,5 @@ pub const APP_EXTENSIONS: &[&str] = &["app"];
 
 /// Shared theme color set used across views (launcher, file search, extensions).
 ///
-/// Constructed from a `PhotonTheme` via [`ThemeColorSet::from_theme`], this
-/// struct caches the most commonly used GPUI color values so that individual
-/// render methods do not need to query the theme repeatedly.
-#[derive(Clone)]
-pub struct ThemeColorSet {
-    pub background: Hsla,
-    pub text: Hsla,
-    pub text_muted: Hsla,
-    pub text_placeholder: Hsla,
-    pub surface: Hsla,
-    pub surface_hover: Hsla,
-    pub surface_elevated: Hsla,
-    pub border: Hsla,
-    pub accent: Hsla,
-    pub accent_hover: Hsla,
-    pub selection: Hsla,
-    pub success: Hsla,
-    pub warning: Hsla,
-    pub error: Hsla,
-    pub overlay: Hsla,
-}
-
-impl ThemeColorSet {
-    pub fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            background: theme.colors.background.to_gpui(),
-            text: theme.colors.text.to_gpui(),
-            text_muted: theme.colors.text_muted.to_gpui(),
-            text_placeholder: theme.colors.text_placeholder.to_gpui(),
-            surface: theme.colors.surface.to_gpui(),
-            surface_hover: theme.colors.surface_hover.to_gpui(),
-            surface_elevated: theme.colors.background_elevated.to_gpui(),
-            border: theme.colors.border.to_gpui(),
-            accent: theme.colors.accent.to_gpui(),
-            accent_hover: theme.colors.accent_hover.to_gpui(),
-            selection: theme.colors.selection.to_gpui(),
-            success: theme.colors.success.to_gpui(),
-            warning: theme.colors.warning.to_gpui(),
-            error: theme.colors.error.to_gpui(),
-            overlay: gpui::hsla(0.0, 0.0, 0.0, OVERLAY_ALPHA),
-        }
-    }
-}
+/// This is a type alias for [`GpuiThemeColors`] from `photoncast-theme`.
+pub type ThemeColorSet = GpuiThemeColors;

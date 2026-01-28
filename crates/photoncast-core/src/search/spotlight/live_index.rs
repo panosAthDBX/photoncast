@@ -17,7 +17,7 @@
 //! - Subsequent searches: Microseconds (in-memory filtering)
 //! - Updates: Handled asynchronously by Spotlight
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -281,7 +281,7 @@ impl LiveFileIndex {
             let files = self.inner.files.read();
             let mut results: Vec<SpotlightResult> = files
                 .values()
-                .filter(|f| f.display_name.to_lowercase().contains(&query_lower))
+                .filter(|f| f.display_name_lower.contains(&query_lower))
                 .cloned()
                 .collect();
 
@@ -796,11 +796,12 @@ fn handle_initial_results(inner: &LiveFileIndexInner, notification: NonNull<NSNo
     *inner.status.write() = LiveIndexStatus::Live;
 }
 
-/// Handles update notifications with added/changed/removed items.
+/// Handles update notifications with incremental adds/changes/removes.
 ///
-/// This function re-syncs the entire result set from the query when an update occurs.
-/// While this is less efficient than incremental updates, it's more reliable and
-/// handles all edge cases (adds, changes, removes) correctly.
+/// Uses a retain+insert approach instead of clear+rebuild so that readers
+/// never see an empty index during updates. Builds a set of current paths
+/// from the query results, retains only those still present, and upserts
+/// new or changed entries.
 fn handle_update(inner: &LiveFileIndexInner, notification: NonNull<NSNotification>) {
     let notification_ref = unsafe { notification.as_ref() };
 
@@ -821,9 +822,6 @@ fn handle_update(inner: &LiveFileIndexInner, notification: NonNull<NSNotificatio
     // Disable updates while processing
     query.disableUpdates();
 
-    // Get current result count (unused but may be useful for debugging)
-    let _result_count = query.resultCount();
-
     // Extract all results from the query
     let results = query.results();
     let typed_results: &NSArray<NSMetadataItem> = unsafe {
@@ -834,41 +832,65 @@ fn handle_update(inner: &LiveFileIndexInner, notification: NonNull<NSNotificatio
     };
 
     let spotlight_results = MetadataExtractor::extract_batch(typed_results);
-    let new_count = spotlight_results.len();
 
-    // Calculate what changed
-    let old_count = inner.files.read().len();
-    let added = new_count.saturating_sub(old_count);
-    let removed = old_count.saturating_sub(new_count);
+    // Build a set of paths from the new results for O(1) lookups
+    let new_paths: HashSet<PathBuf> = spotlight_results.iter().map(|r| r.path.clone()).collect();
+    let new_count = new_paths.len();
 
-    // Update the files HashMap with all current results
-    {
+    // Incrementally update the index: retain existing entries that are still
+    // present, then upsert new/changed entries. This avoids clearing the map
+    // which would cause readers to momentarily see an empty index.
+    let (added, removed, changed) = {
         let mut files = inner.files.write();
-        files.clear();
+        let old_count = files.len();
+
+        // Remove entries that are no longer in the query results
+        files.retain(|path, _| new_paths.contains(path));
+        let after_retain = files.len();
+        let removed = old_count - after_retain;
+
+        // Insert new entries and update existing ones
+        let mut added = 0usize;
+        let mut changed = 0usize;
         for result in spotlight_results {
-            files.insert(result.path.clone(), result);
+            match files.entry(result.path.clone()) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(result);
+                    added += 1;
+                },
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    // Update if metadata changed (modified date or file size differ)
+                    let existing = entry.get();
+                    if existing.modified_date != result.modified_date
+                        || existing.file_size != result.file_size
+                    {
+                        entry.insert(result);
+                        changed += 1;
+                    }
+                },
+            }
         }
-    }
+
+        (added, removed, changed)
+    };
 
     // Update stats
     {
         let mut stats = inner.stats.write();
         stats.file_count = new_count;
         stats.last_update = Some(Instant::now());
-        if added > 0 {
-            stats.adds += added;
-        }
-        if removed > 0 {
-            stats.removes += removed;
-        }
+        stats.adds += added;
+        stats.removes += removed;
+        stats.changes += changed;
     }
 
-    if added > 0 || removed > 0 {
+    if added > 0 || removed > 0 || changed > 0 {
         tracing::debug!(
-            "[LiveIndex] Updated: {} files (added: {}, removed: {})",
+            "[LiveIndex] Updated: {} files (added: {}, removed: {}, changed: {})",
             new_count,
             added,
-            removed
+            removed,
+            changed
         );
     }
 
@@ -1070,6 +1092,7 @@ mod tests {
         let result = SpotlightResult {
             path: PathBuf::from("/test/file.txt"),
             display_name: "file.txt".to_string(),
+            display_name_lower: "file.txt".to_string(),
             file_size: Some(100),
             content_type: None,
             content_type_tree: vec![],

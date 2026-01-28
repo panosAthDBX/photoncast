@@ -2,38 +2,25 @@
 //!
 //! Provides a centralized color palette extracted from the PhotonTheme
 //! for consistent styling across all extension view types.
+//!
+//! Common fields (background, text, accent, etc.) are delegated to
+//! [`GpuiThemeColors`] via `Deref`, while tag-specific colors live
+//! directly on [`ExtensionViewColors`].
+
+use std::ops::Deref;
 
 use gpui::{hsla, Hsla, WindowContext};
 use photoncast_extension_api::TagColor;
-use photoncast_theme::PhotonTheme;
+use photoncast_theme::{GpuiThemeColors, PhotonTheme};
 
 /// Theme-aware colors for extension views.
+///
+/// Common theme fields are accessible via `Deref<Target = GpuiThemeColors>`.
+/// Tag-specific colors and helpers are provided directly.
 #[derive(Clone)]
 pub struct ExtensionViewColors {
-    // Backgrounds
-    pub background: Hsla,
-    pub surface: Hsla,
-    pub surface_hover: Hsla,
-    pub surface_selected: Hsla,
-    pub surface_elevated: Hsla,
-
-    // Text
-    pub text: Hsla,
-    pub text_muted: Hsla,
-    pub text_placeholder: Hsla,
-
-    // Borders
-    pub border: Hsla,
-    pub border_focused: Hsla,
-
-    // Accent
-    pub accent: Hsla,
-    pub accent_hover: Hsla,
-
-    // Status
-    pub success: Hsla,
-    pub warning: Hsla,
-    pub error: Hsla,
+    /// Shared theme color set (background, text, accent, status, etc.).
+    base: GpuiThemeColors,
 
     // Tags (semantic colors)
     pub tag_blue: Hsla,
@@ -44,15 +31,14 @@ pub struct ExtensionViewColors {
     pub tag_purple: Hsla,
     pub tag_pink: Hsla,
     pub tag_default: Hsla,
+}
 
-    // Interactive
-    pub selection: Hsla,
-    pub hover: Hsla,
-    pub focus_ring: Hsla,
+impl Deref for ExtensionViewColors {
+    type Target = GpuiThemeColors;
 
-    // Icons
-    pub icon: Hsla,
-    pub icon_accent: Hsla,
+    fn deref(&self) -> &GpuiThemeColors {
+        &self.base
+    }
 }
 
 impl ExtensionViewColors {
@@ -65,25 +51,7 @@ impl ExtensionViewColors {
     /// Creates colors from a PhotonTheme.
     pub fn from_theme(theme: &PhotonTheme) -> Self {
         Self {
-            background: theme.colors.background.to_gpui(),
-            surface: theme.colors.surface.to_gpui(),
-            surface_hover: theme.colors.surface_hover.to_gpui(),
-            surface_selected: theme.colors.surface_selected.to_gpui(),
-            surface_elevated: theme.colors.background_elevated.to_gpui(),
-
-            text: theme.colors.text.to_gpui(),
-            text_muted: theme.colors.text_muted.to_gpui(),
-            text_placeholder: theme.colors.text_placeholder.to_gpui(),
-
-            border: theme.colors.border.to_gpui(),
-            border_focused: theme.colors.border_focused.to_gpui(),
-
-            accent: theme.colors.accent.to_gpui(),
-            accent_hover: theme.colors.accent_hover.to_gpui(),
-
-            success: theme.colors.success.to_gpui(),
-            warning: theme.colors.warning.to_gpui(),
-            error: theme.colors.error.to_gpui(),
+            base: GpuiThemeColors::from_theme(theme),
 
             // Tag colors mapped to Catppuccin palette colors
             tag_blue: hsla(217.0 / 360.0, 0.92, 0.76, 1.0),    // Blue
@@ -94,13 +62,6 @@ impl ExtensionViewColors {
             tag_purple: hsla(267.0 / 360.0, 0.84, 0.81, 1.0),  // Mauve/Purple
             tag_pink: hsla(316.0 / 360.0, 0.72, 0.86, 1.0),    // Pink
             tag_default: theme.colors.text_muted.to_gpui(),
-
-            selection: theme.colors.selection.to_gpui(),
-            hover: theme.colors.hover.to_gpui(),
-            focus_ring: theme.colors.focus_ring.to_gpui(),
-
-            icon: theme.colors.icon.to_gpui(),
-            icon_accent: theme.colors.icon_accent.to_gpui(),
         }
     }
 

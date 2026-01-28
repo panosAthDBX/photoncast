@@ -7,10 +7,10 @@ use std::collections::HashMap;
 
 use gpui::prelude::*;
 use gpui::{
-    div, px, FocusHandle, FocusableView, Hsla, InteractiveElement, IntoElement, KeyDownEvent,
+    div, px, FocusHandle, FocusableView, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Render, StatefulInteractiveElement, Styled, ViewContext,
 };
-use photoncast_theme::PhotonTheme;
+use photoncast_theme::{GpuiThemeColors, PhotonTheme};
 
 use crate::models::{QuickLink, QuickLinkIcon};
 use crate::placeholder::{extract_required_arguments, substitute_placeholders, ArgumentInfo};
@@ -99,48 +99,12 @@ impl ArgumentField {
     }
 }
 
-/// Theme-aware colors for argument input UI.
-#[derive(Clone)]
-#[allow(dead_code)]
-struct ArgumentInputColors {
-    background: Hsla,
-    surface: Hsla,
-    surface_hover: Hsla,
-    text: Hsla,
-    text_muted: Hsla,
-    text_placeholder: Hsla,
-    border: Hsla,
-    border_focused: Hsla,
-    accent: Hsla,
-    accent_hover: Hsla,
-    error: Hsla,
-    success: Hsla,
-    selection: Hsla,
-}
-
-impl ArgumentInputColors {
-    fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            background: theme.colors.background.to_gpui(),
-            surface: theme.colors.surface.to_gpui(),
-            surface_hover: theme.colors.surface_hover.to_gpui(),
-            text: theme.colors.text.to_gpui(),
-            text_muted: theme.colors.text_muted.to_gpui(),
-            text_placeholder: theme.colors.text_placeholder.to_gpui(),
-            border: theme.colors.border.to_gpui(),
-            border_focused: theme.colors.border_focused.to_gpui(),
-            accent: theme.colors.accent.to_gpui(),
-            accent_hover: theme.colors.accent_hover.to_gpui(),
-            error: theme.colors.error.to_gpui(),
-            success: theme.colors.success.to_gpui(),
-            selection: theme.colors.selection.to_gpui(),
-        }
-    }
-}
+/// Type alias – argument view uses the shared [`GpuiThemeColors`] from photoncast-theme.
+type ArgumentInputColors = GpuiThemeColors;
 
 fn get_argument_colors<V: 'static>(cx: &ViewContext<V>) -> ArgumentInputColors {
     let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
-    ArgumentInputColors::from_theme(&theme)
+    GpuiThemeColors::from_theme(&theme)
 }
 
 /// Callback type for events.

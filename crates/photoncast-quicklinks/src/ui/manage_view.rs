@@ -12,7 +12,7 @@ use gpui::{
     InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, SharedString,
     StatefulInteractiveElement, Styled, ViewContext,
 };
-use photoncast_theme::PhotonTheme;
+use photoncast_theme::{GpuiThemeColors, PhotonTheme};
 
 /// Helper to create a color with adjusted alpha.
 fn color_with_alpha(color: Hsla, alpha: f32) -> Hsla {
@@ -64,50 +64,12 @@ pub enum ManageViewEvent {
 // Theme Colors
 // ============================================================================
 
-/// Theme-aware colors for the manage view.
-#[derive(Clone)]
-#[allow(dead_code)]
-struct ManageColors {
-    background: Hsla,
-    surface: Hsla,
-    surface_hover: Hsla,
-    surface_elevated: Hsla,
-    text: Hsla,
-    text_muted: Hsla,
-    text_placeholder: Hsla,
-    border: Hsla,
-    accent: Hsla,
-    selection: Hsla,
-    hover: Hsla,
-    success: Hsla,
-    warning: Hsla,
-    error: Hsla,
-}
-
-impl ManageColors {
-    fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            background: theme.colors.background.to_gpui(),
-            surface: theme.colors.surface.to_gpui(),
-            surface_hover: theme.colors.surface_hover.to_gpui(),
-            surface_elevated: theme.colors.background_elevated.to_gpui(),
-            text: theme.colors.text.to_gpui(),
-            text_muted: theme.colors.text_muted.to_gpui(),
-            text_placeholder: theme.colors.text_placeholder.to_gpui(),
-            border: theme.colors.border.to_gpui(),
-            accent: theme.colors.accent.to_gpui(),
-            selection: theme.colors.selection.to_gpui(),
-            hover: theme.colors.hover.to_gpui(),
-            success: theme.colors.success.to_gpui(),
-            warning: theme.colors.warning.to_gpui(),
-            error: theme.colors.error.to_gpui(),
-        }
-    }
-}
+/// Type alias – manage view uses the shared [`GpuiThemeColors`] from photoncast-theme.
+type ManageColors = GpuiThemeColors;
 
 fn get_colors(cx: &ViewContext<QuicklinksManageView>) -> ManageColors {
     let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
-    ManageColors::from_theme(&theme)
+    GpuiThemeColors::from_theme(&theme)
 }
 
 // ============================================================================

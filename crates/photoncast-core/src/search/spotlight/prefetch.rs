@@ -253,6 +253,24 @@ impl SpotlightPrefetcher {
         }
     }
 
+    /// Waits until the prefetcher reaches (or passes) the `target` status.
+    ///
+    /// Returns `true` if the target status was reached within `timeout`,
+    /// `false` if the timeout elapsed first. A status is considered reached
+    /// if the current status equals `target` or has progressed past it
+    /// (numerically higher discriminant).
+    pub fn wait_for_status(&self, target: PrefetchStatus, timeout: Duration) -> bool {
+        let start = Instant::now();
+        while start.elapsed() < timeout {
+            let current = self.status();
+            if current == target || (current as u8) > (target as u8) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        false
+    }
+
     /// Clears the pre-fetched cache.
     pub fn clear(&self) {
         self.recent_files.lock().clear();
@@ -461,9 +479,6 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_prefetcher_trigger_starts_running() {
-        use std::thread;
-        use std::time::Duration;
-
         let service = Arc::new(SpotlightSearchService::new());
         let config = PrefetchConfig {
             initial_delay: Duration::from_millis(50),
@@ -480,10 +495,10 @@ mod tests {
         let token = prefetcher.trigger();
         assert!(!token.is_cancelled());
 
-        // Wait a bit for it to start
-        thread::sleep(Duration::from_millis(100));
+        // Wait for the prefetcher to reach Running (or beyond) with a generous timeout
+        let reached = prefetcher.wait_for_status(PrefetchStatus::Running, Duration::from_secs(5));
+        assert!(reached, "Prefetcher did not reach Running status within timeout");
 
-        // Should be running now
         let status = prefetcher.status();
         assert!(
             status == PrefetchStatus::Running || status == PrefetchStatus::Completed,
@@ -522,23 +537,25 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_start_background_prefetch() {
-        use std::thread;
-        use std::time::Duration;
-
         let prefetcher = start_background_prefetch();
 
-        // Should be running or completed
+        // Wait for the prefetcher to reach Running (or beyond) with a generous timeout
+        let reached = prefetcher.wait_for_status(PrefetchStatus::Running, Duration::from_secs(5));
+        assert!(reached, "Prefetcher did not reach Running status within timeout");
+
         let status = prefetcher.status();
         assert!(
             status == PrefetchStatus::Running || status == PrefetchStatus::Completed,
-            "Unexpected initial status: {:?}",
+            "Unexpected status: {:?}",
             status
         );
 
-        // Give it a moment
-        thread::sleep(Duration::from_secs(3));
+        // Wait for completion
+        let completed =
+            prefetcher.wait_for_status(PrefetchStatus::Completed, Duration::from_secs(10));
 
         println!("Final status: {:?}", prefetcher.status());
+        println!("Completed within timeout: {completed}");
         println!("Recent files: {}", prefetcher.get_recent_files().len());
     }
 }

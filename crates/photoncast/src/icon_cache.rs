@@ -5,8 +5,18 @@
 //! a deterministic `<hash>.png` filename.
 
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::Instant;
+
+/// In-memory cache that avoids repeated filesystem `stat` calls for icon paths.
+/// Entries are considered fresh for `ICON_MEMORY_CACHE_TTL` seconds.
+static ICON_MEMORY_CACHE: std::sync::LazyLock<Mutex<HashMap<PathBuf, (Option<PathBuf>, Instant)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+const ICON_MEMORY_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Returns the icon cache directory path.
 ///
@@ -33,19 +43,41 @@ fn cached_icon_filename(app_path: &Path) -> PathBuf {
 
 /// Checks if an icon is already cached, returns path if so.
 ///
-/// This is fast — just filesystem checks, no extraction.
+/// First checks the in-memory cache to avoid repeated filesystem `stat` calls
+/// (hot path during rendering). Falls back to filesystem on cache miss.
 pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
-    let cached_path = cached_icon_filename(app_path);
+    // Fast path: in-memory lookup.
+    if let Ok(cache) = ICON_MEMORY_CACHE.lock() {
+        if let Some((result, ts)) = cache.get(app_path) {
+            if ts.elapsed() < ICON_MEMORY_CACHE_TTL {
+                return result.clone();
+            }
+        }
+    }
 
-    if cached_path.exists() {
+    // Slow path: filesystem check.
+    let cached_path = cached_icon_filename(app_path);
+    let result = if cached_path.exists() {
         Some(cached_path)
     } else {
         None
+    };
+
+    // Store in memory cache.
+    if let Ok(mut cache) = ICON_MEMORY_CACHE.lock() {
+        cache.insert(app_path.to_path_buf(), (result.clone(), Instant::now()));
     }
+
+    result
 }
 
-/// Clears the cached icon for an app.
+/// Clears the cached icon for an app (both in-memory and on-disk).
 pub fn clear_icon(app_path: &Path) {
+    // Invalidate in-memory entry.
+    if let Ok(mut cache) = ICON_MEMORY_CACHE.lock() {
+        cache.remove(app_path);
+    }
+
     let cached_path = cached_icon_filename(app_path);
 
     if cached_path.exists() {

@@ -36,12 +36,44 @@ pub fn make_extension_context(
             .lock()
             .map(|storage| storage.api_handle())
             .unwrap_or_else(|_| {
-                ExtensionStorageImpl::new(
+                match ExtensionStorageImpl::new(
                     paths::data_dir().join("extensions_storage.db"),
                     manifest.extension.id.clone(),
-                )
-                .expect("failed to init extension storage")
-                .api_handle()
+                ) {
+                    Ok(storage) => storage.api_handle(),
+                    Err(err) => {
+                        tracing::warn!(
+                            extension_id = %manifest.extension.id,
+                            error = %err,
+                            "Failed to init extension storage, using fallback"
+                        );
+                        // Try with a per-extension database as fallback
+                        ExtensionStorageImpl::new(
+                            extension_data_dir.join("storage.db"),
+                            manifest.extension.id.clone(),
+                        )
+                        .unwrap_or_else(|_| {
+                            // Last resort: in-memory-like storage in temp dir
+                            ExtensionStorageImpl::new(
+                                std::env::temp_dir().join(format!(
+                                    "photoncast_ext_storage_{}.db",
+                                    manifest.extension.id
+                                )),
+                                manifest.extension.id.clone(),
+                            )
+                            .unwrap_or_else(|e| {
+                                // This is truly fatal - log and create a minimal storage
+                                tracing::error!(
+                                    extension_id = %manifest.extension.id,
+                                    error = %e,
+                                    "All storage fallbacks failed"
+                                );
+                                panic!("Cannot create any extension storage: {e}");
+                            })
+                        })
+                        .api_handle()
+                    }
+                }
             }),
         host: ExtensionHost::new(host.clone()),
         runtime: runtime.api_handle(),

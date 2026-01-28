@@ -589,15 +589,18 @@ impl ExtensionListView {
                     .track_scroll(&self.scroll_handle)
                     .child(self.render_sections(colors, cx))
             )
-            .when(has_preview && preview_item.is_some(), |el| {
-                el.child(
-                    div()
-                        .w(PREVIEW_WIDTH)
-                        .border_l_1()
-                        .border_color(colors.border)
-                        .child(ExtensionPreviewPane::new(preview_item.unwrap(), colors.clone()))
-                )
-            })
+            .when_some(
+                if has_preview { preview_item } else { None },
+                |el, item| {
+                    el.child(
+                        div()
+                            .w(PREVIEW_WIDTH)
+                            .border_l_1()
+                            .border_color(colors.border)
+                            .child(ExtensionPreviewPane::new(item, colors.clone()))
+                    )
+                },
+            )
     }
 
     /// Renders all sections.

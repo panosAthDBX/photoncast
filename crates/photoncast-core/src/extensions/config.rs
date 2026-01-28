@@ -89,3 +89,81 @@ pub struct ExtensionPermissionAcceptance {
     #[serde(default)]
     pub accepted: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extension_config_default() {
+        let config = ExtensionConfig::default();
+        assert!(config.enabled);
+        assert!(!config.dev_mode);
+        assert!(config.dev_paths.is_empty());
+        assert_eq!(config.reload_debounce_ms, 200);
+    }
+
+    #[test]
+    fn test_extension_config_reload_debounce() {
+        let config = ExtensionConfig::default();
+        assert_eq!(
+            config.reload_debounce(),
+            std::time::Duration::from_millis(200)
+        );
+
+        let config = ExtensionConfig {
+            reload_debounce_ms: 500,
+            ..Default::default()
+        };
+        assert_eq!(
+            config.reload_debounce(),
+            std::time::Duration::from_millis(500)
+        );
+    }
+
+    #[test]
+    fn test_effective_dev_mode_from_config() {
+        // When no env var is set, should use config value
+        // (We can't reliably unset env vars in parallel tests, so just test
+        // that effective_dev_mode returns something without panicking)
+        let config = ExtensionConfig {
+            dev_mode: true,
+            ..Default::default()
+        };
+        // This exercises the code path; env var may or may not be set
+        let _ = config.effective_dev_mode();
+    }
+
+    #[test]
+    fn test_extension_config_serde_roundtrip() {
+        let config = ExtensionConfig {
+            enabled: false,
+            dev_mode: true,
+            dev_paths: vec!["/tmp/my-ext".to_string()],
+            reload_debounce_ms: 300,
+        };
+        let json = serde_json::to_string(&config).expect("serialize failed");
+        let deserialized: ExtensionConfig =
+            serde_json::from_str(&json).expect("deserialize failed");
+        assert!(!deserialized.enabled);
+        assert!(deserialized.dev_mode);
+        assert_eq!(deserialized.dev_paths, vec!["/tmp/my-ext"]);
+        assert_eq!(deserialized.reload_debounce_ms, 300);
+    }
+
+    #[test]
+    fn test_extension_config_serde_defaults() {
+        // Deserializing empty JSON should use defaults
+        let config: ExtensionConfig = serde_json::from_str("{}").expect("deserialize failed");
+        assert!(config.enabled);
+        assert!(!config.dev_mode);
+        assert!(config.dev_paths.is_empty());
+        assert_eq!(config.reload_debounce_ms, 200);
+    }
+
+    #[test]
+    fn test_extension_permission_acceptance_default() {
+        let acceptance = ExtensionPermissionAcceptance::default();
+        assert!(!acceptance.accepted);
+    }
+}

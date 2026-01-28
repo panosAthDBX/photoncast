@@ -32,8 +32,10 @@
 
 mod catppuccin;
 mod colors;
+mod gpui_colors;
 mod provider;
 
 pub use catppuccin::{hsla, AccentColor, CatppuccinFlavor, CatppuccinPalette, Hsla};
 pub use colors::ThemeColors;
+pub use gpui_colors::GpuiThemeColors;
 pub use provider::PhotonTheme;

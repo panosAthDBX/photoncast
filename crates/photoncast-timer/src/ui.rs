@@ -4,46 +4,16 @@
 //! and managing timers through the UI.
 
 use gpui::prelude::*;
-use gpui::{div, px, Hsla, IntoElement, ParentElement, Styled, ViewContext};
-use photoncast_theme::PhotonTheme;
+use gpui::{div, px, IntoElement, ParentElement, Styled, ViewContext};
+use photoncast_theme::GpuiThemeColors;
 
 use crate::scheduler::{ActiveTimer, TimerAction};
 
-/// Theme-aware colors for timer UI.
-#[derive(Clone)]
-struct TimerColors {
-    background: Hsla,
-    countdown_text: Hsla,
-    action_text: Hsla,
-    cancel_bg: Hsla,
-    cancel_text: Hsla,
-    progress_bg: Hsla,
-    progress_fill: Hsla,
-    success_bg: Hsla,
-    success_text: Hsla,
-    success_text_muted: Hsla,
-}
-
-impl TimerColors {
-    fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            background: theme.colors.background.to_gpui(),
-            countdown_text: theme.colors.text.to_gpui(),
-            action_text: theme.colors.text_muted.to_gpui(),
-            cancel_bg: theme.colors.surface.to_gpui(),
-            cancel_text: theme.colors.error.to_gpui(),
-            progress_bg: theme.colors.surface_hover.to_gpui(),
-            progress_fill: theme.colors.accent.to_gpui(),
-            success_bg: theme.colors.selection.to_gpui(),
-            success_text: theme.colors.success.to_gpui(),
-            success_text_muted: theme.palette.green.to_gpui(),
-        }
-    }
-}
+/// Type alias – timer UI uses the shared [`GpuiThemeColors`].
+type TimerColors = GpuiThemeColors;
 
 fn get_timer_colors<V: 'static>(cx: &ViewContext<V>) -> TimerColors {
-    let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
-    TimerColors::from_theme(&theme)
+    TimerColors::from_context(cx)
 }
 
 /// Timer display component showing countdown and action info.
@@ -113,7 +83,7 @@ impl Render for TimerDisplay {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_color(colors.action_text)
+                    .text_color(colors.text_muted)
                     .child("No active timer")
             },
             |timer| {
@@ -139,7 +109,7 @@ impl Render for TimerDisplay {
                             .child(
                                 div()
                                     .text_sm()
-                                    .text_color(colors.action_text)
+                                    .text_color(colors.text_muted)
                                     .child(format!("{action_name} in")),
                             ),
                     )
@@ -148,7 +118,7 @@ impl Render for TimerDisplay {
                         div()
                             .text_3xl()
                             .font_weight(gpui::FontWeight::BOLD)
-                            .text_color(colors.countdown_text)
+                            .text_color(colors.text)
                             .child(countdown),
                     )
                     .child(
@@ -157,12 +127,12 @@ impl Render for TimerDisplay {
                             .h(px(4.0))
                             .w_full()
                             .rounded_full()
-                            .bg(colors.progress_bg)
+                            .bg(colors.surface_hover)
                             .child(
                                 div()
                                     .h_full()
                                     .rounded_full()
-                                    .bg(colors.progress_fill)
+                                    .bg(colors.accent)
                                     .w(gpui::relative(progress)),
                             ),
                     )
@@ -173,9 +143,9 @@ impl Render for TimerDisplay {
                             .px(px(12.0))
                             .py(px(6.0))
                             .rounded_md()
-                            .bg(colors.cancel_bg)
+                            .bg(colors.surface)
                             .text_sm()
-                            .text_color(colors.cancel_text)
+                            .text_color(colors.error)
                             .cursor_pointer()
                             .child("Cancel Timer"),
                     )
@@ -227,13 +197,13 @@ impl Render for TimerCountdown {
                 .px(px(8.0))
                 .py(px(4.0))
                 .rounded_md()
-                .bg(colors.progress_bg)
+                .bg(colors.surface_hover)
                 .child(div().text_sm().child(icon))
                 .child(
                     div()
                         .text_sm()
                         .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(colors.countdown_text)
+                        .text_color(colors.text)
                         .child(countdown),
                 )
         })
@@ -273,7 +243,7 @@ impl Render for TimerSetConfirmation {
             .gap(px(12.0))
             .p(px(12.0))
             .rounded_lg()
-            .bg(colors.success_bg)
+            .bg(colors.selection)
             .child(div().text_2xl().child(icon))
             .child(
                 div()
@@ -284,13 +254,13 @@ impl Render for TimerSetConfirmation {
                         div()
                             .text_sm()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(colors.success_text)
+                            .text_color(colors.success)
                             .child("Timer Set"),
                     )
                     .child(
                         div()
                             .text_xs()
-                            .text_color(colors.success_text_muted)
+                            .text_color(colors.success)
                             .child(format!(
                                 "{} in {}",
                                 self.action.display_name(),

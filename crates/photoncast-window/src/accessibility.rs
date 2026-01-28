@@ -1,4 +1,27 @@
 //! macOS Accessibility API wrapper for window manipulation.
+//!
+//! # Safety
+//!
+//! This module contains numerous `unsafe` blocks for FFI calls to macOS
+//! accessibility and CoreFoundation APIs. The following invariants are
+//! maintained throughout:
+//!
+//! - **AXUIElementRef lifetime**: All `AXUIElementRef` values are obtained from
+//!   system APIs (`AXUIElementCreateSystemWide`, `AXUIElementCopyAttributeValue`)
+//!   and released via `CFRelease` when no longer needed.
+//! - **CFType reference counting**: CoreFoundation objects follow CF ownership rules.
+//!   Objects obtained via "Copy" or "Create" functions are owned and must be released.
+//!   Objects obtained via "Get" functions are borrowed and must not be released.
+//! - **CFString conversion**: `CFStringGetCString` writes into a stack buffer with
+//!   explicit bounds. Null CFStringRef values are checked before use.
+//! - **AXValue boxing**: `AXValueCreate`/`AXValueGetValue` use matching type tags
+//!   (`kAXValueTypeCGPoint`, `kAXValueTypeCGSize`) and correctly-sized buffers.
+//! - **MaybeUninit**: Used for out-parameters in CF functions. Values are only read
+//!   after the function returns success.
+//! - **CFArray indexing**: Indices are bounds-checked against `CFArrayGetCount`
+//!   before calling `CFArrayGetValueAtIndex`.
+//! - **Thread safety**: This module's `WindowManager` uses `thread_local!` storage
+//!   and is accessed only from the main thread.
 
 use crate::error::{Result, WindowError};
 use core_graphics::display::CGRect;

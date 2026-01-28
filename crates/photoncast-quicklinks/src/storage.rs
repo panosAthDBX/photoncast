@@ -810,7 +810,11 @@ impl QuickLinksStorage {
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('*', "\\*")
-            .replace(':', "\\:");
+            .replace(':', "\\:")
+            .replace('(', "")
+            .replace(')', "")
+            .replace('{', "")
+            .replace('}', "");
 
         let terms: Vec<String> = escaped
             .split_whitespace()

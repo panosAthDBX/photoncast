@@ -11,7 +11,7 @@ use gpui::{
     div, px, rems, AppContext, FocusHandle, FocusableView, FontWeight, Hsla, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Render, SharedString, Styled, ViewContext,
 };
-use photoncast_theme::PhotonTheme;
+use photoncast_theme::{GpuiThemeColors, PhotonTheme};
 
 use crate::models::{QuickLink, QuickLinkIcon, QuickLinkId};
 
@@ -108,50 +108,12 @@ impl CreateQuicklinkFocus {
 // Theme Colors
 // ============================================================================
 
-/// Theme-aware colors for the create quicklink UI.
-#[derive(Clone)]
-struct CreateQuicklinkColors {
-    background: Hsla,
-    surface: Hsla,
-    surface_hover: Hsla,
-    surface_selected: Hsla,
-    text: Hsla,
-    text_muted: Hsla,
-    text_placeholder: Hsla,
-    border: Hsla,
-    border_focused: Hsla,
-    accent: Hsla,
-    accent_hover: Hsla,
-    error: Hsla,
-    #[allow(dead_code)]
-    warning: Hsla,
-    success: Hsla,
-}
-
-impl CreateQuicklinkColors {
-    fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            background: theme.colors.background.to_gpui(),
-            surface: theme.colors.surface.to_gpui(),
-            surface_hover: theme.colors.surface_hover.to_gpui(),
-            surface_selected: theme.colors.surface_selected.to_gpui(),
-            text: theme.colors.text.to_gpui(),
-            text_muted: theme.colors.text_muted.to_gpui(),
-            text_placeholder: theme.colors.text_placeholder.to_gpui(),
-            border: theme.colors.border.to_gpui(),
-            border_focused: theme.colors.border_focused.to_gpui(),
-            accent: theme.colors.accent.to_gpui(),
-            accent_hover: theme.colors.accent_hover.to_gpui(),
-            error: theme.colors.error.to_gpui(),
-            warning: theme.colors.warning.to_gpui(),
-            success: theme.colors.success.to_gpui(),
-        }
-    }
-}
+/// Type alias – create view uses the shared [`GpuiThemeColors`] from photoncast-theme.
+type CreateQuicklinkColors = GpuiThemeColors;
 
 fn get_colors(cx: &ViewContext<CreateQuicklinkView>) -> CreateQuicklinkColors {
     let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
-    CreateQuicklinkColors::from_theme(&theme)
+    GpuiThemeColors::from_theme(&theme)
 }
 
 // ============================================================================

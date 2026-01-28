@@ -215,3 +215,131 @@ fn to_preference_kind(kind: String, options: Vec<ManifestSelectOption>) -> Prefe
         _ => PreferenceKind::String,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use abi_stable::std_types::RResult;
+
+    #[test]
+    fn test_storage_new_creates_database() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("test_storage.db");
+        let storage = ExtensionStorageImpl::new(db_path.clone(), "test-ext");
+        assert!(storage.is_ok());
+        assert!(db_path.exists());
+    }
+
+    #[test]
+    fn test_storage_get_missing_key_returns_none() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("test_storage.db");
+        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+
+        let result = storage.get(RStr::from_str("nonexistent"));
+        match result {
+            RResult::ROk(val) => {
+                assert!(val.is_none(), "Expected None for missing key");
+            },
+            RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_storage_set_and_get_roundtrip() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("test_storage.db");
+        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+
+        // Set a value
+        let set_result = storage.set(RStr::from_str("my_key"), RStr::from_str("my_value"));
+        assert!(set_result.is_ok(), "set() should succeed");
+
+        // Get the value back
+        let get_result = storage.get(RStr::from_str("my_key"));
+        match get_result {
+            RResult::ROk(val) => {
+                let val = val.into_option().expect("Expected Some value");
+                assert_eq!(val.as_str(), "my_value");
+            },
+            RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_storage_set_overwrites_existing() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("test_storage.db");
+        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+
+        storage.set(RStr::from_str("key"), RStr::from_str("value1"));
+        storage.set(RStr::from_str("key"), RStr::from_str("value2"));
+
+        match storage.get(RStr::from_str("key")) {
+            RResult::ROk(val) => {
+                let val = val.into_option().expect("Expected Some value");
+                assert_eq!(val.as_str(), "value2");
+            },
+            RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_storage_delete() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("test_storage.db");
+        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+
+        storage.set(RStr::from_str("key"), RStr::from_str("value"));
+        storage.delete(RStr::from_str("key"));
+
+        match storage.get(RStr::from_str("key")) {
+            RResult::ROk(val) => {
+                assert!(val.is_none(), "Expected None after delete");
+            },
+            RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_storage_list_keys() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("test_storage.db");
+        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+
+        storage.set(RStr::from_str("beta"), RStr::from_str("v1"));
+        storage.set(RStr::from_str("alpha"), RStr::from_str("v2"));
+
+        match storage.list() {
+            RResult::ROk(keys) => {
+                let keys: Vec<&str> = keys.iter().map(|k| k.as_str()).collect();
+                assert_eq!(keys, vec!["alpha", "beta"]); // sorted
+            },
+            RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_storage_namespace_isolation() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("test_storage.db");
+        let storage_a = ExtensionStorageImpl::new(db_path.clone(), "ext-a").expect("failed to create storage");
+        let storage_b = ExtensionStorageImpl::new(db_path, "ext-b").expect("failed to create storage");
+
+        storage_a.set(RStr::from_str("key"), RStr::from_str("from_a"));
+        storage_b.set(RStr::from_str("key"), RStr::from_str("from_b"));
+
+        match storage_a.get(RStr::from_str("key")) {
+            RResult::ROk(val) => {
+                assert_eq!(val.into_option().unwrap().as_str(), "from_a");
+            },
+            RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
+        }
+        match storage_b.get(RStr::from_str("key")) {
+            RResult::ROk(val) => {
+                assert_eq!(val.into_option().unwrap().as_str(), "from_b");
+            },
+            RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
+        }
+    }
+}

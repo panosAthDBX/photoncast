@@ -545,8 +545,10 @@ impl FileSearchView {
                         if path.starts_with(&home) {
                             if path == &home {
                                 "~/".to_string()
+                            } else if let Ok(stripped) = path.strip_prefix(&home) {
+                                format!("~/{}", stripped.display())
                             } else {
-                                format!("~/{}", path.strip_prefix(&home).unwrap().display())
+                                path.display().to_string()
                             }
                         } else {
                             path.display().to_string()

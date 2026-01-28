@@ -7,11 +7,11 @@ use std::time::Duration;
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rems, rgba, AnyElement, AppContext, FocusHandle, FocusableView, FontWeight, Hsla,
+    div, px, rems, rgba, AnyElement, AppContext, FocusHandle, FocusableView, FontWeight,
     InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render,
     StatefulInteractiveElement, Styled, Task, ViewContext,
 };
-use photoncast_theme::PhotonTheme;
+use photoncast_theme::GpuiThemeColors;
 
 use crate::config::ClipboardConfig;
 use crate::models::{ClipboardContentType, ClipboardItem, ClipboardItemId};
@@ -28,39 +28,11 @@ const SEARCH_DEBOUNCE_MS: u64 = 100;
 /// Maximum preview text length.
 const MAX_PREVIEW_LENGTH: usize = 100;
 
-/// Theme-aware color struct for clipboard UI.
-#[derive(Clone)]
-struct ClipboardColors {
-    base: Hsla,
-    surface0: Hsla,
-    surface1: Hsla,
-    surface2: Hsla,
-    overlay0: Hsla,
-    overlay1: Hsla,
-    text: Hsla,
-    subtext0: Hsla,
-    red: Hsla,
-}
-
-impl ClipboardColors {
-    fn from_theme(theme: &PhotonTheme) -> Self {
-        Self {
-            base: theme.colors.background.to_gpui(),
-            surface0: theme.colors.surface.to_gpui(),
-            surface1: theme.colors.surface_hover.to_gpui(),
-            surface2: theme.palette.surface2.to_gpui(),
-            overlay0: theme.palette.overlay0.to_gpui(),
-            overlay1: theme.colors.text_placeholder.to_gpui(),
-            text: theme.colors.text.to_gpui(),
-            subtext0: theme.colors.text_muted.to_gpui(),
-            red: theme.colors.error.to_gpui(),
-        }
-    }
-}
+/// Type alias – clipboard UI uses the shared [`GpuiThemeColors`].
+type ClipboardColors = GpuiThemeColors;
 
 fn get_clipboard_colors(cx: &ViewContext<ClipboardHistoryView>) -> ClipboardColors {
-    let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
-    ClipboardColors::from_theme(&theme)
+    ClipboardColors::from_context(cx)
 }
 
 /// Clipboard history view state.
@@ -373,8 +345,7 @@ impl ClipboardHistoryView {
     /// Renders the search bar.
     fn render_search_bar(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = get_clipboard_colors(cx);
-        let theme = cx.try_global::<PhotonTheme>().cloned().unwrap_or_default();
-        let accent = theme.colors.accent.to_gpui();
+        let accent = colors.accent;
         let query = self.search_query.clone();
         let is_searching = self.is_searching;
         let has_query = !query.is_empty();
@@ -393,14 +364,14 @@ impl ClipboardHistoryView {
             .px(rems(0.75))
             .py(rems(0.5))
             .border_b_1()
-            .border_color(colors.surface0)
+            .border_color(colors.surface)
             .child(
                 div()
                     .flex()
                     .flex_row()
                     .items_center()
                     .gap(rems(0.5))
-                    .child(div().text_sm().text_color(colors.overlay0).child("🔍"))
+                    .child(div().text_sm().text_color(colors.text_faint).child("🔍"))
                     .child(
                         div()
                             .id("search-input")
@@ -419,7 +390,7 @@ impl ClipboardHistoryView {
                                 )
                                 .child(
                                     div()
-                                        .text_color(colors.overlay0)
+                                        .text_color(colors.text_faint)
                                         .child("Search clipboard history..."),
                                 )
                             })
@@ -441,7 +412,7 @@ impl ClipboardHistoryView {
                             div()
                                 .id("clear-search")
                                 .text_xs()
-                                .text_color(colors.overlay0)
+                                .text_color(colors.text_faint)
                                 .cursor_pointer()
                                 .child("✕"),
                         )
@@ -456,8 +427,8 @@ impl ClipboardHistoryView {
         count: usize,
         colors: &ClipboardColors,
     ) -> impl IntoElement {
-        let overlay0 = colors.overlay0;
-        let surface2 = colors.surface2;
+        let overlay0 = colors.text_faint;
+        let surface2 = colors.surface_tertiary;
         div().px(rems(0.75)).py(rems(0.375)).child(
             div()
                 .flex()
@@ -492,7 +463,7 @@ impl ClipboardHistoryView {
         content_type: &ClipboardContentType,
         colors: &ClipboardColors,
     ) -> impl IntoElement {
-        let surface1 = colors.surface1;
+        let surface1 = colors.surface_hover;
         match content_type {
             ClipboardContentType::Color { rgb: color_rgb, .. } => {
                 // Render color swatch
@@ -595,7 +566,7 @@ impl ClipboardHistoryView {
         colors: &ClipboardColors,
     ) -> impl IntoElement {
         let text_color = colors.text;
-        let overlay0 = colors.overlay0;
+        let overlay0 = colors.text_faint;
         match content_type {
             ClipboardContentType::Link { url, title, .. } => {
                 // Show title and URL for links
@@ -723,7 +694,7 @@ impl ClipboardHistoryView {
         time: String,
         colors: &ClipboardColors,
     ) -> impl IntoElement {
-        let overlay0 = colors.overlay0;
+        let overlay0 = colors.text_faint;
         div()
             .flex()
             .flex_row()
@@ -742,11 +713,11 @@ impl ClipboardHistoryView {
         colors: &ClipboardColors,
     ) -> impl IntoElement {
         let bg_color = if is_selected {
-            colors.surface1
+            colors.surface_hover
         } else {
-            colors.base
+            colors.background
         };
-        let surface0 = colors.surface0;
+        let surface0 = colors.surface;
 
         let time = relative_time(&item.created_at);
         let pinned = item.is_pinned;
@@ -782,8 +753,8 @@ impl ClipboardHistoryView {
 
     /// Renders empty state when no items.
     fn render_empty_state(&self, colors: &ClipboardColors) -> impl IntoElement {
-        let overlay0 = colors.overlay0;
-        let surface2 = colors.surface2;
+        let overlay0 = colors.text_faint;
+        let surface2 = colors.surface_tertiary;
         div()
             .flex()
             .flex_col()
@@ -817,7 +788,7 @@ impl ClipboardHistoryView {
 
     /// Renders loading state.
     fn render_loading_state(colors: &ClipboardColors) -> impl IntoElement {
-        let overlay0 = colors.overlay0;
+        let overlay0 = colors.text_faint;
         div()
             .flex()
             .flex_col()
@@ -885,8 +856,8 @@ impl ClipboardHistoryView {
         } else {
             "Copy"
         };
-        let surface0 = colors.surface0;
-        let overlay0 = colors.overlay0;
+        let surface0 = colors.surface;
+        let overlay0 = colors.text_faint;
 
         div()
             .border_t_1()
@@ -912,13 +883,13 @@ impl ClipboardHistoryView {
 
     /// Renders the clear confirmation dialog.
     fn render_clear_confirmation(colors: &ClipboardColors) -> impl IntoElement {
-        let surface0 = colors.surface0;
-        let surface1 = colors.surface1;
-        let surface2 = colors.surface2;
+        let surface0 = colors.surface;
+        let surface1 = colors.surface_hover;
+        let surface2 = colors.surface_tertiary;
         let text_color = colors.text;
-        let overlay1 = colors.overlay1;
-        let red = colors.red;
-        let base = colors.base;
+        let overlay1 = colors.text_placeholder;
+        let red = colors.error;
+        let base = colors.background;
 
         div()
             .absolute()
@@ -1173,7 +1144,7 @@ impl Render for ClipboardHistoryView {
             .flex_col()
             .w_full()
             .h_full()
-            .bg(colors.base)
+            .bg(colors.background)
             .pt(rems(1.5))
             // Search bar
             .child(self.render_search_bar(cx))
@@ -1204,9 +1175,9 @@ impl Render for ClipboardHistoryView {
 
 /// Renders a keyboard shortcut hint.
 fn render_shortcut(key: &str, label: &str, colors: &ClipboardColors) -> impl IntoElement {
-    let surface0 = colors.surface0;
-    let subtext0 = colors.subtext0;
-    let overlay0 = colors.overlay0;
+    let surface0 = colors.surface;
+    let subtext0 = colors.text_muted;
+    let overlay0 = colors.text_faint;
     div()
         .flex()
         .flex_row()
