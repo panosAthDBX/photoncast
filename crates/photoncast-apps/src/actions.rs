@@ -573,7 +573,7 @@ mod tests {
 
         // InvalidBundleId
         let err = ActionError::InvalidBundleId {
-            bundle_id: "".to_string(),
+            bundle_id: String::new(),
         };
         assert_eq!(err.to_string(), "invalid bundle identifier: ");
 
@@ -720,8 +720,7 @@ mod tests {
             modifiers: &'static [&'static str],
         }
 
-        let shortcuts = vec![
-            ActionShortcut {
+        let shortcuts = [ActionShortcut {
                 action: AppAction::Launch,
                 key: "Return",
                 modifiers: &[],
@@ -760,8 +759,7 @@ mod tests {
                 action: AppAction::ToggleAutoQuit,
                 key: "A",
                 modifiers: &["Cmd", "Shift"],
-            },
-        ];
+            }];
 
         // Verify shortcuts are unique
         let mut shortcut_keys: Vec<String> = shortcuts

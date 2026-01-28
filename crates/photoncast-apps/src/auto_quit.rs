@@ -603,7 +603,7 @@ mod tests {
         manager.enable_auto_quit("com.zero.timeout", 0);
 
         // Manually set the last activity to an old time to simulate idle
-        let old_instant = Instant::now() - Duration::from_secs(1);
+        let old_instant = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
         manager
             .activity_tracker
             .insert("com.zero.timeout".to_string(), old_instant);
@@ -764,11 +764,11 @@ mod tests {
 
         // Verify all settings persisted
         assert!(config2.apps.contains_key("com.example.app1"));
-        assert_eq!(config2.apps["com.example.app1"].enabled, true);
+        assert!(config2.apps["com.example.app1"].enabled);
         assert_eq!(config2.apps["com.example.app1"].timeout_minutes, 7);
 
         assert!(config2.apps.contains_key("com.example.app2"));
-        assert_eq!(config2.apps["com.example.app2"].enabled, false);
+        assert!(!config2.apps["com.example.app2"].enabled);
         assert_eq!(config2.apps["com.example.app2"].timeout_minutes, 3);
     }
 

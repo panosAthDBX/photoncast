@@ -1,3 +1,5 @@
+//! Window management settings section (tiling, cycling).
+
 use super::*;
 
 impl PreferencesWindow {

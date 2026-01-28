@@ -285,7 +285,7 @@ mod tests {
             .create_versioned_copy("test-extension", &source_dylib)
             .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
-        let v3 = cache
+        let _v3 = cache
             .create_versioned_copy("test-extension", &source_dylib)
             .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));

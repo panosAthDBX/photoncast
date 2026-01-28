@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use once_cell::sync::Lazy;
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -15,7 +14,7 @@ use tracing::info;
 use crate::error::{CalculatorError, Result};
 
 /// Supported fiat currencies (ISO 4217 codes).
-pub static FIAT_CURRENCIES: Lazy<Vec<&'static str>> = Lazy::new(|| {
+pub static FIAT_CURRENCIES: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
     vec![
         "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT",
         "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BRL", "BSD", "BTN", "BWP", "BYN", "BZD", "CAD",
@@ -33,7 +32,7 @@ pub static FIAT_CURRENCIES: Lazy<Vec<&'static str>> = Lazy::new(|| {
 });
 
 /// Crypto currency symbols that can be used instead of codes.
-pub static CRYPTO_SYMBOLS: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+pub static CRYPTO_SYMBOLS: std::sync::LazyLock<HashMap<&'static str, &'static str>> = std::sync::LazyLock::new(|| {
     let mut m = HashMap::new();
     m.insert("₿", "BTC");
     m.insert("Ξ", "ETH");

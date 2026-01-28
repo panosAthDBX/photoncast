@@ -4,9 +4,9 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::must_use_candidate)]
 
-//! GitHub Search Extension for PhotonCast
+//! `GitHub` Search Extension for PhotonCast
 //!
-//! Provides search functionality for GitHub repositories.
+//! Provides search functionality for `GitHub` repositories.
 
 use abi_stable::prefix_type::PrefixTypeTrait;
 use abi_stable::sabi_trait::prelude::TD_Opaque;
@@ -17,7 +17,7 @@ use photoncast_extension_api::{
     Extension_TO,
 };
 
-/// GitHub repository data
+/// `GitHub` repository data
 #[derive(Debug, Clone)]
 struct Repository {
     name: String,
@@ -148,19 +148,16 @@ impl Repository {
 /// Maps language names to tag colors
 fn language_color(language: &str) -> TagColor {
     match language.to_lowercase().as_str() {
-        "rust" => TagColor::Orange,
-        "python" => TagColor::Blue,
+        "rust" | "swift" => TagColor::Orange,
+        "python" | "go" | "c" | "c++" => TagColor::Blue,
         "javascript" | "typescript" => TagColor::Yellow,
-        "go" => TagColor::Blue,
         "ruby" => TagColor::Red,
-        "swift" => TagColor::Orange,
         "java" | "kotlin" => TagColor::Purple,
-        "c" | "c++" => TagColor::Blue,
         _ => TagColor::Default,
     }
 }
 
-/// GitHub search provider
+/// `GitHub` search provider
 struct GitHubSearchProvider {
     #[allow(dead_code)]
     api_token: Option<String>,
@@ -175,7 +172,7 @@ impl GitHubSearchProvider {
         }
     }
 
-    /// Simulates searching GitHub repositories
+    /// Simulates searching `GitHub` repositories
     /// In production, this would make actual API calls
     fn search_repos(&self, query: &str, max_results: usize) -> Vec<Repository> {
         // Demo repositories for testing
@@ -227,7 +224,7 @@ impl GitHubSearchProvider {
                 html_url: "https://github.com/facebook/react".to_string(),
                 clone_url: "https://github.com/facebook/react.git".to_string(),
                 ssh_url: "git@github.com:facebook/react.git".to_string(),
-                stars: 220000,
+                stars: 220_000,
                 language: Some("JavaScript".to_string()),
                 owner: "facebook".to_string(),
             },
@@ -291,6 +288,7 @@ impl ExtensionSearchProvider for GitHubSearchProvider {
             .into_iter()
             .enumerate()
             .map(|(i, repo)| {
+                #[allow(clippy::cast_precision_loss)]
                 let score = 1.0 - (i as f64 * 0.1);
                 ExtensionSearchItem {
                     id: RString::from(repo.full_name.as_str()),
@@ -380,7 +378,7 @@ impl CommandHandlerTrait for SearchReposHandler {
     }
 }
 
-/// GitHub Extension
+/// `GitHub` Extension
 pub struct GitHubExtension {
     ctx: Option<ExtensionContext>,
 }
@@ -417,9 +415,8 @@ impl Extension for GitHubExtension {
     }
 
     fn search_provider(&self) -> ROption<ExtensionSearchProvider_TO<'static, RBox<()>>> {
-        let ctx = match self.ctx.as_ref() {
-            Some(c) => c,
-            None => return ROption::RNone,
+        let Some(ctx) = self.ctx.as_ref() else {
+            return ROption::RNone;
         };
 
         // Get preferences

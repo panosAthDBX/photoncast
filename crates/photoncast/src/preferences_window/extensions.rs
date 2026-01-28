@@ -1,3 +1,5 @@
+//! Extension management settings section.
+
 use super::*;
 
 impl PreferencesWindow {
@@ -65,6 +67,7 @@ impl PreferencesWindow {
             ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_extension_row(
         &self,
         id: &str,

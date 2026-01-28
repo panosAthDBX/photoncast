@@ -214,7 +214,7 @@ mod tests {
         IndexedApp {
             name: name.to_string(),
             bundle_id: AppBundleId::new(bundle_id),
-            path: PathBuf::from(format!("/Applications/{}.app", name)),
+            path: PathBuf::from(format!("/Applications/{name}.app")),
             icon_path: None,
             category: None,
             keywords: Vec::new(),
@@ -346,7 +346,7 @@ mod tests {
     fn test_early_termination() {
         // Create a large number of apps
         let apps: Vec<IndexedApp> = (0..200)
-            .map(|i| create_test_app(&format!("App{}", i), &format!("com.test.app{}", i)))
+            .map(|i| create_test_app(&format!("App{i}"), &format!("com.test.app{i}")))
             .collect();
 
         let config = EarlyTerminationConfig {

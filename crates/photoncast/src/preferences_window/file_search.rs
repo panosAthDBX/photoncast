@@ -1,3 +1,5 @@
+//! File search settings section (indexing, excluded paths).
+
 use super::*;
 
 impl PreferencesWindow {

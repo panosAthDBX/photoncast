@@ -1,3 +1,5 @@
+//! Clipboard history settings section.
+
 use super::*;
 
 impl PreferencesWindow {

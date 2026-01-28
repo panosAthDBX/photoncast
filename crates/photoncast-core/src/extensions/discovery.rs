@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use crate::extensions::manifest::{read_manifest_with_cache, ExtensionManifest, ManifestCache};
-use crate::extensions::manifest::{ManifestError, SUPPORTED_API_VERSION};
+use crate::extensions::manifest::{
+    read_manifest_with_cache, ExtensionManifest, ManifestCache, ManifestError,
+    SUPPORTED_API_VERSION,
+};
 use crate::utils::paths;
 
 #[derive(Debug, Clone)]
@@ -105,6 +107,7 @@ pub fn ensure_supported_api(manifest: &ExtensionManifest) -> Result<(), Manifest
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extensions::manifest::Permissions;
 
     #[test]
     fn test_discovery_options_default() {
@@ -171,7 +174,7 @@ mod tests {
                 kind: "dylib".to_string(),
                 path: "libtest.dylib".to_string(),
             },
-            permissions: Default::default(),
+            permissions: Permissions::default(),
             commands: vec![],
             preferences: vec![],
             directory: None,
@@ -198,7 +201,7 @@ mod tests {
                 kind: "dylib".to_string(),
                 path: "libtest.dylib".to_string(),
             },
-            permissions: Default::default(),
+            permissions: Permissions::default(),
             commands: vec![],
             preferences: vec![],
             directory: None,

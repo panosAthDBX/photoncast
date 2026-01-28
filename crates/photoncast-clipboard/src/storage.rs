@@ -33,18 +33,31 @@ pub struct ClipboardStorage {
 /// Holds the prepared (and possibly encrypted) content fields for a clipboard
 /// item, ready to be inserted into the SQLite `clipboard_items` table.
 struct PreparedContent {
+    /// Content type identifier (e.g. `"text"`, `"image"`, `"file"`, `"url"`, `"color"`).
     content_type: String,
+    /// AES-256-GCM encrypted plain text, or `None` for non-text content.
     encrypted_text: Option<Vec<u8>>,
+    /// AES-256-GCM encrypted HTML representation, if available.
     encrypted_html: Option<Vec<u8>>,
+    /// AES-256-GCM encrypted RTF representation, if available.
     encrypted_rtf: Option<Vec<u8>>,
+    /// Filesystem path to a saved image (PNG), or `None` for non-image content.
     image_path: Option<String>,
+    /// Filesystem path to a thumbnail preview image.
     thumbnail_path: Option<String>,
+    /// JSON-serialized list of file paths for file/folder clipboard items.
     file_paths: Option<String>,
+    /// URL string for link-type clipboard items.
     url: Option<String>,
+    /// Page title fetched from the URL's metadata.
     link_title: Option<String>,
+    /// Filesystem path to the cached favicon for a URL item.
     favicon_path: Option<String>,
+    /// Hex color code (e.g. `"#FF5733"`) for color-type items.
     color_hex: Option<String>,
+    /// RGB string (e.g. `"rgb(255, 87, 51)"`) for color-type items.
     color_rgb: Option<String>,
+    /// Human-readable color name (e.g. `"Coral"`) if recognized.
     color_name: Option<String>,
 }
 
@@ -992,10 +1005,7 @@ fn prepare_fts_query(query: &str) -> String {
         .replace('"', "\\\"")
         .replace('*', "\\*")
         .replace(':', "\\:")
-        .replace('(', "")
-        .replace(')', "")
-        .replace('{', "")
-        .replace('}', "");
+        .replace(['(', ')', '{', '}'], "");
 
     // Add prefix matching for partial words
     let terms: Vec<String> = escaped

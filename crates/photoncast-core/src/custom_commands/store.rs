@@ -861,9 +861,9 @@ mod tests {
         for i in 0..5 {
             let output = CommandOutput {
                 command_id: cmd.id.clone(),
-                executed_command: format!("echo {}", i),
+                executed_command: format!("echo {i}"),
                 exit_code: 0,
-                stdout: format!("output {}\n", i),
+                stdout: format!("output {i}\n"),
                 stderr: String::new(),
                 truncated: false,
                 duration_ms: 100,

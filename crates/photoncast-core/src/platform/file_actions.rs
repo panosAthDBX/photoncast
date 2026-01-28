@@ -1514,7 +1514,9 @@ mod tests {
 
             let archive_path = compress(&file_path).expect("should compress");
             assert!(archive_path.exists());
-            assert!(archive_path.to_str().unwrap().ends_with(".zip"));
+            assert!(archive_path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("zip")));
         }
 
         #[test]
@@ -1527,7 +1529,9 @@ mod tests {
 
             let archive_path = compress(&dir_path).expect("should compress");
             assert!(archive_path.exists());
-            assert!(archive_path.to_str().unwrap().ends_with(".zip"));
+            assert!(archive_path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("zip")));
         }
 
         #[test]

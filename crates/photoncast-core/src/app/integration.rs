@@ -679,7 +679,7 @@ mod tests {
         IndexedApp {
             name: name.to_string(),
             bundle_id: AppBundleId::new(bundle_id),
-            path: PathBuf::from(format!("/Applications/{}.app", name)),
+            path: PathBuf::from(format!("/Applications/{name}.app")),
             icon_path: None,
             category: None,
             keywords: Vec::new(),

@@ -46,6 +46,7 @@ fn create_test_manifest(id: &str, num_commands: usize, num_preferences: usize) -
 
     ExtensionManifest {
         schema_version: 1,
+        directory: None,
         extension: ExtensionInfo {
             id: id.to_string(),
             name: format!("Test Extension {}", id),

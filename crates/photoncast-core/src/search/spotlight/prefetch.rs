@@ -502,11 +502,10 @@ mod tests {
         let status = prefetcher.status();
         assert!(
             status == PrefetchStatus::Running || status == PrefetchStatus::Completed,
-            "Expected Running or Completed, got: {:?}",
-            status
+            "Expected Running or Completed, got: {status:?}"
         );
 
-        println!("Prefetch status after trigger: {:?}", status);
+        println!("Prefetch status after trigger: {status:?}");
     }
 
     #[test]
@@ -546,8 +545,7 @@ mod tests {
         let status = prefetcher.status();
         assert!(
             status == PrefetchStatus::Running || status == PrefetchStatus::Completed,
-            "Unexpected status: {:?}",
-            status
+            "Unexpected status: {status:?}"
         );
 
         // Wait for completion

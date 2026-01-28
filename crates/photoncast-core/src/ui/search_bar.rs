@@ -133,6 +133,7 @@ impl SearchBar {
     }
 
     /// Renders the search icon.
+    #[allow(clippy::unused_self)]
     fn render_icon(&self, theme: &PhotonTheme) -> impl IntoElement {
         div()
             .size(SEARCH_ICON_SIZE)

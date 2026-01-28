@@ -239,9 +239,7 @@ impl LauncherWindow {
             // Group events by day and build elements with day headers
             let mut elements: Vec<gpui::AnyElement> = Vec::new();
             let mut current_day: Option<photoncast_calendar::chrono::NaiveDate> = None;
-            let mut item_index = 0usize;
-
-            for event in events.iter() {
+            for (item_index, event) in events.iter().enumerate() {
                 let event_day = event.start.date_naive();
 
                 // Add day header if day changed
@@ -272,8 +270,7 @@ impl LauncherWindow {
                     );
                 }
 
-                let idx = item_index;
-                let is_selected = idx == selected;
+                let is_selected = item_index == selected;
                 let has_conference = event.conference_url.is_some();
 
                 // Build time string with relative time
@@ -292,14 +289,10 @@ impl LauncherWindow {
                     Some("now".to_string())
                 } else if event.starts_within_minutes(5) {
                     Some("in 5 min".to_string())
-                } else if event.starts_within_minutes(15) {
-                    let duration = event.start.signed_duration_since(now);
-                    let mins = duration.num_minutes();
-                    Some(format!("in {} min", mins))
                 } else if event.starts_within_minutes(60) {
                     let duration = event.start.signed_duration_since(now);
                     let mins = duration.num_minutes();
-                    Some(format!("in {} min", mins))
+                    Some(format!("in {mins} min"))
                 } else {
                     None
                 };
@@ -308,7 +301,7 @@ impl LauncherWindow {
                 let cal_color = Self::parse_hex_color(&event.calendar_color);
 
                 let event_element = div()
-                    .id(SharedString::from(format!("cal-event-{idx}")))
+                    .id(SharedString::from(format!("cal-event-{item_index}")))
                     .min_h(px(52.0))
                     .w_full()
                     .px_4()
@@ -443,7 +436,6 @@ impl LauncherWindow {
                     });
 
                 elements.push(event_element.into_any_element());
-                item_index += 1;
             }
 
             // Calculate height based on items + headers

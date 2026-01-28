@@ -810,7 +810,6 @@ mod tests {
             match id {
                 "1" => FrecencyScore::new(5, 1.0),
                 "2" => FrecencyScore::new(10, 1.0),
-                "3" => FrecencyScore::zero(),
                 _ => FrecencyScore::zero(),
             }
         };
@@ -883,7 +882,7 @@ mod property_tests {
                 scores
                     .iter()
                     .enumerate()
-                    .map(|(i, &s)| create_test_result(&format!("id{}", i), &format!("Title{}", i), s))
+                    .map(|(i, &s)| create_test_result(&format!("id{i}"), &format!("Title{i}"), s))
                     .collect()
             };
 
@@ -911,7 +910,7 @@ mod property_tests {
 
             // Create two results: one exact match, one partial
             let exact_title = query.clone();
-            let partial_title = format!("{}extra", query);
+            let partial_title = format!("{query}extra");
 
             let exact_score = ranker.apply_boosts(base_score, &query, &exact_title, None);
             let partial_score = ranker.apply_boosts(base_score, &query, &partial_title, None);

@@ -957,6 +957,7 @@ impl ClipboardHistoryView {
     }
 
     /// Handles key down events.
+    #[allow(clippy::too_many_lines)]
     fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
         let key = event.keystroke.key.as_str();
 

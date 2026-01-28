@@ -607,8 +607,8 @@ mod tests {
     fn test_list_directory_not_a_directory() {
         // Try to list a file as a directory
         let result = FileBrowser::list_directory(Path::new("/etc/hosts"));
-        if result.is_err() {
-            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        if let Err(e) = result {
+            assert_eq!(e.kind(), io::ErrorKind::InvalidInput);
         }
         // Note: /etc/hosts might not exist on all systems
     }
@@ -638,7 +638,7 @@ mod tests {
             .position(|n| {
                 !result
                     .iter()
-                    .find(|e| &e.name == *n)
+                    .find(|e| e.name == *n)
                     .unwrap()
                     .is_directory()
             })
@@ -647,9 +647,9 @@ mod tests {
         // Verify folders come first
         for (i, entry) in result.iter().enumerate() {
             if i < folder_end {
-                assert!(entry.is_directory(), "Expected folder at position {}", i);
+                assert!(entry.is_directory(), "Expected folder at position {i}");
             } else {
-                assert!(!entry.is_directory(), "Expected file at position {}", i);
+                assert!(!entry.is_directory(), "Expected file at position {i}");
             }
         }
 
@@ -817,7 +817,7 @@ mod tests {
 
     fn create_test_entry(name: &str, is_dir: bool) -> DirectoryEntry {
         DirectoryEntry {
-            path: PathBuf::from(format!("/test/{}", name)),
+            path: PathBuf::from(format!("/test/{name}")),
             name: name.to_string(),
             kind: if is_dir {
                 FileKind::Folder

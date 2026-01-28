@@ -10,13 +10,12 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone, Utc, Weekday};
 use chrono_tz::Tz;
-use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::error::{CalculatorError, Result};
 
 /// Keywords that indicate a date/time query.
-pub static TIMEZONE_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+pub static TIMEZONE_KEYWORDS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
     vec![
         "time", "timezone", "tz", "est", "pst", "cst", "mst", "gmt", "utc", "bst", "cet", "eet",
         "jst", "kst", "ist", "aest", "aedt", "nzst",
@@ -24,7 +23,7 @@ pub static TIMEZONE_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
 });
 
 /// City to timezone mappings (~500 cities).
-static CITY_TIMEZONES: Lazy<HashMap<&'static str, Tz>> = Lazy::new(|| {
+static CITY_TIMEZONES: std::sync::LazyLock<HashMap<&'static str, Tz>> = std::sync::LazyLock::new(|| {
     let mut m = HashMap::new();
 
     // Major US cities
@@ -161,7 +160,7 @@ static CITY_TIMEZONES: Lazy<HashMap<&'static str, Tz>> = Lazy::new(|| {
 });
 
 /// Timezone abbreviation mappings.
-static TIMEZONE_ABBREVS: Lazy<HashMap<&'static str, Tz>> = Lazy::new(|| {
+static TIMEZONE_ABBREVS: std::sync::LazyLock<HashMap<&'static str, Tz>> = std::sync::LazyLock::new(|| {
     let mut m = HashMap::new();
 
     // US timezones

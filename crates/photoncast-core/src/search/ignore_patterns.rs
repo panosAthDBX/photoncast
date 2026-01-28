@@ -1199,7 +1199,7 @@ build/
         // This test verifies the mechanism works by checking that the cache doesn't
         // grow unbounded after many inserts
         for i in 0..100 {
-            let path = format!("/test/path{}.txt", i);
+            let path = format!("/test/path{i}.txt");
             let _ = matcher.is_ignored(Path::new(&path), false);
         }
 

@@ -37,41 +37,37 @@ impl ExtensionPreviewPane {
             if trimmed.is_empty() {
                 // Empty line - add spacing
                 elements.push(div().h(px(8.0)).into_any_element());
-            } else if trimmed.starts_with("# ") {
-                // H1 header
+            } else if let Some(rest) = trimmed.strip_prefix("# ") {
                 elements.push(
                     div()
                         .text_lg()
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(self.colors.text)
                         .mb(px(8.0))
-                        .child(trimmed[2..].to_string())
+                        .child(rest.to_string())
                         .into_any_element(),
                 );
-            } else if trimmed.starts_with("## ") {
-                // H2 header
+            } else if let Some(rest) = trimmed.strip_prefix("## ") {
                 elements.push(
                     div()
                         .text_base()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(self.colors.text)
                         .mb(px(6.0))
-                        .child(trimmed[3..].to_string())
+                        .child(rest.to_string())
                         .into_any_element(),
                 );
-            } else if trimmed.starts_with("### ") {
-                // H3 header
+            } else if let Some(rest) = trimmed.strip_prefix("### ") {
                 elements.push(
                     div()
                         .text_sm()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(self.colors.text)
                         .mb(px(4.0))
-                        .child(trimmed[4..].to_string())
+                        .child(rest.to_string())
                         .into_any_element(),
                 );
-            } else if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-                // Unordered list item
+            } else if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
                 elements.push(
                     div()
                         .flex()
@@ -87,7 +83,7 @@ impl ExtensionPreviewPane {
                             div()
                                 .text_sm()
                                 .text_color(self.colors.text)
-                                .child(trimmed[2..].to_string()),
+                                .child(rest.to_string()),
                         )
                         .into_any_element(),
                 );
@@ -109,8 +105,7 @@ impl ExtensionPreviewPane {
                         .child(code.to_string())
                         .into_any_element(),
                 );
-            } else if trimmed.starts_with("> ") {
-                // Block quote
+            } else if let Some(rest) = trimmed.strip_prefix("> ") {
                 elements.push(
                     div()
                         .pl(px(12.0))
@@ -120,7 +115,7 @@ impl ExtensionPreviewPane {
                         .italic()
                         .text_color(self.colors.text_muted)
                         .mb(px(8.0))
-                        .child(trimmed[2..].to_string())
+                        .child(rest.to_string())
                         .into_any_element(),
                 );
             } else {
@@ -148,7 +143,7 @@ impl ExtensionPreviewPane {
         // Remove bold markers
         result = result.replace("**", "").replace("__", "");
         // Remove italic markers
-        result = result.replace('*', "").replace('_', "");
+        result = result.replace(['*', '_'], "");
         // Remove inline code markers
         result = result.replace('`', "");
 

@@ -6,7 +6,7 @@
 //! - Parallel metadata fetching with rayon (legacy fallback)
 //! - Adaptive debounce based on query length
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use once_cell::sync::Lazy;
@@ -438,7 +438,7 @@ const EXCLUDED_DIRS: &[&str] = &[
 ];
 
 /// Checks if a file path is "interesting" (human-readable, not system junk).
-fn is_interesting_file(path: &PathBuf) -> bool {
+fn is_interesting_file(path: &Path) -> bool {
     let path_str = path.to_string_lossy();
 
     // Exclude system directories

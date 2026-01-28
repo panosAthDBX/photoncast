@@ -272,6 +272,7 @@ impl ArgumentInputView {
     }
 
     /// Handles key down events.
+    #[allow(clippy::too_many_lines)]
     fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
         let key = event.keystroke.key.as_str();
         let shift = event.keystroke.modifiers.shift;
@@ -619,6 +620,7 @@ impl FocusableView for ArgumentInputView {
 }
 
 impl Render for ArgumentInputView {
+    #[allow(clippy::too_many_lines)]
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = get_argument_colors(cx);
         let icon = self.get_icon_display();

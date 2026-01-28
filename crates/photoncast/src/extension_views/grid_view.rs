@@ -79,7 +79,7 @@ impl ExtensionGridView {
     fn row_count(&self) -> usize {
         let cols = self.columns();
         let items = self.grid_view.items.len();
-        (items + cols - 1) / cols
+        items.div_ceil(cols)
     }
 
     /// Gets the row and column for an index.

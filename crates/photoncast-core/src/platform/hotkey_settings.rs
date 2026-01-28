@@ -1001,13 +1001,13 @@ mod tests {
     #[test]
     fn test_key_capture_display() {
         let mut state = KeyCaptureState::new();
-        assert_eq!(format!("{}", state), "Not capturing");
+        assert_eq!(format!("{state}"), "Not capturing");
 
         state.start_capture();
-        assert_eq!(format!("{}", state), "Press a key combination...");
+        assert_eq!(format!("{state}"), "Press a key combination...");
 
         state.on_key_press("K", &["Command".to_string()]);
-        assert_eq!(format!("{}", state), "Command + K");
+        assert_eq!(format!("{state}"), "Command + K");
     }
 
     // -------------------------------------------------------------------------

@@ -43,7 +43,7 @@ impl IconSize {
 
     /// Returns the pixel dimension as gpui::Pixels.
     #[must_use]
-    pub fn to_px(&self) -> Pixels {
+    pub fn to_px(self) -> Pixels {
         px(self.pixels())
     }
 }

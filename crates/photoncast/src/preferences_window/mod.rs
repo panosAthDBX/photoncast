@@ -1082,6 +1082,7 @@ impl PreferencesWindow {
             )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_number_row_with_suffix<F1, F2>(
         &self,
         label: &'static str,

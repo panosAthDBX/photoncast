@@ -99,7 +99,7 @@ impl QuickLinksStorage {
         let conn = self.conn.lock();
         let count: i64 =
             conn.query_row("SELECT COUNT(*) FROM quick_links", [], |row| row.get(0))?;
-        Ok(count as usize)
+        Ok(usize::try_from(count).unwrap_or(0))
     }
 
     /// Populates the database with bundled quicklinks if empty.
@@ -329,9 +329,8 @@ impl QuickLinksStorage {
     /// Check if a column exists in a table.
     fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
         let query = format!("PRAGMA table_info({table})");
-        let mut stmt = match conn.prepare(&query) {
-            Ok(stmt) => stmt,
-            Err(_) => return false,
+        let Ok(mut stmt) = conn.prepare(&query) else {
+            return false;
         };
 
         let columns: Vec<String> = stmt
@@ -811,10 +810,7 @@ impl QuickLinksStorage {
             .replace('"', "\\\"")
             .replace('*', "\\*")
             .replace(':', "\\:")
-            .replace('(', "")
-            .replace(')', "")
-            .replace('{', "")
-            .replace('}', "");
+            .replace(['(', ')', '{', '}'], "");
 
         let terms: Vec<String> = escaped
             .split_whitespace()

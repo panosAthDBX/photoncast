@@ -212,8 +212,7 @@ impl AppError {
                 ErrorAction::open_folder("/Applications"),
             ],
             ErrorCode::PermissionDenied => vec![ErrorAction::open_settings()],
-            ErrorCode::SearchFailed => vec![ErrorAction::retry("Retry")],
-            ErrorCode::DatabaseError => vec![ErrorAction::retry("Retry")],
+            ErrorCode::SearchFailed | ErrorCode::DatabaseError => vec![ErrorAction::retry("Retry")],
             ErrorCode::Unknown => vec![],
         }
     }
@@ -376,7 +375,7 @@ impl EmptyState {
     pub fn message(&self) -> String {
         if self.has_query {
             if let Some(ref query) = self.query {
-                format!("No results for \"{}\"", query)
+                format!("No results for \"{query}\"")
             } else {
                 "No results found".to_string()
             }
@@ -488,6 +487,7 @@ impl LoadingState {
 
     /// Returns the progress percentage (0-100).
     #[must_use]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn progress_percentage(&self) -> Option<u8> {
         self.progress.map(|p| (p * 100.0) as u8)
     }

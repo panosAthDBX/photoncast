@@ -465,6 +465,7 @@ fn bench_ranking(c: &mut Criterion) {
                     bundle_id: app.bundle_id.as_str().to_string(),
                     path: app.path.clone(),
                 },
+                requires_permissions: false,
             }
         })
         .collect();
@@ -577,7 +578,7 @@ fn bench_target_30ms(c: &mut Criterion) {
 
 #[cfg(target_os = "macos")]
 mod spotlight_benches {
-    use criterion::{black_box, BenchmarkId, Criterion};
+    use criterion::{black_box, Criterion};
     use std::sync::Arc;
     use std::time::Duration;
 

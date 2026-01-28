@@ -1305,13 +1305,12 @@ impl Render for ExtensionListView {
                             this.reset_cursor_blink();
                             cx.notify();
                         }
-                    } else if key == "right" {
-                        if this.cursor_position < this.search_query.len() {
+                    } else if key == "right"
+                        && this.cursor_position < this.search_query.len() {
                             this.cursor_position += 1;
                             this.reset_cursor_blink();
                             cx.notify();
                         }
-                    }
                 }
             }))
             .size_full() // Fill parent container

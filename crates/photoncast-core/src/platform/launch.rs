@@ -825,7 +825,7 @@ mod tests {
             LaunchError::LaunchFailed { app, reason: _ } => {
                 assert!(app.contains("nonexistent"));
             },
-            other => panic!("expected NotFound or LaunchFailed, got {:?}", other),
+            other => panic!("expected NotFound or LaunchFailed, got {other:?}"),
         }
     }
 

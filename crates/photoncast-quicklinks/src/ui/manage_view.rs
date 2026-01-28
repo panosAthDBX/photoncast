@@ -470,8 +470,8 @@ impl QuicklinksManageView {
                     || t.starts_with("https://")
                     || t.starts_with("file://")
                     || t.starts_with("mailto:")
-                    || t.starts_with("/")
-                    || t.starts_with("~")
+                    || t.starts_with('/')
+                    || t.starts_with('~')
                     || (t.contains('.') && !t.contains(' '))
             })
             .map(|text| {
@@ -479,7 +479,7 @@ impl QuicklinksManageView {
                 let len = trimmed.chars().count();
                 (trimmed, len)
             })
-            .unwrap_or_else(|| (String::new(), 0));
+            .unwrap_or_default();
 
         self.editing = Some(EditingState {
             original_id: QuickLinkId::generate(),
@@ -502,6 +502,7 @@ impl QuicklinksManageView {
     }
 
     /// Finishes editing and saves changes.
+    #[allow(clippy::needless_pass_by_value)]
     fn finish_editing(&mut self, editing: EditingState, cx: &mut ViewContext<Self>) {
         // Validate
         if editing.name.trim().is_empty() || editing.link.trim().is_empty() {
@@ -650,6 +651,7 @@ impl QuicklinksManageView {
     // ========================================================================
 
     /// Handles key down events.
+    #[allow(clippy::too_many_lines)]
     fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut ViewContext<Self>) {
         let key = event.keystroke.key.as_str();
         let cmd = event.keystroke.modifiers.platform;
@@ -1108,6 +1110,7 @@ impl QuicklinksManageView {
     }
 
     /// Renders a toolbar button.
+    #[allow(clippy::too_many_arguments, clippy::unused_self)]
     fn render_toolbar_button(
         &self,
         id: &'static str,
@@ -1194,6 +1197,7 @@ impl QuicklinksManageView {
     }
 
     /// Renders a single quicklink item.
+    #[allow(clippy::too_many_lines)]
     fn render_quicklink_item(
         link: &QuickLink,
         index: usize,
@@ -1379,7 +1383,6 @@ impl QuicklinksManageView {
                 // Use emoji fallback for system icons
                 let emoji = match name.as_str() {
                     "globe" => "🌐",
-                    "link" => "🔗",
                     "magnifyingglass" => "🔍",
                     "doc" => "📄",
                     "folder" => "📁",
@@ -1488,9 +1491,7 @@ impl QuicklinksManageView {
         let show_headers = self.selected_library_category.is_none();
         let mut elements: Vec<gpui::AnyElement> = Vec::new();
         let mut current_category = "";
-        let mut index = 0;
-
-        for bundled in filtered {
+        for (index, bundled) in filtered.into_iter().enumerate() {
             if show_headers && bundled.category != current_category {
                 current_category = bundled.category;
                 elements.push(
@@ -1515,7 +1516,6 @@ impl QuicklinksManageView {
                 Self::render_library_item(bundled, index, is_selected, is_added, colors, cx)
                     .into_any_element(),
             );
-            index += 1;
         }
 
         div()
@@ -1533,6 +1533,7 @@ impl QuicklinksManageView {
     }
 
     /// Renders a single library item.
+    #[allow(clippy::too_many_lines)]
     fn render_library_item(
         bundled: &'static BundledQuickLink,
         index: usize,
@@ -1669,6 +1670,7 @@ impl QuicklinksManageView {
     }
 
     /// Renders the action bar at the bottom.
+    #[allow(clippy::unused_self)]
     fn render_action_bar(&self, colors: &ManageColors) -> impl IntoElement {
         let surface = colors.surface;
         let text_muted = colors.text_muted;
@@ -1704,6 +1706,7 @@ impl QuicklinksManageView {
     }
 
     /// Renders the delete confirmation dialog.
+    #[allow(clippy::unused_self)]
     fn render_delete_confirmation(
         &self,
         colors: &ManageColors,
@@ -1854,6 +1857,7 @@ impl Render for QuicklinksManageView {
 
 impl QuicklinksManageView {
     /// Renders the inline edit modal.
+    #[allow(clippy::too_many_lines)]
     fn render_edit_modal(
         &self,
         colors: &ManageColors,

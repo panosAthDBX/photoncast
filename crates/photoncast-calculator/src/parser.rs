@@ -3,7 +3,6 @@
 //! This module parses user input and determines what type of calculation
 //! to perform (math, currency, unit conversion, or date/time).
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -15,7 +14,7 @@ use crate::error::{CalculatorError, Result};
 use crate::units::UNIT_PATTERNS;
 
 /// Regex patterns for expression parsing.
-static CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static CURRENCY_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Matches: "100 usd in eur", "100 usd to eur", "$100 to euros"
     // Also: "0.5 btc in usd", "100$ in €"
     Regex::new(
@@ -41,7 +40,7 @@ static CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static SYMBOL_CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static SYMBOL_CURRENCY_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Matches: "$100 in eur", "€50 to usd"
     Regex::new(
         r"(?ix)
@@ -60,7 +59,7 @@ static SYMBOL_CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static CODE_ONLY_CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static CODE_ONLY_CURRENCY_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Matches: "usd to eur", "btc in usd"
     Regex::new(
         r"(?ix)
@@ -77,7 +76,7 @@ static CODE_ONLY_CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static SYMBOL_ONLY_CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static SYMBOL_ONLY_CURRENCY_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Matches: "$ to eur", "€ to usd"
     Regex::new(
         r"(?ix)
@@ -94,7 +93,7 @@ static SYMBOL_ONLY_CURRENCY_PATTERN: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static UNIT_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static UNIT_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Matches: "5 km to miles", "100 f in c", "32 fahrenheit to celsius"
     Regex::new(
         r"(?ix)
@@ -113,7 +112,7 @@ static UNIT_PATTERN: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static PERCENTAGE_OF_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static PERCENTAGE_OF_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Matches: "32% of 500", "15 percent of 200"
     Regex::new(
         r"(?ix)
@@ -132,7 +131,7 @@ static PERCENTAGE_OF_PATTERN: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static DATE_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+static DATE_KEYWORDS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
     vec![
         "today",
         "tomorrow",

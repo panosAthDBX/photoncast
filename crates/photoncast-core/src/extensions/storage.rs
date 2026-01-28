@@ -312,7 +312,7 @@ mod tests {
 
         match storage.list() {
             RResult::ROk(keys) => {
-                let keys: Vec<&str> = keys.iter().map(|k| k.as_str()).collect();
+                let keys: Vec<&str> = keys.iter().map(photoncast_extension_api::RString::as_str).collect();
                 assert_eq!(keys, vec!["alpha", "beta"]); // sorted
             },
             RResult::RErr(e) => panic!("Unexpected error: {e:?}"),

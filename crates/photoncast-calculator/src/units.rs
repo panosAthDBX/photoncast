@@ -10,13 +10,12 @@
 
 use std::collections::HashMap;
 
-use once_cell::sync::Lazy;
 
 use crate::error::{CalculatorError, Result};
 
 /// Map of unit patterns to their canonical form and category.
-pub static UNIT_PATTERNS: Lazy<HashMap<&'static str, (&'static str, UnitCategory)>> =
-    Lazy::new(|| {
+pub static UNIT_PATTERNS: std::sync::LazyLock<HashMap<&'static str, (&'static str, UnitCategory)>> =
+    std::sync::LazyLock::new(|| {
         let mut m = HashMap::new();
 
         // Length units

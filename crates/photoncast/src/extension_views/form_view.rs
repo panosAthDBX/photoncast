@@ -126,7 +126,7 @@ impl ExtensionFormView {
                 },
                 FieldType::Dropdown { options } => {
                     let value = default_value
-                        .or_else(|| options.first().map(|o| o.value.clone().into()))
+                        .or_else(|| options.first().map(|o| o.value.clone()))
                         .unwrap_or_default()
                         .to_string();
                     FieldValue::Text(value)

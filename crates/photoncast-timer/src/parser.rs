@@ -5,34 +5,29 @@
 //! - "shutdown in 1 hour", "1h", "1.5 hours"
 //! - "at 10pm", "at 22:00"
 
+use std::sync::LazyLock;
+
 use chrono::{DateTime, Duration, Local, NaiveTime, Utc};
-use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::error::{Result, TimerError};
 use crate::scheduler::TimerAction;
 
-lazy_static! {
-    // Pattern: "sleep in 30 minutes", "shutdown in 1 hour"
-    static ref RELATIVE_PATTERN: Regex = Regex::new(
-        r"(?i)^(?P<action>sleep|shutdown|restart|lock)\s+in\s+(?P<amount>[\d.]+)\s*(?P<unit>s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours)$"
-    ).unwrap();
+static RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+    r"(?i)^(?P<action>sleep|shutdown|restart|lock)\s+in\s+(?P<amount>[\d.]+)\s*(?P<unit>s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours)$"
+).unwrap());
 
-    // Pattern: "30 minutes", "1 hour", "2.5h"
-    static ref DURATION_ONLY_PATTERN: Regex = Regex::new(
-        r"(?i)^(?P<amount>[\d.]+)\s*(?P<unit>s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours)$"
-    ).unwrap();
+static DURATION_ONLY_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+    r"(?i)^(?P<amount>[\d.]+)\s*(?P<unit>s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours)$"
+).unwrap());
 
-    // Pattern: "at 10pm", "at 22:00", "at 10:30 pm"
-    static ref TIME_PATTERN: Regex = Regex::new(
-        r"(?i)^(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm)?$"
-    ).unwrap();
+static TIME_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+    r"(?i)^(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm)?$"
+).unwrap());
 
-    // Pattern with time: "sleep at 10pm", "shutdown at 22:00"
-    static ref ACTION_TIME_PATTERN: Regex = Regex::new(
-        r"(?i)^(?P<action>sleep|shutdown|restart|lock)\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm)?$"
-    ).unwrap();
-}
+static ACTION_TIME_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+    r"(?i)^(?P<action>sleep|shutdown|restart|lock)\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm)?$"
+).unwrap());
 
 /// Parsed timer expression.
 #[derive(Debug, Clone)]

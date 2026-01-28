@@ -69,9 +69,8 @@ fn get_or_create_thumbnail(path: &PathBuf, modified: SystemTime) -> Option<PathB
     }
 
     // Load and resize the image
-    let img = match image::open(path) {
-        Ok(img) => img,
-        Err(_) => return None,
+    let Ok(img) = image::open(path) else {
+        return None;
     };
 
     // Only create thumbnail if image is larger than thumbnail size
@@ -135,6 +134,7 @@ impl Screenshot {
     }
 
     /// Formats the file size for display
+    #[allow(clippy::cast_precision_loss)]
     fn formatted_size(&self) -> String {
         let kb = self.size_bytes as f64 / 1024.0;
         if kb < 1024.0 {
@@ -192,9 +192,7 @@ impl Screenshot {
         // Reveal in Finder
         let parent_path = self
             .path
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| path_str.clone());
+            .parent().map_or_else(|| path_str.clone(), |p| p.to_string_lossy().to_string());
         actions.push(Action {
             id: RString::from("reveal"),
             title: RString::from("Reveal in Finder"),
@@ -311,9 +309,7 @@ type ScanCache = Arc<Mutex<Option<CachedScan>>>;
 /// Scans a directory for screenshot files
 fn scan_screenshots(folder: &str) -> Vec<Screenshot> {
     let path = if folder.starts_with('~') {
-        dirs::home_dir()
-            .map(|home| home.join(&folder[2..]))
-            .unwrap_or_else(|| PathBuf::from(folder))
+        dirs::home_dir().map_or_else(|| PathBuf::from(folder), |home| home.join(&folder[2..]))
     } else {
         PathBuf::from(folder)
     };
@@ -343,9 +339,7 @@ fn scan_screenshots(folder: &str) -> Vec<Screenshot> {
 /// Resolves the folder path (expanding `~`) to an absolute [`PathBuf`].
 fn resolve_folder_path(folder: &str) -> PathBuf {
     if folder.starts_with('~') {
-        dirs::home_dir()
-            .map(|home| home.join(&folder[2..]))
-            .unwrap_or_else(|| PathBuf::from(folder))
+        dirs::home_dir().map_or_else(|| PathBuf::from(folder), |home| home.join(&folder[2..]))
     } else {
         PathBuf::from(folder)
     }
@@ -417,7 +411,7 @@ impl CommandHandlerTrait for BrowseScreenshotsHandler {
         let screenshots = scan_screenshots_cached(&folder, &self.scan_cache);
 
         // Filter by query if provided
-        let query = args.query.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let query = args.query.as_ref().map(photoncast_extension_api::RString::as_str).unwrap_or("");
         let query_lower = query.to_lowercase();
 
         let filtered: Vec<&Screenshot> = if query.is_empty() {

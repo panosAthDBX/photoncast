@@ -997,15 +997,15 @@ mod tests {
 
     #[test]
     fn test_escape_predicate_string_special_chars() {
-        assert_eq!(escape_predicate_string(r#"file*.txt"#), r#"file\*.txt"#);
-        assert_eq!(escape_predicate_string(r#"what?"#), r#"what\?"#);
+        assert_eq!(escape_predicate_string(r"file*.txt"), r"file\*.txt");
+        assert_eq!(escape_predicate_string(r"what?"), r"what\?");
         assert_eq!(
             escape_predicate_string(r#"say "hello""#),
             r#"say \"hello\""#
         );
         assert_eq!(
-            escape_predicate_string(r#"path\to\file"#),
-            r#"path\\to\\file"#
+            escape_predicate_string(r"path\to\file"),
+            r"path\\to\\file"
         );
     }
 
@@ -1064,10 +1064,10 @@ mod tests {
     #[test]
     fn test_system_time_to_timestamp() {
         let epoch = UNIX_EPOCH;
-        assert_eq!(system_time_to_timestamp(epoch), 0.0);
+        assert!((system_time_to_timestamp(epoch) - 0.0).abs() < f64::EPSILON);
 
         let one_day_later = epoch + Duration::from_secs(86400);
-        assert_eq!(system_time_to_timestamp(one_day_later), 86400.0);
+        assert!((system_time_to_timestamp(one_day_later) - 86400.0).abs() < f64::EPSILON);
     }
 
     // Integration tests that require macOS runtime
@@ -1148,7 +1148,7 @@ mod tests {
             // Should contain the modification date metadata key
             assert!(format.contains("kMDItemFSContentChangeDate"));
             // Should use comparison operator
-            assert!(format.contains(">"));
+            assert!(format.contains('>'));
         }
 
         #[test]
@@ -1163,7 +1163,7 @@ mod tests {
             // Should contain the modification date metadata key
             assert!(format.contains("kMDItemFSContentChangeDate"));
             // Should use comparison operator
-            assert!(format.contains("<"));
+            assert!(format.contains('<'));
         }
 
         #[test]
@@ -1183,8 +1183,8 @@ mod tests {
             // Should be a compound predicate with both conditions
             assert!(format.contains("kMDItemFSContentChangeDate"));
             // Should have both comparison operators (combined with AND)
-            assert!(format.contains(">"));
-            assert!(format.contains("<"));
+            assert!(format.contains('>'));
+            assert!(format.contains('<'));
         }
 
         #[test]
@@ -1209,7 +1209,7 @@ mod tests {
         fn test_predicate_with_special_characters() {
             // Test that special characters are properly escaped
             let predicate = PredicateBuilder::new()
-                .name_contains(r#"test*file?.txt"#)
+                .name_contains(r"test*file?.txt")
                 .build();
             // Should build without crashing
             let format = predicate.predicateFormat().to_string();

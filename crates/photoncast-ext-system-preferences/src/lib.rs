@@ -256,7 +256,7 @@ struct OpenSettingsHandler;
 impl CommandHandlerTrait for OpenSettingsHandler {
     fn handle(&self, ctx: ExtensionContext, args: CommandArguments) -> ExtensionApiResult<()> {
         // Filter panes based on query
-        let query = args.query.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let query = args.query.as_ref().map(photoncast_extension_api::RString::as_str).unwrap_or("");
 
         let filtered_panes: Vec<&SettingsPane> = if query.is_empty() {
             SETTINGS_PANES.iter().collect()

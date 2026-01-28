@@ -1137,8 +1137,7 @@ mod tests {
         let status = index.status();
         assert!(
             status == LiveIndexStatus::Gathering || status == LiveIndexStatus::Live,
-            "Expected Gathering or Live, got {:?}",
-            status
+            "Expected Gathering or Live, got {status:?}"
         );
 
         // Stop the index
@@ -1165,13 +1164,11 @@ mod tests {
                 for (i, r) in results.iter().take(5).enumerate() {
                     println!("  {}: {:?}", i, r.path);
                 }
-                assert!(
-                    results.len() > 0 || true,
-                    "May be empty in some environments"
-                );
+                // May be empty in some environments, that's OK
+                let _ = results;
             },
             Err(e) => {
-                println!("any_file() predicate failed: {}", e);
+                println!("any_file() predicate failed: {e}");
             },
         }
     }
@@ -1189,7 +1186,7 @@ mod tests {
 
         let file_count = index.file_count();
         let status = index.status();
-        println!("Live index status: {:?}, files: {}", status, file_count);
+        println!("Live index status: {status:?}, files: {file_count}");
 
         // Test search (may be empty if no files indexed)
         if index.is_ready() {
@@ -1223,7 +1220,7 @@ mod tests {
         }
 
         let initial_count = index.file_count();
-        println!("Initial file count: {}", initial_count);
+        println!("Initial file count: {initial_count}");
 
         // Create a test file in Desktop
         let test_file =
@@ -1236,7 +1233,7 @@ mod tests {
                 .expect("Failed to write test file");
             drop(file);
 
-            println!("Created test file: {:?}", path);
+            println!("Created test file: {path:?}");
 
             // Wait for Spotlight to notice (may take a few seconds)
             std::thread::sleep(Duration::from_secs(3));

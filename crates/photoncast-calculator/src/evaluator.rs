@@ -9,19 +9,18 @@ use evalexpr::{
     build_operator_tree, ContextWithMutableFunctions, ContextWithMutableVariables, EvalexprError,
     HashMapContext, Value,
 };
-use once_cell::sync::Lazy;
 use tracing::debug;
 
 use crate::error::{CalculatorError, Result};
 
 /// Pre-compiled regex patterns for expression preprocessing.
-static IMPLICIT_MULT_PATTERN: Lazy<regex::Regex> = Lazy::new(|| {
+static IMPLICIT_MULT_PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     // Match number followed by letter (implicit multiplication)
     // e.g., "2pi" -> "2*pi", "3x" -> "3*x"
     regex::Regex::new(r"(\d)([a-zA-Z])").unwrap()
 });
 
-static PAREN_MULT_PATTERN: Lazy<regex::Regex> = Lazy::new(|| {
+static PAREN_MULT_PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     // Match number followed by opening paren or closing paren followed by number/letter
     // e.g., "2(3+4)" -> "2*(3+4)", "(3+4)2" -> "(3+4)*2"
     regex::Regex::new(r"(\d)\(|\)(\d)|(\))(\()").unwrap()

@@ -95,7 +95,7 @@ pub fn verify_code_signature_identity(
             let trimmed = line.trim();
             trimmed
                 .strip_prefix("TeamIdentifier=")
-                .map(|value| value.trim())
+                .map(str::trim)
         })
         .ok_or_else(|| {
             CodeSignatureError::IdentityVerificationFailed(format!(
@@ -111,7 +111,7 @@ pub fn verify_code_signature_identity(
         )));
     }
 
-    if !allowed_team_ids.iter().any(|allowed| *allowed == team_id) {
+    if !allowed_team_ids.contains(&team_id) {
         return Err(CodeSignatureError::UntrustedTeamIdentifier {
             team_id: team_id.to_string(),
             path: path.display().to_string(),

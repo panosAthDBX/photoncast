@@ -1,3 +1,5 @@
+//! Sleep timer settings section.
+
 use super::*;
 
 impl PreferencesWindow {

@@ -23,7 +23,7 @@ disallowed-names = ["foo", "bar", "baz", "quux", "temp", "tmp"]
 doc-valid-idents = ["PhotonCast", "macOS", "GPUI", "NSWorkspace", "NSMetadataQuery", "Catppuccin"]
 
 # MSRV for lint suggestions
-msrv = "1.75"
+msrv = "1.80"
 
 # Arithmetic side effects - allow for now
 arithmetic-side-effects-allowed = []

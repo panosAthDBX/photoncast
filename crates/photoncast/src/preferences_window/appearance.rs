@@ -1,3 +1,5 @@
+//! Appearance settings section (theme, accent color, auto dark mode).
+
 use super::*;
 
 impl PreferencesWindow {

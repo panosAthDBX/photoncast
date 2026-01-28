@@ -1,3 +1,5 @@
+//! Keyboard shortcuts settings section.
+
 use super::*;
 
 impl PreferencesWindow {

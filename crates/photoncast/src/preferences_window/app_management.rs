@@ -1,3 +1,5 @@
+//! App management settings section (auto-quit, uninstaller).
+
 use super::*;
 
 impl PreferencesWindow {

@@ -28,6 +28,7 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
+#![allow(clippy::unsafe_derive_deserialize)]
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::uninlined_format_args)]

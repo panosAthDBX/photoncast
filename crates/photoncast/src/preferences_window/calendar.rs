@@ -1,3 +1,5 @@
+//! Calendar integration settings section.
+
 use super::*;
 
 impl PreferencesWindow {

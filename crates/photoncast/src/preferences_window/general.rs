@@ -1,3 +1,5 @@
+//! General settings section of the Preferences window.
+
 use super::*;
 
 impl PreferencesWindow {

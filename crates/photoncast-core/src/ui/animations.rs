@@ -123,7 +123,7 @@ pub fn reduce_motion_enabled() -> bool {
 /// # Arguments
 ///
 /// * `override_value` - `Some(true)` to force reduce motion on, `Some(false)` to force off,
-///                      `None` to follow system setting.
+///   `None` to follow system setting.
 ///
 /// # Example
 ///
@@ -280,6 +280,7 @@ pub fn lerp_color(
 
 /// Animation state for window transitions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum WindowAnimationState {
     /// Window is appearing (animating in).
     Appearing,
@@ -288,19 +289,17 @@ pub enum WindowAnimationState {
     /// Window is dismissing (animating out).
     Dismissing,
     /// Window is hidden (not visible).
+    #[default]
     Hidden,
 }
 
-impl Default for WindowAnimationState {
-    fn default() -> Self {
-        Self::Hidden
-    }
-}
 
 /// Animation state for item selection/hover.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum ItemAnimationState {
     /// Item is in normal state.
+    #[default]
     Normal,
     /// Item is transitioning to hovered state.
     HoverIn,
@@ -316,11 +315,6 @@ pub enum ItemAnimationState {
     SelectOut,
 }
 
-impl Default for ItemAnimationState {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 #[cfg(test)]
 mod tests {

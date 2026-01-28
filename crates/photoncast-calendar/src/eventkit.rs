@@ -116,7 +116,7 @@ impl EventKitManager {
         unsafe {
             store.requestAccessToEntityType_completion(
                 EKEntityType::Event,
-                std::ptr::from_ref(&*handler).cast_mut(),
+                std::ptr::addr_of!(*handler) as *mut _,
             );
         };
 

@@ -657,7 +657,7 @@ fn test_performance_vs_mdfind_cli() {
 fn test_performance_cache_speedup() {
     let service = SpotlightSearchService::new();
 
-    let options_no_cache = SpotlightSearchOptions {
+    let _options_no_cache = SpotlightSearchOptions {
         max_results: 10,
         timeout: Duration::from_secs(2),
         primary_scopes: vec![PathBuf::from("/Applications")],

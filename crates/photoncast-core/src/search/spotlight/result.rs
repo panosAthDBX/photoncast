@@ -572,26 +572,26 @@ mod tests {
     #[test]
     fn test_nsdate_to_system_time_positive() {
         // Test a known timestamp: 2024-01-01 00:00:00 UTC = 1704067200
-        let timestamp = 1704067200.0;
+        let timestamp = 1_704_067_200.0;
         let system_time = nsdate_to_system_time(timestamp);
 
         assert!(system_time.is_some());
         let st = system_time.unwrap();
         let duration = st.duration_since(UNIX_EPOCH).unwrap();
-        assert_eq!(duration.as_secs(), 1704067200);
+        assert_eq!(duration.as_secs(), 1_704_067_200);
     }
 
     #[cfg(target_os = "macos")]
     #[test]
     fn test_nsdate_to_system_time_with_fractional() {
-        let timestamp = 1704067200.5;
+        let timestamp = 1_704_067_200.5;
         let system_time = nsdate_to_system_time(timestamp);
 
         assert!(system_time.is_some());
         let st = system_time.unwrap();
         let duration = st.duration_since(UNIX_EPOCH).unwrap();
-        assert_eq!(duration.as_secs(), 1704067200);
-        assert!(duration.subsec_nanos() > 400_000_000); // ~0.5 seconds in nanos
+        assert_eq!(duration.as_secs(), 1_704_067_200);
+        assert!(duration.subsec_nanos() > 400_000_000);
         assert!(duration.subsec_nanos() < 600_000_000);
     }
 

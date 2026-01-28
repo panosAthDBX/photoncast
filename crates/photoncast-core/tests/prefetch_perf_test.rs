@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use photoncast_core::search::spotlight::live_index::{start_live_index, LiveIndexStatus};
 use photoncast_core::search::spotlight::prefetch::{
-    start_background_prefetch_with_service, PrefetchConfig, PrefetchStatus, SpotlightPrefetcher,
+    PrefetchConfig, PrefetchStatus, SpotlightPrefetcher,
 };
 use photoncast_core::search::spotlight::service::{SpotlightSearchOptions, SpotlightSearchService};
 

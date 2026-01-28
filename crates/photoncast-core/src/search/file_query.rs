@@ -911,17 +911,17 @@ mod tests {
         let query = FileQuery::parse("foo*bar");
         let predicate = query.to_spotlight_predicate();
         // The `*` in the term should be escaped as `\*`
-        assert!(predicate.contains("foo\\*bar"), "predicate: {}", predicate);
+        assert!(predicate.contains("foo\\*bar"), "predicate: {predicate}");
 
         let query = FileQuery::parse("what?");
         let predicate = query.to_spotlight_predicate();
         // The `?` should be escaped
-        assert!(predicate.contains("what\\?"), "predicate: {}", predicate);
+        assert!(predicate.contains("what\\?"), "predicate: {predicate}");
 
         let query = FileQuery::parse("path\\to");
         let predicate = query.to_spotlight_predicate();
         // The `\` should be escaped as `\\`
-        assert!(predicate.contains("path\\\\to"), "predicate: {}", predicate);
+        assert!(predicate.contains("path\\\\to"), "predicate: {predicate}");
 
         // Test quote escaping by constructing the query directly
         // (parsing "hello"world" would interpret it as a quoted phrase)
@@ -931,8 +931,7 @@ mod tests {
         // Quotes in the term should be escaped
         assert!(
             predicate.contains("hello\\\"world"),
-            "predicate: {}",
-            predicate
+            "predicate: {predicate}"
         );
     }
 
@@ -993,9 +992,11 @@ mod tests {
 
     #[test]
     fn test_matches_file_with_location() {
-        let mut query = FileQuery::default();
-        query.terms = vec!["report".to_string()];
-        query.location = Some(PathBuf::from("/Users/test/Documents"));
+        let query = FileQuery {
+            terms: vec!["report".to_string()],
+            location: Some(PathBuf::from("/Users/test/Documents")),
+            ..FileQuery::default()
+        };
 
         assert!(query.matches_file(Path::new("/Users/test/Documents/report.pdf"), "report.pdf"));
         assert!(!query.matches_file(Path::new("/Users/test/Desktop/report.pdf"), "report.pdf"));

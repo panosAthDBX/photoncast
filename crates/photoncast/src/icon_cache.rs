@@ -13,10 +13,13 @@ use std::time::Instant;
 
 /// In-memory cache that avoids repeated filesystem `stat` calls for icon paths.
 /// Entries are considered fresh for `ICON_MEMORY_CACHE_TTL` seconds.
-static ICON_MEMORY_CACHE: std::sync::LazyLock<Mutex<HashMap<PathBuf, (Option<PathBuf>, Instant)>>> =
+type IconCacheMap = HashMap<PathBuf, (Option<PathBuf>, Instant)>;
+
+static ICON_MEMORY_CACHE: std::sync::LazyLock<Mutex<IconCacheMap>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 const ICON_MEMORY_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(120);
+const ICON_MEMORY_CACHE_MAX: usize = 500;
 
 /// Returns the icon cache directory path.
 ///
@@ -63,9 +66,22 @@ pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
         None
     };
 
-    // Store in memory cache.
+    // Store in memory cache, evicting oldest entries if over capacity.
     if let Ok(mut cache) = ICON_MEMORY_CACHE.lock() {
         cache.insert(app_path.to_path_buf(), (result.clone(), Instant::now()));
+        if cache.len() > ICON_MEMORY_CACHE_MAX {
+            // Evict expired entries first, then oldest if still over cap
+            cache.retain(|_, (_, ts)| ts.elapsed() < ICON_MEMORY_CACHE_TTL);
+            if cache.len() > ICON_MEMORY_CACHE_MAX {
+                if let Some(oldest_key) = cache
+                    .iter()
+                    .min_by_key(|(_, (_, ts))| *ts)
+                    .map(|(k, _)| k.clone())
+                {
+                    cache.remove(&oldest_key);
+                }
+            }
+        }
     }
 
     result

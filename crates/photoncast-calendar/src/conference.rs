@@ -1,16 +1,15 @@
 //! Conference URL detection.
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 
 /// Conference provider patterns.
-static ZOOM_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"https?://[a-z0-9.-]*zoom\.us/(j/|my/)[a-zA-Z0-9?&=/._-]+").unwrap());
+static ZOOM_PATTERN: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"https?://[a-z0-9.-]*zoom\.us/(j/|my/)[a-zA-Z0-9?&=/._-]+").unwrap());
 
-static GOOGLE_MEET_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"https?://meet\.google\.com/[a-z-]+").unwrap());
+static GOOGLE_MEET_PATTERN: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"https?://meet\.google\.com/[a-z-]+").unwrap());
 
-static TEAMS_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static TEAMS_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"https?://teams\.microsoft\.com/l/meetup-join/[a-zA-Z0-9?&=/._%-]+").unwrap()
 });
 

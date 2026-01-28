@@ -751,10 +751,9 @@ mod tests {
         IndexedApp {
             name: name.to_string(),
             bundle_id: AppBundleId::new(bundle_id),
-            path: PathBuf::from(format!("/Applications/{}.app", name)),
+            path: PathBuf::from(format!("/Applications/{name}.app")),
             icon_path: Some(PathBuf::from(format!(
-                "/Applications/{}.app/Contents/Resources/icon.icns",
-                name
+                "/Applications/{name}.app/Contents/Resources/icon.icns"
             ))),
             keywords: vec!["test".to_string(), name.to_lowercase()],
             category: Some(AppCategory::Productivity),
@@ -1027,7 +1026,7 @@ mod tests {
         for i in 0..10 {
             let db = Arc::clone(&db);
             handles.push(thread::spawn(move || {
-                let app = create_test_app(&format!("App{}", i), &format!("com.test.App{}", i));
+                let app = create_test_app(&format!("App{i}"), &format!("com.test.App{i}"));
                 db.insert_app(&app).expect("should insert app");
             }));
         }

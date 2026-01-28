@@ -449,7 +449,7 @@ mod tests {
             .expect("should create");
 
         // Search again (should still use cached data)
-        let results2 = provider.search("new", 10);
+        let _results2 = provider.search("new", 10);
         // May or may not find "new" depending on cache state
 
         // Invalidate and search again

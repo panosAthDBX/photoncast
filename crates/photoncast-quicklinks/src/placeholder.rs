@@ -45,7 +45,6 @@
 //! ```
 
 use chrono::{Datelike, Duration, Local};
-use once_cell::sync::Lazy;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use regex::Regex;
 use std::collections::HashMap;
@@ -143,6 +142,7 @@ impl Modifier {
     }
 
     /// Apply this modifier to a value.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     fn apply(&self, value: &str) -> String {
         match self {
             Self::Uppercase => value.to_uppercase(),
@@ -172,14 +172,13 @@ pub struct DateOffset {
 impl DateOffset {
     /// Parse a date offset string like "+2d", "-1M", "+3h30m".
     pub fn parse(s: &str) -> Result<Self> {
+        static OFFSET_RE: std::sync::LazyLock<Regex> =
+            std::sync::LazyLock::new(|| Regex::new(r"([+-]?\d+)([mhdMy])").expect("Invalid offset regex"));
+
         let s = s.trim();
         if s.is_empty() {
             return Ok(Self::default());
         }
-
-        // Regex to match offset components: (+/-)number(unit)
-        static OFFSET_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"([+-]?\d+)([mhdMy])").expect("Invalid offset regex"));
 
         let mut offset = Self::default();
         let mut found_any = false;
@@ -271,25 +270,25 @@ pub struct ArgumentInfo {
 }
 
 // Regex patterns for parsing
-static PLACEHOLDER_RE: Lazy<Regex> = Lazy::new(|| {
+static PLACEHOLDER_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     // Matches: {kind ...} or {kind | modifier | ...}
     Regex::new(r"\{([a-zA-Z]+)([^}]*)\}").expect("Invalid placeholder regex")
 });
 
-static ATTR_NAME_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"name\s*=\s*"([^"]*)""#).expect("Invalid name attr regex"));
+static ATTR_NAME_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r#"name\s*=\s*"([^"]*)""#).expect("Invalid name attr regex"));
 
-static ATTR_DEFAULT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"default\s*=\s*"([^"]*)""#).expect("Invalid default attr regex"));
+static ATTR_DEFAULT_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r#"default\s*=\s*"([^"]*)""#).expect("Invalid default attr regex"));
 
-static ATTR_OPTIONS_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"options\s*=\s*"([^"]*)""#).expect("Invalid options attr regex"));
+static ATTR_OPTIONS_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r#"options\s*=\s*"([^"]*)""#).expect("Invalid options attr regex"));
 
-static ATTR_FORMAT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"format\s*=\s*"([^"]*)""#).expect("Invalid format attr regex"));
+static ATTR_FORMAT_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r#"format\s*=\s*"([^"]*)""#).expect("Invalid format attr regex"));
 
-static ATTR_OFFSET_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"offset\s*=\s*"([^"]*)""#).expect("Invalid offset attr regex"));
+static ATTR_OFFSET_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r#"offset\s*=\s*"([^"]*)""#).expect("Invalid offset attr regex"));
 
 /// Parse all placeholders from a link string.
 ///
@@ -433,6 +432,7 @@ pub fn extract_required_arguments(link: &str) -> Vec<ArgumentInfo> {
 /// - All substitutions are auto percent-encoded by default
 /// - The `raw` modifier disables encoding
 /// - Modifiers are applied in order: trim first, then case change, then encode
+#[allow(clippy::implicit_hasher)]
 pub fn substitute_placeholders(
     link: &str,
     arguments: &HashMap<String, String>,
@@ -606,6 +606,7 @@ fn apply_offset(
 
     // Apply month offset (more complex due to varying month lengths)
     if offset.months != 0 {
+        #[allow(clippy::cast_possible_wrap)]
         let total_months = result.month0() as i32 + offset.months;
         let years_adjust = total_months.div_euclid(12);
         let new_month = total_months.rem_euclid(12) as u32 + 1;
@@ -643,7 +644,6 @@ fn apply_offset(
 fn days_in_month(year: i32, month: u32) -> u32 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
         2 => {
             if is_leap_year(year) {
                 29
@@ -651,7 +651,7 @@ fn days_in_month(year: i32, month: u32) -> u32 {
                 28
             }
         },
-        _ => 30, // Fallback
+        _ => 30,
     }
 }
 
@@ -680,7 +680,7 @@ pub fn requires_user_input(link: &str) -> bool {
 pub fn substitute_argument(link: &str, argument: &str) -> String {
     // Use regex to replace {argument}, {query}, and {argument name="..."} patterns
     // {query} is supported for backward compatibility
-    static ARG_RE: Lazy<Regex> = Lazy::new(|| {
+    static ARG_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
         Regex::new(r"\{(?:argument|query)(?:\s+[^}]*)?\}").expect("Invalid argument regex")
     });
 

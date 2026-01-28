@@ -303,6 +303,7 @@ impl LauncherSharedState {
                 .expect("Critical: cannot create any tokio runtime for calculator")
         }));
         let timer_db_path = photoncast_core::utils::paths::data_dir().join("timer.db");
+        #[allow(clippy::arc_with_non_send_sync)]
         let timer_manager = Arc::new(tokio::sync::RwLock::new({
             // Try primary path first, then fallback to /tmp
             let rt = tokio::runtime::Runtime::new()

@@ -182,7 +182,7 @@ impl ResultsList {
     /// Gets the currently selected result.
     #[must_use]
     pub fn selected(&self) -> Option<&SearchResult> {
-        self.flat_results.get(self.selected_index).map(|arc| arc.as_ref())
+        self.flat_results.get(self.selected_index).map(std::convert::AsRef::as_ref)
     }
 
     /// Returns true if the list is empty.
@@ -229,6 +229,7 @@ impl ResultsList {
     }
 
     /// Calculates the total content height including group headers.
+    #[allow(clippy::cast_precision_loss)]
     fn total_content_height(&self) -> f32 {
         let item_height = self.flat_results.len() as f32 * RESULT_ITEM_HEIGHT.0;
         let header_height = self.grouped_results.len() as f32 * GROUP_HEADER_HEIGHT.0;
@@ -252,6 +253,7 @@ impl ResultsList {
     }
 
     /// Calculates the y position of an item at the given flat index.
+    #[allow(clippy::cast_precision_loss)]
     fn calculate_item_y_position(&self, flat_index: usize) -> f32 {
         if self.grouped_results.is_empty() {
             return flat_index as f32 * RESULT_ITEM_HEIGHT.0;
