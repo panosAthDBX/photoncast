@@ -21,6 +21,8 @@ pub struct ExtensionCache {
 struct CacheEntry {
     value: serde_json::Value,
     expires_at: Option<Instant>,
+    /// Tracks whether entry has been persisted to disk.
+    #[allow(dead_code)]
     persisted: bool,
 }
 

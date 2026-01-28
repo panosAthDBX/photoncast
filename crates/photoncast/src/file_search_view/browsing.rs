@@ -210,6 +210,7 @@ impl FileSearchView {
     }
 
     /// Gets the selected browse entry (for browsing mode).
+    #[allow(dead_code)] // Reserved for future browsing mode features
     pub fn selected_browse_entry(&self) -> Option<&DirectoryEntry> {
         if self.section_mode == SectionMode::Browsing {
             // Find the original entry that matches the selected result

@@ -166,9 +166,7 @@ impl SearchProvider for OptimizedAppProvider {
             let combined_a = frecency_a.mul_add(10.0, f64::from(a.1));
             let combined_b = frecency_b.mul_add(10.0, f64::from(b.1));
 
-            combined_b
-                .partial_cmp(&combined_a)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            combined_b.total_cmp(&combined_a)
         });
 
         // Take top results and convert to SearchResult

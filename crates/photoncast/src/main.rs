@@ -4,27 +4,15 @@
 //! It initializes GPUI, creates the launcher window, and runs the event loop.
 
 // Clippy configuration for binary crate
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::missing_panics_doc)]
-#![allow(clippy::must_use_candidate)]
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::wildcard_imports)]
-#![allow(clippy::single_match_else)]
-#![allow(clippy::cast_possible_truncation)]
-#![allow(clippy::cast_sign_loss)]
-#![allow(clippy::cast_precision_loss)]
-#![allow(clippy::significant_drop_tightening)]
-#![allow(clippy::redundant_closure_for_method_calls)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::option_map_or_none)]
-#![allow(clippy::let_unit_value)]
-#![allow(clippy::manual_filter_map)]
-#![allow(clippy::unit_arg)]
-#![allow(clippy::option_if_let_else)]
-#![allow(clippy::redundant_closure)]
-#![allow(clippy::unnecessary_filter_map)]
-#![allow(clippy::derive_partial_eq_without_eq)]
-#![allow(clippy::unsafe_derive_deserialize)]
+// Kept: pragmatic suppressions for GPUI-heavy codebase
+#![allow(clippy::missing_errors_doc)] // Docs will be added incrementally
+#![allow(clippy::missing_panics_doc)] // Docs will be added incrementally
+#![allow(clippy::must_use_candidate)] // Too noisy for builder-pattern-heavy GPUI code
+#![allow(clippy::module_name_repetitions)] // Rust naming convention (e.g., LauncherState in launcher mod)
+#![allow(clippy::too_many_lines)] // GPUI render functions are inherently long
+#![allow(clippy::cast_possible_truncation)] // Frequent in GPUI pixel math (f64 -> f32, etc.)
+#![allow(clippy::cast_sign_loss)] // Frequent in GPUI pixel math
+#![allow(clippy::cast_precision_loss)] // Frequent in GPUI pixel math
 
 use std::cell::RefCell;
 use std::sync::mpsc;
@@ -33,11 +21,12 @@ use std::time::Duration;
 
 use gpui::*;
 use parking_lot::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod app_events;
 mod constants;
+mod event_loop;
 mod extension_views;
 mod file_search_helper;
 mod file_search_view;
@@ -321,34 +310,19 @@ fn main() {
         }
 
         // Create initial launcher window
-        let launcher_state = LauncherSharedState::new();
+        let launcher_state = LauncherSharedState::new(Arc::clone(&shared_runtime));
         let window_handle = open_launcher_window(cx, &launcher_state);
 
         // Spawn a task to listen for app events (hotkey, menu bar)
         let clipboard_state_for_events = clipboard_for_window;
         cx.spawn(|mut cx| async move {
-            // Track the current window handle (updated when window is recreated)
-            let mut current_handle: Option<WindowHandle<LauncherWindow>> = window_handle;
-            let launcher_state_for_events = launcher_state.clone();
-            let mut clipboard_handle: Option<WindowHandle<ClipboardHistoryView>> = None;
-            let mut quicklinks_handle: Option<
-                WindowHandle<photoncast_quicklinks::ui::QuickLinksView>,
-            > = None;
-            let mut timer_handle: Option<WindowHandle<photoncast_timer::ui::TimerDisplay>> = None;
-            let mut preferences_handle: Option<WindowHandle<PreferencesWindow>> = None;
-            let mut create_quicklink_handle: Option<WindowHandle<CreateQuicklinkView>> = None;
-            let mut manage_quicklinks_handle: Option<WindowHandle<QuicklinksManageView>> = None;
-
             let quicklinks_storage = photoncast_quicklinks::QuickLinksStorage::open(
                 photoncast_core::utils::paths::data_dir().join("quicklinks.db"),
             )
             .unwrap_or_else(|e| {
-                error!("Failed to open quick links storage: {}", e);
-                photoncast_quicklinks::QuickLinksStorage::open_in_memory().unwrap_or_else(|err| {
-                    error!("Failed to open in-memory quick links storage: {}", err);
-                    photoncast_quicklinks::QuickLinksStorage::open_in_memory()
-                        .expect("failed to open in-memory quick links storage")
-                })
+                error!("Failed to open quick links storage, falling back to in-memory: {}", e);
+                photoncast_quicklinks::QuickLinksStorage::open_in_memory()
+                    .expect("failed to open in-memory quick links storage")
             });
 
             // Populate bundled quicklinks on first use
@@ -359,12 +333,28 @@ fn main() {
             // Use the shared runtime for all async operations (quicklinks, timers, etc.)
             let shared_rt = Arc::clone(&shared_runtime);
 
-            let app_manager =
-                photoncast_apps::AppManager::new(photoncast_apps::AppsConfig::default());
-            let calendar_command = photoncast_calendar::CalendarCommand::with_default_config();
+            // Build the event loop state that holds all window handles and shared resources
+            let mut state = event_loop::EventLoopState {
+                current_handle: window_handle,
+                clipboard_handle: None,
+                quicklinks_handle: None,
+                timer_handle: None,
+                preferences_handle: None,
+                create_quicklink_handle: None,
+                manage_quicklinks_handle: None,
+                launcher_state: launcher_state.clone(),
+                clipboard_state: clipboard_state_for_events,
+                quicklinks_storage,
+                shared_rt: Arc::clone(&shared_rt),
+                app_manager: photoncast_apps::AppManager::new(
+                    photoncast_apps::AppsConfig::default(),
+                ),
+                calendar_command:
+                    photoncast_calendar::CalendarCommand::with_default_config(),
+            };
 
             // Timer polling setup (runs on main thread, executes actions in background)
-            let timer_manager = launcher_state_for_events.timer_manager();
+            let timer_manager = launcher_state.timer_manager();
             let timer_event_tx = event_tx.clone();
             let shared_handle = shared_rt.handle().clone();
             let mut last_timer_check = std::time::Instant::now();
@@ -404,420 +394,12 @@ fn main() {
                     }
                 }
 
-                // Check for app events
+                // Dispatch app events via the extracted handler
                 match event_rx.try_recv() {
-                    Ok(AppEvent::ToggleLauncher) => {
-                        debug!("Toggle launcher requested - capturing frontmost window NOW");
-
-                        // Capture frontmost app AND window BEFORE Photoncast becomes active
-                        // This is used for window management commands to target the correct window
-                        let (previous_app, previous_window_title) = get_frontmost_window_info();
-                        tracing::debug!(
-                            "Captured frontmost: app={:?}, window={:?}",
-                            previous_app,
-                            previous_window_title
-                        );
-
-                        // Try to activate existing window or create new one
-                        let _ = cx.update(|cx| {
-                            // Try to update existing window
-                            let window_exists = current_handle.as_ref().is_some_and(|h| {
-                                h.update(cx, |view, cx| {
-                                    view.set_previous_frontmost_window(
-                                        previous_app.clone(),
-                                        previous_window_title.clone(),
-                                    );
-                                    view.toggle(cx);
-                                    // For PopUp windows, don't activate the app or window
-                                    // Just focus the view - this prevents media from pausing
-                                    cx.focus_self();
-                                })
-                                .is_ok()
-                            });
-
-                            if !window_exists {
-                                // Window was closed, open a new one
-                                current_handle =
-                                    open_launcher_window(cx, &launcher_state_for_events);
-
-                                // Set the captured frontmost window on the new window
-                                if let Some(ref h) = current_handle {
-                                    let _ = h.update(cx, |view, _cx| {
-                                        view.set_previous_frontmost_window(
-                                            previous_app.clone(),
-                                            previous_window_title.clone(),
-                                        );
-                                    });
-                                }
-                            }
-                        });
-                    },
-                    Ok(AppEvent::OpenPreferences) => {
-                        info!("Open preferences requested");
-                        let _ = cx.update(|cx| {
-                            if let Some(ref h) = preferences_handle {
-                                if h.update(cx, |_, cx| {
-                                    cx.activate(true);
-                                    cx.activate_window();
-                                })
-                                .is_err()
-                                {
-                                    preferences_handle = None;
-                                }
-                            }
-
-                            if preferences_handle.is_none() {
-                                let app = launcher_state_for_events.photoncast_app();
-                                if let Some(handle) = open_preferences_window(cx, Some(app)) {
-                                    let _ = handle.update(cx, |_, cx| {
-                                        cx.activate(true);
-                                        cx.activate_window();
-                                    });
-                                    preferences_handle = Some(handle);
-                                }
-                            }
-                        });
-                    },
-                    Ok(AppEvent::OpenClipboardHistory) => {
-                        info!("Open clipboard history requested");
-                        let mut activated = false;
-                        if let Some(ref h) = clipboard_handle {
-                            if h.update(&mut cx, |view, cx| {
-                                view.refresh(cx);
-                                cx.activate(true);
-                                cx.activate_window();
-                                cx.focus_self();
-                            })
-                            .is_ok()
-                            {
-                                activated = true;
-                            } else {
-                                clipboard_handle = None;
-                            }
+                    Ok(event) => {
+                        if !state.handle_event(event, &mut cx) {
+                            break;
                         }
-
-                        if !activated {
-                            if let Some(ref clipboard_state) = clipboard_state_for_events {
-                                let state = clipboard_state.clone();
-                                let _ = cx.update(|cx| {
-                                    if let Some(handle) = open_clipboard_window(cx, &state) {
-                                        let _ = handle.update(cx, |view, cx| {
-                                            view.refresh(cx);
-                                            cx.activate(true);
-                                            cx.activate_window();
-                                            cx.focus_self();
-                                        });
-                                        clipboard_handle = Some(handle);
-                                    }
-                                });
-                            } else {
-                                warn!("Clipboard not available");
-                            }
-                        }
-                    },
-                    Ok(AppEvent::OpenQuickLinks) => {
-                        info!("Open quick links requested");
-                        let mut activated = false;
-                        if let Some(ref h) = quicklinks_handle {
-                            if h.update(&mut cx, |view, cx| {
-                                let links = shared_rt
-                                    .block_on(quicklinks_storage.load_all())
-                                    .unwrap_or_default();
-                                view.set_links(links, cx);
-                                cx.activate(true);
-                                cx.activate_window();
-                            })
-                            .is_ok()
-                            {
-                                activated = true;
-                            } else {
-                                quicklinks_handle = None;
-                            }
-                        }
-
-                        if !activated {
-                            let storage = quicklinks_storage.clone();
-                            let runtime = shared_rt.handle().clone();
-                            let _ = cx.update(|cx| {
-                                if let Some(handle) = open_quicklinks_window(cx) {
-                                    let _ = handle.update(cx, |view, cx| {
-                                        let links = runtime
-                                            .block_on(storage.load_all())
-                                            .unwrap_or_default();
-                                        view.set_links(links, cx);
-                                        cx.activate(true);
-                                        cx.activate_window();
-                                    });
-                                    quicklinks_handle = Some(handle);
-                                }
-                            });
-                        }
-                    },
-                    Ok(AppEvent::OpenCalendar { command_id }) => {
-                        info!("Open calendar requested: {}", command_id);
-                        let (title, result) = match command_id.as_str() {
-                            "calendar_today" => {
-                                ("Today's Events", calendar_command.fetch_today_events())
-                            },
-                            "calendar_week" => ("This Week", calendar_command.fetch_week_events()),
-                            "calendar_upcoming" => {
-                                ("My Schedule", calendar_command.fetch_upcoming_events(7))
-                            },
-                            other => {
-                                warn!("Unknown calendar command: {}", other);
-                                ("My Schedule", calendar_command.fetch_upcoming_events(7))
-                            },
-                        };
-
-                        match result {
-                            Ok(events) => {
-                                info!("Calendar fetch returned {} events", events.len());
-                                let title = title.to_string();
-                                let events = events.clone();
-                                let _ = cx.update(|cx| {
-                                    if let Some(ref h) = current_handle {
-                                        let _ = h.update(cx, |view, cx| {
-                                            view.show_calendar(title, events, cx);
-                                            cx.activate(true);
-                                            cx.activate_window();
-                                            cx.focus_self();
-                                        });
-                                    } else {
-                                        current_handle =
-                                            open_launcher_window(cx, &launcher_state_for_events);
-                                    }
-                                });
-                            },
-                            Err(err) => {
-                                warn!("Calendar fetch failed: {}", err);
-                                let title = title.to_string();
-                                let error = err.to_string();
-                                let _ = cx.update(|cx| {
-                                    if let Some(ref h) = current_handle {
-                                        let _ = h.update(cx, |view, cx| {
-                                            view.show_calendar_error(title, error, cx);
-                                            cx.activate(true);
-                                            cx.activate_window();
-                                            cx.focus_self();
-                                        });
-                                    } else {
-                                        current_handle =
-                                            open_launcher_window(cx, &launcher_state_for_events);
-                                    }
-                                });
-                            },
-                        }
-                    },
-                    Ok(AppEvent::OpenSleepTimer { expression }) => {
-                        info!("Open sleep timer requested: {}", expression);
-                        let mut activated = false;
-                        if let Some(ref h) = timer_handle {
-                            if h.update(&mut cx, |view, cx| {
-                                view.set_timer(None, cx);
-                                cx.activate(true);
-                                cx.activate_window();
-                            })
-                            .is_ok()
-                            {
-                                activated = true;
-                            } else {
-                                timer_handle = None;
-                            }
-                        }
-
-                        if !activated {
-                            let _ = cx.update(|cx| {
-                                if let Some(handle) = open_timer_window(cx) {
-                                    let _ = handle.update(cx, |view, cx| {
-                                        view.set_timer(None, cx);
-                                        cx.activate(true);
-                                        cx.activate_window();
-                                    });
-                                    timer_handle = Some(handle);
-                                }
-                            });
-                        }
-                    },
-                    Ok(AppEvent::OpenApps { command_id }) => {
-                        info!("Open apps management requested: {}", command_id);
-                        if let Err(e) = app_manager.get_running_apps() {
-                            warn!("Apps management failed: {}", e);
-                        }
-                    },
-                    Ok(AppEvent::CreateQuicklink) => {
-                        info!("Create quicklink requested");
-                        let _ = cx.update(|cx| {
-                            // Try to activate existing window
-                            if let Some(ref h) = create_quicklink_handle {
-                                if h.update(cx, |_: &mut CreateQuicklinkView, cx: &mut ViewContext<CreateQuicklinkView>| {
-                                    cx.activate(true);
-                                    cx.activate_window();
-                                })
-                                .is_err()
-                                {
-                                    create_quicklink_handle = None;
-                                }
-                            }
-
-                            // Create new window if needed
-                            if create_quicklink_handle.is_none() {
-                                if let Some(handle) = open_create_quicklink_window(
-                                    cx,
-                                    quicklinks_storage.clone(),
-                                    shared_rt.handle().clone(),
-                                    &launcher_state_for_events,
-                                ) {
-                                    let _ = handle.update(cx, |_: &mut CreateQuicklinkView, cx: &mut ViewContext<CreateQuicklinkView>| {
-                                        cx.activate(true);
-                                        cx.activate_window();
-                                    });
-                                    create_quicklink_handle = Some(handle);
-                                }
-                            }
-                        });
-                    },
-                    Ok(AppEvent::ManageQuicklinks) => {
-                        info!("Manage quicklinks requested");
-                        let _ = cx.update(|cx| {
-                            // Try to activate existing window
-                            if let Some(ref h) = manage_quicklinks_handle {
-                                if h.update(cx, |view, cx| {
-                                    // Load fresh quicklinks data
-                                    let links = shared_rt
-                                        .block_on(quicklinks_storage.load_all())
-                                        .unwrap_or_default();
-                                    view.set_quicklinks(links, cx);
-                                    cx.activate(true);
-                                    cx.activate_window();
-                                })
-                                .is_err()
-                                {
-                                    manage_quicklinks_handle = None;
-                                }
-                            }
-
-                            // Create new window if needed
-                            if manage_quicklinks_handle.is_none() {
-                                if let Some(handle) = open_manage_quicklinks_window(
-                                    cx,
-                                    quicklinks_storage.clone(),
-                                    &shared_rt,
-                                    false,
-                                    &launcher_state_for_events,
-                                ) {
-                                    let _ = handle.update(cx, |_, cx| {
-                                        cx.activate(true);
-                                        cx.activate_window();
-                                    });
-                                    manage_quicklinks_handle = Some(handle);
-                                }
-                            }
-                        });
-                    },
-                    Ok(AppEvent::BrowseQuicklinkLibrary) => {
-                        info!("Browse quicklink library requested");
-                        let _ = cx.update(|cx| {
-                            // Try to activate existing window
-                            if let Some(ref h) = manage_quicklinks_handle {
-                                if h.update(cx, |view, cx| {
-                                    // Load fresh quicklinks data
-                                    let links = shared_rt
-                                        .block_on(quicklinks_storage.load_all())
-                                        .unwrap_or_default();
-                                    view.set_quicklinks(links, cx);
-                                    // Make sure library is showing
-                                    if !view.is_showing_library() {
-                                        view.toggle_library(cx);
-                                    }
-                                    cx.activate(true);
-                                    cx.activate_window();
-                                })
-                                .is_err()
-                                {
-                                    manage_quicklinks_handle = None;
-                                }
-                            }
-
-                            // Create new window if needed
-                            if manage_quicklinks_handle.is_none() {
-                                if let Some(handle) = open_manage_quicklinks_window(
-                                    cx,
-                                    quicklinks_storage.clone(),
-                                    &shared_rt,
-                                    true, // show_library
-                                    &launcher_state_for_events,
-                                ) {
-                                    let _ = handle.update(cx, |_, cx| {
-                                        cx.activate(true);
-                                        cx.activate_window();
-                                    });
-                                    manage_quicklinks_handle = Some(handle);
-                                }
-                            }
-                        });
-                    },
-                    Ok(AppEvent::ExecuteQuickLink {
-                        id,
-                        url_template,
-                        arguments,
-                    }) => {
-                        // Substitute arguments if provided
-                        let final_url = if !arguments.is_empty() {
-                            photoncast_quicklinks::placeholder::substitute_argument(
-                                &url_template,
-                                &arguments,
-                            )
-                        } else {
-                            url_template.clone()
-                        };
-
-                        // Check if URL still requires user input
-                        if photoncast_quicklinks::placeholder::requires_user_input(&final_url) {
-                            // Load quicklink and open argument input UI
-                            let storage = quicklinks_storage.clone();
-                            let _ = cx.update(|cx| {
-                                if let Ok(links) = shared_rt.block_on(storage.load_all()) {
-                                    if let Some(link) =
-                                        links.into_iter().find(|l| l.id.as_str() == id)
-                                    {
-                                        if let Some(handle) = open_argument_input_window(cx, link) {
-                                            let _ = handle.update(cx, |_, cx| {
-                                                cx.activate(true);
-                                                cx.activate_window();
-                                            });
-                                        }
-                                    }
-                                }
-                            });
-                        } else {
-                            info!("Execute quicklink: {}", final_url);
-                            if let Err(e) = photoncast_core::platform::launch::open_url(&final_url)
-                            {
-                                error!("Failed to open quicklink URL: {}", e);
-                            }
-                        }
-                    },
-                    Ok(AppEvent::QuitApp) => {
-                        info!("Quit requested from menu bar");
-                        let _ = cx.update(|cx| {
-                            cx.quit();
-                        });
-                        break;
-                    },
-                    Ok(AppEvent::TimerExpired { action }) => {
-                        info!("Timer expired, action executed: {}", action);
-                        // Timer action already executed in background thread
-                        // This event is just for logging/UI notification if needed
-                    },
-                    Ok(AppEvent::ExecuteWindowCommand {
-                        command_id,
-                        target_bundle_id,
-                        target_window_title,
-                    }) => {
-                        info!("Window command requested: {}", command_id);
-                        // Execute window command outside of any GPUI window context
-                        // to avoid reentrancy panics when macOS sends windowDidMove notifications
-                        execute_window_command(&command_id, target_bundle_id, target_window_title);
                     },
                     Err(mpsc::TryRecvError::Empty) => {
                         // No event, continue
@@ -1334,7 +916,7 @@ fn open_quicklinks_window(
         },
         |cx| {
             cx.activate(true);
-            cx.new_view(|cx| photoncast_quicklinks::ui::QuickLinksView::new(cx))
+            cx.new_view(photoncast_quicklinks::ui::QuickLinksView::new)
         },
         "Quick links",
     )
@@ -1586,7 +1168,7 @@ fn open_timer_window(
         },
         |cx| {
             cx.activate(true);
-            cx.new_view(|cx| photoncast_timer::ui::TimerDisplay::new(cx))
+            cx.new_view(photoncast_timer::ui::TimerDisplay::new)
         },
         "Timer",
     )

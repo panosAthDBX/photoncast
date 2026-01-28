@@ -8,7 +8,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::time::Instant;
 
 /// In-memory cache that avoids repeated filesystem `stat` calls for icon paths.
@@ -50,7 +50,8 @@ fn cached_icon_filename(app_path: &Path) -> PathBuf {
 /// (hot path during rendering). Falls back to filesystem on cache miss.
 pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
     // Fast path: in-memory lookup.
-    if let Ok(cache) = ICON_MEMORY_CACHE.lock() {
+    {
+        let cache = ICON_MEMORY_CACHE.lock();
         if let Some((result, ts)) = cache.get(app_path) {
             if ts.elapsed() < ICON_MEMORY_CACHE_TTL {
                 return result.clone();
@@ -67,7 +68,8 @@ pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
     };
 
     // Store in memory cache, evicting oldest entries if over capacity.
-    if let Ok(mut cache) = ICON_MEMORY_CACHE.lock() {
+    {
+        let mut cache = ICON_MEMORY_CACHE.lock();
         cache.insert(app_path.to_path_buf(), (result.clone(), Instant::now()));
         if cache.len() > ICON_MEMORY_CACHE_MAX {
             // Evict expired entries first, then oldest if still over cap
@@ -90,9 +92,7 @@ pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
 /// Clears the cached icon for an app (both in-memory and on-disk).
 pub fn clear_icon(app_path: &Path) {
     // Invalidate in-memory entry.
-    if let Ok(mut cache) = ICON_MEMORY_CACHE.lock() {
-        cache.remove(app_path);
-    }
+    ICON_MEMORY_CACHE.lock().remove(app_path);
 
     let cached_path = cached_icon_filename(app_path);
 

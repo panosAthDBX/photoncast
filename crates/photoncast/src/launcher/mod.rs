@@ -11,10 +11,9 @@
 //! - Selection change: 80ms ease-in-out background transition
 //! - Hover highlight: 60ms linear background transition
 
-#![allow(clippy::unreadable_literal)]
-#![allow(clippy::unused_self)]
-#![allow(clippy::suboptimal_flops)]
-#![allow(clippy::struct_excessive_bools)]
+// Note: clippy::unreadable_literal, unused_self, suboptimal_flops, struct_excessive_bools
+// were previously suppressed at module level but removed during cleanup.
+// If clippy flags these, add targeted #[allow(...)] on specific items.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -66,6 +65,10 @@ mod calculator;
 mod calendar;
 mod indexing;
 mod render;
+mod render_actions;
+mod render_calendar;
+mod render_query;
+mod render_results;
 mod search;
 mod uninstall;
 
@@ -259,7 +262,7 @@ pub struct LauncherSharedState {
 
 impl LauncherSharedState {
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(shared_runtime: Arc<tokio::runtime::Runtime>) -> Self {
         // Use persistent database for usage tracking (frecency/recommendations)
         let db_path = photoncast_core::utils::paths::data_dir().join("usage.db");
         let usage_tracker = match Database::open(&db_path) {
@@ -291,32 +294,18 @@ impl LauncherSharedState {
         let app_launcher = Arc::new(AppLauncher::new(usage_tracker));
         let command_executor = Arc::new(CommandExecutor::new());
         let calculator_command = Arc::new(RwLock::new(CalculatorCommand::new()));
-        let calculator_runtime = Arc::new(tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-            tracing::error!(
-                "Failed to create calculator runtime: {}, trying current-thread",
-                e
-            );
-            // Single fallback - current-thread runtime as last resort
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Critical: cannot create any tokio runtime for calculator")
-        }));
+        let calculator_runtime = Arc::clone(&shared_runtime);
         let timer_db_path = photoncast_core::utils::paths::data_dir().join("timer.db");
         #[allow(clippy::arc_with_non_send_sync)]
         let timer_manager = Arc::new(tokio::sync::RwLock::new({
-            // Try primary path first, then fallback to /tmp
-            let rt = tokio::runtime::Runtime::new()
-                .expect("Critical: cannot create tokio runtime for timer");
-
-            rt.block_on(TimerManager::new(timer_db_path.clone()))
+            shared_runtime.block_on(TimerManager::new(timer_db_path.clone()))
                 .unwrap_or_else(|e| {
                     tracing::warn!(
                         "Failed to open timer db at {:?}: {}, using /tmp fallback",
                         timer_db_path,
                         e
                     );
-                    rt.block_on(TimerManager::new(std::path::PathBuf::from(
+                    shared_runtime.block_on(TimerManager::new(std::path::PathBuf::from(
                         "/tmp/photoncast_timer.db",
                     )))
                     .expect("Critical: cannot initialize timer manager even with fallback path")
@@ -1291,10 +1280,5 @@ impl LauncherWindow {
 // Helper Functions (public for testing)
 // ============================================================================
 
-/// Escapes a path string for safe use in `AppleScript`.
-///
-/// This prevents command injection attacks by escaping special characters.
-#[must_use]
-pub fn escape_path_for_applescript(path: &str) -> String {
-    path.replace('\\', "\\\\").replace('"', "\\\"")
-}
+/// Re-export AppleScript escaping from core for backward compatibility.
+pub use photoncast_core::platform::file_actions::escape_applescript_string as escape_path_for_applescript;

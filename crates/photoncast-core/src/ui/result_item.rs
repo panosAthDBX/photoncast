@@ -45,7 +45,8 @@ pub struct ResultItem {
     is_hovered: bool,
     /// Action to perform when activated.
     action: Option<SearchAction>,
-    /// Click handler.
+    /// Click handler (for future UI callback support).
+    #[allow(dead_code)]
     on_click: Option<SharedString>,
 }
 

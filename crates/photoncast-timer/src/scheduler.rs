@@ -114,7 +114,8 @@ impl ActiveTimer {
 pub struct TimerScheduler {
     /// Database connection
     db: Arc<RwLock<Connection>>,
-    /// Database path
+    /// Database path (retained for future diagnostics/reconnection)
+    #[allow(dead_code)]
     db_path: PathBuf,
 }
 

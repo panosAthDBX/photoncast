@@ -3,7 +3,7 @@
 //! This module provides fuzzy search capability over user-defined custom commands,
 //! matching against command names, aliases, and keywords.
 
-use std::sync::RwLock;
+use parking_lot::RwLock;
 
 use crate::custom_commands::{CustomCommand, CustomCommandStore, StoreError};
 use crate::search::providers::SearchProvider;
@@ -65,16 +65,15 @@ impl CustomCommandProvider {
     ///
     /// Call this after adding, updating, or deleting custom commands.
     pub fn invalidate_cache(&self) {
-        if let Ok(mut cache) = self.cache.write() {
-            *cache = None;
-            tracing::debug!("Custom commands cache invalidated");
-        }
+        *self.cache.write() = None;
+        tracing::debug!("Custom commands cache invalidated");
     }
 
     /// Gets custom commands from cache, loading from storage if needed.
     fn get_cached_commands(&self) -> Vec<CustomCommand> {
         // Try to read from cache first
-        if let Ok(cache) = self.cache.read() {
+        {
+            let cache = self.cache.read();
             if let Some(ref commands) = *cache {
                 return commands.clone();
             }
@@ -96,9 +95,7 @@ impl CustomCommandProvider {
         };
 
         // Store in cache
-        if let Ok(mut cache) = self.cache.write() {
-            *cache = Some(commands.clone());
-        }
+        *self.cache.write() = Some(commands.clone());
 
         commands
     }
@@ -284,11 +281,7 @@ impl SearchProvider for CustomCommandProvider {
         }
 
         // Sort by score descending
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
 
         results.truncate(max_results);
         tracing::debug!(count = results.len(), query = %query, "Custom commands search returning");

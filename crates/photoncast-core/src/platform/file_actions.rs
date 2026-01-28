@@ -369,7 +369,7 @@ pub fn validate_filename(name: &str) -> Result<()> {
 /// `test" & do shell script "rm -rf ~" & "`
 /// could execute arbitrary shell commands.
 #[cfg(target_os = "macos")]
-fn escape_applescript_string(s: &str) -> String {
+pub fn escape_applescript_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 

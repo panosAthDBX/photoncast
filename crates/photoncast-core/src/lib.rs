@@ -34,7 +34,6 @@
 #![allow(clippy::await_holding_lock)] // Intentional for async icon loading with cache
 #![allow(clippy::doc_markdown)] // Will fix documentation incrementally
 #![allow(clippy::wildcard_imports)] // Used for prelude-style imports in GPUI
-#![allow(dead_code)] // Expected in placeholder/evolving code
 
 pub mod app;
 pub mod commands;

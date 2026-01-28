@@ -750,8 +750,8 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
     }
 }
 
-/// Handles the initial results from the query.
-#[allow(clippy::incompatible_msrv)]
+/// Handles the initial results from the query (used by NSMetadataQuery notification callbacks).
+#[allow(dead_code, clippy::incompatible_msrv)]
 fn handle_initial_results(inner: &LiveFileIndexInner, notification: NonNull<NSNotification>) {
     let notification_ref = unsafe { notification.as_ref() };
 
@@ -951,7 +951,8 @@ const EXCLUDED_DIRS: &[&str] = &[
     ".DS_Store",
 ];
 
-/// Extensions to exclude from the live index.
+/// Extensions to exclude from the live index (planned for live index filtering).
+#[allow(dead_code)]
 const EXCLUDED_EXTENSIONS: &[&str] = &[
     "o",
     "pyc",

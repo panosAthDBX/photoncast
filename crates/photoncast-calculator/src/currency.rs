@@ -379,6 +379,7 @@ pub async fn fetch_fiat_rates() -> Result<HashMap<String, Decimal>> {
 
     let client = reqwest::Client::builder()
         .user_agent("photoncast/0.1 (+https://github.com/photoncast/photoncast)")
+        .redirect(reqwest::redirect::Policy::limited(5))
         .build()?;
 
     // frankfurter.app returns rates relative to EUR by default
@@ -432,6 +433,7 @@ pub async fn fetch_crypto_rates() -> Result<HashMap<String, Decimal>> {
 
     let client = reqwest::Client::builder()
         .user_agent("photoncast/0.1 (+https://github.com/photoncast/photoncast)")
+        .redirect(reqwest::redirect::Policy::limited(5))
         .build()?;
 
     // Build the IDs list

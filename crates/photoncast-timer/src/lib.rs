@@ -31,7 +31,7 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::arc_with_non_send_sync)] // Timer uses Arc<RwLock<Connection>> for async access
-#![allow(dead_code)] // Allow during development
+
 
 pub mod config;
 pub mod error;

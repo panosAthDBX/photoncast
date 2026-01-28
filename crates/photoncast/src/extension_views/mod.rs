@@ -13,7 +13,7 @@
 //! Navigation support is provided via `NavigationContainer` which manages
 //! a stack of views with push/pop/replace operations and animations.
 
-// Many design system components are intentionally exported for future use
+// Many design system components are intentionally exported for future extension views
 #![allow(dead_code)]
 #![allow(unused_imports)]
 

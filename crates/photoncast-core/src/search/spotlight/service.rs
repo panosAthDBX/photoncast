@@ -489,8 +489,8 @@ fn file_query_to_predicate(
     Ok(builder.build())
 }
 
-/// Maps FileCategory to primary UTI string.
-#[allow(clippy::ptr_arg, clippy::trivially_copy_pass_by_ref)]
+/// Maps FileCategory to primary UTI string (planned for spotlight category filtering).
+#[allow(dead_code, clippy::ptr_arg, clippy::trivially_copy_pass_by_ref)]
 fn category_to_uti(category: &FileCategory) -> &'static str {
     match category {
         FileCategory::Documents => "public.document",

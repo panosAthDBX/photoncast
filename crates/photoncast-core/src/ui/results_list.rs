@@ -16,7 +16,8 @@ use crate::ui::result_item::{ResultItem, RESULT_ITEM_HEIGHT};
 
 /// Maximum visible height of the results list in pixels.
 pub const RESULTS_MAX_HEIGHT: Pixels = px(400.0);
-/// Number of extra items to render above/below the visible area.
+/// Number of extra items to render above/below the visible area (for virtual scrolling).
+#[allow(dead_code)]
 const OVERSCAN: usize = 2;
 
 /// The results list component that displays search results.
@@ -289,7 +290,8 @@ impl ResultsList {
         cx.notify();
     }
 
-    /// Sets the hovered index.
+    /// Sets the hovered index (UI API for mouse hover support).
+    #[allow(dead_code)]
     fn set_hovered(&mut self, index: Option<usize>, cx: &mut ViewContext<Self>) {
         if self.hovered_index != index {
             self.hovered_index = index;

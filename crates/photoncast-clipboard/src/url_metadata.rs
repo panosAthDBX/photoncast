@@ -42,6 +42,7 @@ impl UrlMetadataFetcher {
         let client = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) PhotonCast/1.0")
+            .redirect(reqwest::redirect::Policy::limited(5))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 

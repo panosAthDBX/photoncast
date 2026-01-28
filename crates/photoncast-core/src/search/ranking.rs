@@ -245,7 +245,7 @@ impl ResultRanker {
     /// This is the simplest ranking - just sort by the raw match score
     /// from the fuzzy matcher, with higher scores first.
     pub fn rank_by_match_quality(&self, results: &mut [SearchResult]) {
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
     }
 
     // =========================================================================
@@ -471,7 +471,7 @@ impl ResultRanker {
         // Sort with tiebreaking
         results.sort_by(|a, b| {
             // Primary: score (higher first)
-            match b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal) {
+            match b.score.total_cmp(&a.score) {
                 Ordering::Equal => {
                     // Tiebreaker
                     let a_usage = get_usage(a.id.as_str());

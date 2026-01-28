@@ -14,7 +14,8 @@ use tokio::task;
 
 use crate::indexer::{AppBundleId, AppCategory, IndexedApp};
 
-/// Current schema version.
+/// Current schema version (for future migration tracking).
+#[allow(dead_code)]
 const CURRENT_SCHEMA_VERSION: i32 = 1;
 
 /// Database wrapper for PhotonCast storage.

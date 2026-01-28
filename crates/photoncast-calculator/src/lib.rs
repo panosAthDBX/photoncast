@@ -56,7 +56,8 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::similar_names)]
-#![allow(dead_code)] // Allow during development
+// Several fields/constants are retained for future use (schema versioning, timezone support, etc.)
+#![allow(dead_code)]
 
 pub mod cache;
 pub mod currency;

@@ -10,7 +10,6 @@ use photoncast_apps::AppManager;
 /// Provides search results for app management actions.
 #[derive(Debug)]
 pub struct AppsProvider {
-    matcher: FuzzyMatcher,
     manager: AppManager,
 }
 
@@ -19,7 +18,6 @@ impl AppsProvider {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            matcher: FuzzyMatcher::default(),
             manager: AppManager::new(photoncast_apps::AppsConfig::default()),
         }
     }
@@ -87,11 +85,7 @@ impl SearchProvider for AppsProvider {
             }
         }
 
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
         results.truncate(max_results);
         results
     }

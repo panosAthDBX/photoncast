@@ -8,9 +8,7 @@ use photoncast_window::commands::WindowCommandInfo;
 
 /// Provides search results for window management commands.
 #[derive(Debug)]
-pub struct WindowProvider {
-    matcher: FuzzyMatcher,
-}
+pub struct WindowProvider;
 
 impl Default for WindowProvider {
     fn default() -> Self {
@@ -22,13 +20,7 @@ impl WindowProvider {
     /// Creates a new window provider.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            matcher: FuzzyMatcher::default(),
-        }
-    }
-
-    fn score_match(&mut self, query: &str, target: &str) -> Option<(u32, Vec<usize>)> {
-        self.matcher.score(query, target)
+        Self
     }
 }
 
@@ -70,11 +62,7 @@ impl SearchProvider for WindowProvider {
             }
         }
 
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
         results.truncate(max_results);
         results
     }

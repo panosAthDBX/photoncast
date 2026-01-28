@@ -6,7 +6,7 @@
 //! - Pre-computed frecency scores
 //! - Pre-sorted by frecency for early termination
 
-use std::cmp::Ordering;
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
@@ -134,11 +134,7 @@ impl SearchIndex {
             .collect();
 
         // Sort by frecency descending for early termination
-        entries.sort_by(|a, b| {
-            b.frecency
-                .partial_cmp(&a.frecency)
-                .unwrap_or(Ordering::Equal)
-        });
+        entries.sort_by(|a, b| b.frecency.total_cmp(&a.frecency));
 
         Self { entries }
     }
@@ -194,11 +190,7 @@ impl SearchIndex {
 
     /// Re-sorts the index by frecency descending.
     pub fn rebuild_sort(&mut self) {
-        self.entries.sort_by(|a, b| {
-            b.frecency
-                .partial_cmp(&a.frecency)
-                .unwrap_or(Ordering::Equal)
-        });
+        self.entries.sort_by(|a, b| b.frecency.total_cmp(&a.frecency));
     }
 
     /// Clears all entries from the index.

@@ -161,7 +161,10 @@ impl Default for ExtensionManager {
             failure_backoff: HashMap::new(),
             invocation_guard: CommandInvocationGuard::default(),
             dylib_cache: DylibCache::new(paths::cache_dir().join("extensions_dylib")),
-            permissions_store: PermissionsStore::load().unwrap_or_default(),
+            permissions_store: PermissionsStore::load().unwrap_or_else(|e| {
+                tracing::warn!("Failed to load extension permissions, using defaults: {}", e);
+                PermissionsStore::default()
+            }),
             dev_mode: false,
         }
     }
@@ -174,8 +177,11 @@ struct LoadedExtension {
     host_services: ExtensionHostServices,
     runtime: ExtensionRuntimeImpl,
     cache: ExtensionCache,
+    /// Keeps the dylib loaded for the extension's lifetime.
+    #[allow(dead_code)]
     library: ExtensionLibrary,
     /// Path to the cached dylib (for hot-reload cleanup).
+    #[allow(dead_code)]
     cached_dylib_path: Option<PathBuf>,
 }
 
@@ -1037,11 +1043,7 @@ impl ExtensionManager {
         }); // COMMAND_MATCHER
         }); // MATCHER
 
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
         results.truncate(max_results);
         results
     }

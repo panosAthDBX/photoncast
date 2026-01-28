@@ -2,11 +2,7 @@
 //!
 //! These tests cover security measures and helper functions.
 
-/// Escapes a path string for safe use in AppleScript.
-/// This is a copy of the function from launcher.rs for testing.
-fn escape_path_for_applescript(path: &str) -> String {
-    path.replace('\\', "\\\\").replace('"', "\\\"")
-}
+use photoncast_core::platform::file_actions::escape_applescript_string as escape_path_for_applescript;
 
 // ============================================================================
 // AppleScript Path Escaping Tests (Security)

@@ -194,43 +194,57 @@ impl QuicklinksManageView {
 
     /// Adds a quicklink from the bundled library.
     pub fn add_from_library(&mut self, bundled: &BundledQuickLink, cx: &mut ViewContext<Self>) {
-        let mut quicklink = crate::library::to_quicklink(bundled);
+        let quicklink = crate::library::to_quicklink(bundled);
+        let temp_id = quicklink.id.clone();
 
-        // Save to storage and update the ID with the DB-generated one
-        if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
-            let storage = storage.clone();
-            match runtime.block_on(storage.store(&quicklink)) {
-                Ok(new_id) => {
-                    // Update the quicklink with the DB-generated integer ID
-                    quicklink.id = new_id;
-                },
-                Err(e) => {
-                    tracing::error!("Failed to save quicklink: {}", e);
-                    return;
-                },
-            }
-        }
-
-        // Add to local list with correct DB ID
-        self.quicklinks.push(quicklink);
+        // Add to local list immediately for responsive UI
+        self.quicklinks.push(quicklink.clone());
         self.notify_change();
         cx.notify();
+
+        // Save to storage in background and update the ID with the DB-generated one
+        if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
+            let storage = storage.clone();
+            let runtime = runtime.clone();
+            cx.spawn(|this, mut cx| async move {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { runtime.block_on(storage.store(&quicklink)) })
+                    .await;
+                match result {
+                    Ok(new_id) => {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            if let Some(link) = this.quicklinks.iter_mut().find(|l| l.id == temp_id)
+                            {
+                                link.id = new_id;
+                            }
+                            cx.notify();
+                        });
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to save quicklink: {}", e);
+                        // Remove the optimistically added quicklink
+                        let _ = this.update(&mut cx, |this, cx| {
+                            this.quicklinks.retain(|l| l.id != temp_id);
+                            cx.notify();
+                        });
+                    },
+                }
+            })
+            .detach();
+        }
     }
 
     /// Deletes a quicklink by ID.
     pub fn delete_quicklink(&mut self, id: &QuickLinkId, cx: &mut ViewContext<Self>) {
-        // Delete from storage if available
-        if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
-            let storage = storage.clone();
-            let id = id.clone();
-            if let Err(e) = runtime.block_on(storage.delete(&id)) {
-                tracing::error!("Failed to delete quicklink: {}", e);
-                return;
-            }
-        }
+        let id = id.clone();
 
-        // Remove from local list
-        self.quicklinks.retain(|link| link.id != *id);
+        // Capture the removed quicklink and its position for rollback
+        let removed = self
+            .quicklinks
+            .iter()
+            .position(|link| link.id == id)
+            .map(|pos| (pos, self.quicklinks.remove(pos)));
 
         // Adjust selection
         let filtered_len = self.filtered_quicklinks().len();
@@ -244,32 +258,78 @@ impl QuicklinksManageView {
 
         self.notify_change();
         cx.notify();
+
+        // Delete from storage in background
+        if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
+            let storage = storage.clone();
+            let runtime = runtime.clone();
+            let removed_for_rollback = removed;
+            cx.spawn(|this, mut cx| async move {
+                let id_clone = id.clone();
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { runtime.block_on(storage.delete(&id_clone)) })
+                    .await;
+                if let Err(e) = result {
+                    tracing::error!("Failed to delete quicklink from storage: {}", e);
+                    // Rollback: re-insert the removed quicklink
+                    if let Some((pos, link)) = removed_for_rollback {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            let insert_pos = pos.min(this.quicklinks.len());
+                            this.quicklinks.insert(insert_pos, link);
+                            this.notify_change();
+                            cx.notify();
+                        });
+                    }
+                }
+            })
+            .detach();
+        }
     }
 
     /// Duplicates a quicklink.
     pub fn duplicate_quicklink(&mut self, link: &QuickLink, cx: &mut ViewContext<Self>) {
         let mut copy = link.clone();
         copy.name = format!("{} (Copy)", link.name);
+        let temp_id = copy.id.clone();
 
-        // Save to storage and update the ID with the DB-generated one
-        if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
-            let storage = storage.clone();
-            match runtime.block_on(storage.store(&copy)) {
-                Ok(new_id) => {
-                    // Update with DB-generated integer ID
-                    copy.id = new_id;
-                },
-                Err(e) => {
-                    tracing::error!("Failed to save duplicated quicklink: {}", e);
-                    return;
-                },
-            }
-        }
-
-        // Add to local list with correct DB ID
-        self.quicklinks.push(copy);
+        // Add to local list immediately for responsive UI
+        self.quicklinks.push(copy.clone());
         self.notify_change();
         cx.notify();
+
+        // Save to storage in background and update the ID with the DB-generated one
+        if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
+            let storage = storage.clone();
+            let runtime = runtime.clone();
+            cx.spawn(|this, mut cx| async move {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { runtime.block_on(storage.store(&copy)) })
+                    .await;
+                match result {
+                    Ok(new_id) => {
+                        let _ = this.update(&mut cx, |this, cx| {
+                            if let Some(link) = this.quicklinks.iter_mut().find(|l| l.id == temp_id)
+                            {
+                                link.id = new_id;
+                            }
+                            cx.notify();
+                        });
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to save duplicated quicklink: {}", e);
+                        // Rollback: remove the optimistically added copy
+                        let _ = this.update(&mut cx, |this, cx| {
+                            this.quicklinks.retain(|l| l.id != temp_id);
+                            this.notify_change();
+                            cx.notify();
+                        });
+                    },
+                }
+            })
+            .detach();
+        }
     }
 
     /// Sets the quicklinks to display.
@@ -515,29 +575,61 @@ impl QuicklinksManageView {
             if !editing.alias.trim().is_empty() {
                 quicklink.alias = Some(editing.alias.trim().to_string());
             }
+            let temp_id = quicklink.id.clone();
 
-            // Save to storage
+            // Add to local list immediately for responsive UI
+            self.quicklinks.push(quicklink.clone());
+            self.notify_change();
+            cx.notify();
+
+            // Save to storage in background
             if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
                 let storage = storage.clone();
-                match runtime.block_on(storage.store(&quicklink)) {
-                    Ok(new_id) => {
-                        quicklink.id = new_id;
-                    },
-                    Err(e) => {
-                        tracing::error!("Failed to save quicklink: {}", e);
-                        return;
-                    },
-                }
+                let runtime = runtime.clone();
+                cx.spawn(|this, mut cx| async move {
+                    let result = cx
+                        .background_executor()
+                        .spawn(async move { runtime.block_on(storage.store(&quicklink)) })
+                        .await;
+                    match result {
+                        Ok(new_id) => {
+                            let _ = this.update(&mut cx, |this, cx| {
+                                if let Some(link) =
+                                    this.quicklinks.iter_mut().find(|l| l.id == temp_id)
+                                {
+                                    link.id = new_id;
+                                }
+                                cx.notify();
+                            });
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to save quicklink: {}", e);
+                            // Rollback: remove the optimistically added quicklink
+                            let _ = this.update(&mut cx, |this, cx| {
+                                this.quicklinks.retain(|l| l.id != temp_id);
+                                this.notify_change();
+                                cx.notify();
+                            });
+                        },
+                    }
+                })
+                .detach();
             }
-
-            self.quicklinks.push(quicklink);
-            self.notify_change();
         } else {
-            // Update existing quicklink
+            // Update existing quicklink — apply changes locally first
+            let original_id = editing.original_id.clone();
+
+            // Capture previous state for rollback
+            let previous_state = self
+                .quicklinks
+                .iter()
+                .find(|l| l.id == original_id)
+                .cloned();
+
             if let Some(link) = self
                 .quicklinks
                 .iter_mut()
-                .find(|l| l.id == editing.original_id)
+                .find(|l| l.id == original_id)
             {
                 link.name = editing.name.trim().to_string();
                 link.link = editing.link.trim().to_string();
@@ -547,19 +639,41 @@ impl QuicklinksManageView {
                     Some(editing.alias.trim().to_string())
                 };
 
-                // Save to storage
+                let link_clone = link.clone();
+                self.notify_change();
+                cx.notify();
+
+                // Persist update to storage in background
                 if let (Some(storage), Some(runtime)) = (&self.storage, &self.runtime) {
                     let storage = storage.clone();
-                    let link_clone = link.clone();
-                    if let Err(e) = runtime.block_on(storage.update(&link_clone)) {
-                        tracing::error!("Failed to update quicklink: {}", e);
-                    }
+                    let runtime = runtime.clone();
+                    cx.spawn(|this, mut cx| async move {
+                        let result = cx
+                            .background_executor()
+                            .spawn(async move {
+                                runtime.block_on(storage.update(&link_clone))
+                            })
+                            .await;
+                        if let Err(e) = result {
+                            tracing::error!("Failed to update quicklink: {}", e);
+                            // Rollback to previous state
+                            if let Some(prev) = previous_state {
+                                let _ = this.update(&mut cx, |this, cx| {
+                                    if let Some(link) =
+                                        this.quicklinks.iter_mut().find(|l| l.id == original_id)
+                                    {
+                                        *link = prev;
+                                    }
+                                    this.notify_change();
+                                    cx.notify();
+                                });
+                            }
+                        }
+                    })
+                    .detach();
                 }
-                self.notify_change();
             }
         }
-
-        cx.notify();
     }
 
     /// Initiates delete for the currently selected quicklink.

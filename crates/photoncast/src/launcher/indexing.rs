@@ -6,6 +6,7 @@ impl LauncherWindow {
     /// Starts async app indexing in the background
     pub(super) fn start_app_indexing(&self, cx: &mut ViewContext<Self>) {
         let photoncast_app = Arc::clone(&self.photoncast_app);
+        let shared_runtime = Arc::clone(&self.calculator.runtime);
 
         // Use std::thread::spawn because AppScanner requires Tokio runtime,
         // but GPUI uses its own async executor
@@ -15,17 +16,7 @@ impl LauncherWindow {
         std::thread::spawn(move || {
             tracing::info!("Starting application indexing...");
 
-            // Create a new Tokio runtime for the scanner
-            let rt = match tokio::runtime::Runtime::new() {
-                Ok(rt) => rt,
-                Err(e) => {
-                    tracing::error!("Failed to create Tokio runtime for indexing: {}", e);
-                    let _ = tx.send(Err(anyhow::anyhow!("Runtime creation failed: {e}")));
-                    return;
-                },
-            };
-
-            let result = rt.block_on(async {
+            let result = shared_runtime.block_on(async {
                 let scanner = AppScanner::new();
                 scanner.scan_all().await
             });
@@ -135,21 +126,13 @@ impl LauncherWindow {
     /// - An app is uninstalled
     pub(super) fn start_app_watching(&self, cx: &mut ViewContext<Self>) {
         let photoncast_app = Arc::clone(&self.photoncast_app);
+        let shared_runtime = Arc::clone(&self.calculator.runtime);
 
         // Start the watcher in a background thread (requires Tokio runtime)
         let (event_tx, event_rx) = std::sync::mpsc::channel::<WatchEvent>();
 
         std::thread::spawn(move || {
-            // Create Tokio runtime for the watcher
-            let rt = match tokio::runtime::Runtime::new() {
-                Ok(rt) => rt,
-                Err(e) => {
-                    tracing::error!("Failed to create Tokio runtime for watcher: {}", e);
-                    return;
-                },
-            };
-
-            rt.block_on(async {
+            shared_runtime.block_on(async {
                 let mut watcher = AppWatcher::new();
 
                 match watcher.start() {

@@ -7,7 +7,7 @@
 //! Quicklinks are cached in memory and only reloaded when explicitly invalidated.
 
 use std::path::PathBuf;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 
 use crate::search::providers::SearchProvider;
 use crate::search::{
@@ -76,16 +76,15 @@ impl QuickLinksProvider {
     /// Invalidates the cache, forcing a reload on next search.
     /// Call this after adding, updating, or deleting quicklinks.
     pub fn invalidate_cache(&self) {
-        if let Ok(mut cache) = self.cache.write() {
-            *cache = None;
-            tracing::debug!("QuickLinks cache invalidated");
-        }
+        *self.cache.write() = None;
+        tracing::debug!("QuickLinks cache invalidated");
     }
 
     /// Gets quicklinks from cache, loading from storage if needed.
     fn get_cached_links(&self) -> Vec<QuickLink> {
         // Try to read from cache first
-        if let Ok(cache) = self.cache.read() {
+        {
+            let cache = self.cache.read();
             if let Some(ref links) = *cache {
                 return links.clone();
             }
@@ -107,9 +106,7 @@ impl QuickLinksProvider {
         };
 
         // Store in cache
-        if let Ok(mut cache) = self.cache.write() {
-            *cache = Some(links.clone());
-        }
+        *self.cache.write() = Some(links.clone());
 
         links
     }
@@ -261,11 +258,7 @@ impl SearchProvider for QuickLinksProvider {
             }
         }
 
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
         results.truncate(max_results);
         tracing::debug!(count = results.len(), query = %query, "QuickLinks search returning");
         results

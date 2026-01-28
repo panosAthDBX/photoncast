@@ -8,7 +8,6 @@
 //! - Section headers and empty state
 
 #![allow(clippy::cast_precision_loss)]
-#![allow(dead_code)]
 
 mod browsing;
 mod filter;

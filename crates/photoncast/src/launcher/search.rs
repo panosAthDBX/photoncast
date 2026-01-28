@@ -77,7 +77,7 @@ impl LauncherWindow {
             self.search.results = self
                 .search.core_results
                 .iter()
-                .map(|r| Self::search_result_to_result_item(r))
+                .map(Self::search_result_to_result_item)
                 .collect();
             tracing::debug!("Populated {} results from suggestions", self.search.results.len());
         }
@@ -122,7 +122,7 @@ impl LauncherWindow {
             self.search.results = self
                 .search.core_results
                 .iter()
-                .map(|r| Self::search_result_to_result_item(r))
+                .map(Self::search_result_to_result_item)
                 .collect();
             self.calculator.result = None;
             self.calculator.generation = self.calculator.generation.saturating_add(1);

@@ -64,7 +64,8 @@ pub struct IconCache {
     cache_dir: PathBuf,
     /// In-memory LRU cache. Uses `Mutex` because `LruCache::get` requires `&mut self`.
     cache: Mutex<LruCache<String, Arc<LazyIcon>>>,
-    /// Maximum number of icons to cache (kept for `capacity` field access in tests).
+    /// Maximum number of icons to cache (kept for potential resize operations).
+    #[allow(dead_code)]
     capacity: usize,
 }
 

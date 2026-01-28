@@ -189,11 +189,7 @@ impl SearchEngine {
         }
 
         // Sort all results by score descending
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
 
         // Limit total results
         results.truncate(self.config.max_total_results);

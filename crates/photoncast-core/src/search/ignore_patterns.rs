@@ -95,9 +95,11 @@ pub struct IgnorePattern {
     directory_only: bool,
     /// Whether this pattern is anchored to the root.
     anchored: bool,
-    /// Source file path (for debugging).
+    /// Source file path (for debugging/diagnostics).
+    #[allow(dead_code)]
     source_file: Option<PathBuf>,
-    /// Line number in source file.
+    /// Line number in source file (for debugging/diagnostics).
+    #[allow(dead_code)]
     line_number: Option<usize>,
 }
 

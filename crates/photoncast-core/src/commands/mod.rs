@@ -109,7 +109,7 @@ impl CommandUsageTracker for NoOpUsageTracker {
 /// Stores usage data in memory (not persisted across restarts).
 #[derive(Debug, Default)]
 pub struct InMemoryUsageTracker {
-    executions: std::sync::RwLock<HashMap<String, (u32, i64)>>,
+    executions: parking_lot::RwLock<HashMap<String, (u32, i64)>>,
 }
 
 impl InMemoryUsageTracker {
@@ -127,7 +127,7 @@ impl CommandUsageTracker for InMemoryUsageTracker {
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
 
-        let mut executions = self.executions.write().unwrap();
+        let mut executions = self.executions.write();
         let entry = executions.entry(command_id.to_string()).or_insert((0, 0));
         entry.0 += 1;
         entry.1 = now;
@@ -136,7 +136,6 @@ impl CommandUsageTracker for InMemoryUsageTracker {
     fn get_execution_count(&self, command_id: &str) -> u32 {
         self.executions
             .read()
-            .unwrap()
             .get(command_id)
             .map_or(0, |(count, _)| *count)
     }
@@ -144,7 +143,6 @@ impl CommandUsageTracker for InMemoryUsageTracker {
     fn get_last_execution(&self, command_id: &str) -> Option<i64> {
         self.executions
             .read()
-            .unwrap()
             .get(command_id)
             .map(|(_, ts)| *ts)
     }

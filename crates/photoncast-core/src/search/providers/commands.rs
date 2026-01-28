@@ -14,10 +14,7 @@ use crate::search::{
 /// The provider matches queries against command names (e.g., "Sleep", "Restart")
 /// and their aliases (e.g., "suspend", "reboot") using fuzzy matching.
 #[derive(Debug)]
-pub struct CommandProvider {
-    /// The fuzzy matcher for scoring matches.
-    matcher: FuzzyMatcher,
-}
+pub struct CommandProvider;
 
 impl Default for CommandProvider {
     fn default() -> Self {
@@ -29,20 +26,7 @@ impl CommandProvider {
     /// Creates a new command provider with default fuzzy matcher configuration.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            matcher: FuzzyMatcher::default(),
-        }
-    }
-
-    /// Creates a new command provider with a custom fuzzy matcher.
-    #[must_use]
-    pub fn with_matcher(matcher: FuzzyMatcher) -> Self {
-        Self { matcher }
-    }
-
-    /// Scores a query against a target string, returning the score and match indices.
-    fn score_match(&mut self, query: &str, target: &str) -> Option<(u32, Vec<usize>)> {
-        self.matcher.score(query, target)
+        Self
     }
 }
 
@@ -125,11 +109,7 @@ impl SearchProvider for CommandProvider {
         }
 
         // Sort by score descending
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
 
         // Limit results
         results.truncate(max_results);

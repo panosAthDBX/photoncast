@@ -1,6 +1,7 @@
 //! Favicon fetching and caching functionality.
 
 use anyhow::Context;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use url::Url;
@@ -15,6 +16,13 @@ use crate::error::Result;
 pub async fn fetch_favicon(url: &str, cache_dir: &Path) -> Result<Option<PathBuf>> {
     // Parse URL to get domain
     let parsed = Url::parse(url).context("invalid URL")?;
+
+    // SSRF protection: validate the input URL before fetching
+    if !is_allowed_url(&parsed) {
+        tracing::warn!("Blocked favicon fetch for disallowed URL: {}", url);
+        return Ok(None);
+    }
+
     let domain = parsed.host_str().context("no host in URL")?;
 
     // Create cache directory if it doesn't exist
@@ -52,11 +60,23 @@ async fn fetch_favicon_data(url: &str) -> Result<Option<Vec<u8>>> {
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::limited(5))
         .build()
         .context("failed to build HTTP client")?;
 
     // Try each URL
     for favicon_url in favicon_urls {
+        // Validate each favicon URL before fetching (SSRF protection)
+        if let Ok(parsed_favicon_url) = Url::parse(&favicon_url) {
+            if !is_allowed_url(&parsed_favicon_url) {
+                tracing::warn!(
+                    "Blocked favicon fetch for disallowed URL: {}",
+                    favicon_url
+                );
+                continue;
+            }
+        }
+
         if let Ok(response) = client.get(&favicon_url).send().await {
             if response.status().is_success() {
                 if let Ok(data) = response.bytes().await {
@@ -67,6 +87,40 @@ async fn fetch_favicon_data(url: &str) -> Result<Option<Vec<u8>>> {
     }
 
     Ok(None)
+}
+
+/// Checks whether a URL is safe to fetch (SSRF protection).
+///
+/// Rejects private/loopback IPs, non-HTTP(S) schemes, and URLs without a host.
+fn is_allowed_url(url: &Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+
+    if host.eq_ignore_ascii_case("localhost") {
+        return false;
+    }
+
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return !is_private_ip(&ip);
+    }
+
+    true
+}
+
+const fn is_private_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(addr) => addr.is_private() || addr.is_loopback() || addr.is_link_local(),
+        IpAddr::V6(addr) => addr.is_loopback() || is_unique_local_v6(addr),
+    }
+}
+
+const fn is_unique_local_v6(addr: &std::net::Ipv6Addr) -> bool {
+    (addr.segments()[0] & 0xfe00) == 0xfc00
 }
 
 /// Sanitizes a filename by removing invalid characters.

@@ -1014,36 +1014,6 @@ impl IndexingService {
         false
     }
 
-    /// Returns whether a path should be skipped during indexing (static version).
-    ///
-    /// This is a convenience method that only checks built-in rules.
-    fn should_skip_builtin(path: &Path) -> bool {
-        // Get the file name
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            return true;
-        };
-
-        // Skip hidden files (except the root being indexed)
-        if name.starts_with('.') {
-            return true;
-        }
-
-        // Skip common ignored directories
-        matches!(
-            name,
-            "node_modules"
-                | "target"
-                | "build"
-                | "dist"
-                | "__pycache__"
-                | ".git"
-                | ".svn"
-                | ".hg"
-                | "Caches"
-                | "Library"
-        )
-    }
-
     /// Returns the current progress as a ratio (0.0 to 1.0).
     #[must_use]
     #[allow(clippy::cast_precision_loss)]
