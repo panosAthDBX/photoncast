@@ -164,8 +164,7 @@ impl Screenshot {
         let path_str = self.path.to_string_lossy().to_string();
         let mut actions = RVec::new();
 
-        // Copy to clipboard (primary action)
-        // Note: In real implementation, this would copy the image data
+        // Copy image to clipboard (primary action)
         actions.push(Action {
             id: RString::from("copy"),
             title: RString::from("Copy to Clipboard"),
@@ -174,7 +173,7 @@ impl Screenshot {
             }),
             shortcut: ROption::RSome(Shortcut::cmd("c")),
             style: ActionStyle::Primary,
-            handler: ActionHandler::CopyToClipboard(RString::from(path_str.as_str())),
+            handler: ActionHandler::CopyImageToClipboard(RString::from(path_str.as_str())),
         });
 
         // Open in Preview
@@ -225,7 +224,7 @@ impl Screenshot {
             handler: ActionHandler::OpenFile(RString::from(path_str.as_str())),
         });
 
-        // Delete with confirmation
+        // Delete (move to trash)
         actions.push(Action {
             id: RString::from("delete"),
             title: RString::from("Move to Trash"),
@@ -234,7 +233,7 @@ impl Screenshot {
             }),
             shortcut: ROption::RSome(Shortcut::cmd("backspace")),
             style: ActionStyle::Destructive,
-            handler: ActionHandler::Callback, // Would trigger delete confirmation
+            handler: ActionHandler::MoveToTrash(RString::from(path_str.as_str())),
         });
 
         actions

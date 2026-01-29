@@ -258,6 +258,9 @@ fn main() {
     // Register global hotkeys (non-blocking, requires accessibility permission)
     init_hotkeys(&event_tx);
 
+    // Request calendar permission on startup (non-blocking)
+    init_calendar_permission();
+
     // Create a single shared Tokio runtime for the entire application.
     // All async work (clipboard, quicklinks, timers, etc.) uses this runtime
     // instead of creating separate runtimes per subsystem.
@@ -296,6 +299,16 @@ fn main() {
             let event = match action {
                 MenuBarActionKind::ToggleLauncher => AppEvent::ToggleLauncher,
                 MenuBarActionKind::OpenPreferences => AppEvent::OpenPreferences,
+                MenuBarActionKind::CheckForUpdates => {
+                    // TODO: Implement update check when UpdateManager is ready
+                    info!("Check for updates requested from menu bar");
+                    return;
+                },
+                MenuBarActionKind::About => {
+                    // TODO: Show about dialog
+                    info!("About requested from menu bar");
+                    return;
+                },
                 MenuBarActionKind::Quit => AppEvent::QuitApp,
             };
             if let Err(e) = menu_tx.send(event) {
@@ -1261,6 +1274,22 @@ fn register_key_bindings(cx: &mut AppContext) {
             Some("ClipboardHistory"),
         ),
     ]);
+}
+
+/// Requests calendar access permission on startup.
+///
+/// This is a non-blocking check - if permission is not yet granted,
+/// it will trigger the macOS permission dialog.
+fn init_calendar_permission() {
+    let calendar = photoncast_calendar::CalendarCommand::with_default_config();
+    if !calendar.has_permission() {
+        info!("Requesting calendar permission...");
+        if let Err(e) = calendar.request_permission() {
+            warn!("Calendar permission request failed: {}", e);
+        }
+    } else {
+        info!("Calendar permission already granted");
+    }
 }
 
 /// Checks if Spotlight's Cmd+Space shortcut is enabled and logs a warning if so.

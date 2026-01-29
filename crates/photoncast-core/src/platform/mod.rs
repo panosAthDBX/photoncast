@@ -5,6 +5,7 @@
 
 pub mod accessibility;
 pub mod appearance;
+pub mod dock_visibility;
 pub mod file_actions;
 pub mod file_browser;
 pub mod hotkey;
@@ -13,6 +14,7 @@ pub mod launch;
 pub mod login_item;
 pub mod menu_bar;
 pub mod spotlight;
+pub mod updates;
 
 pub use accessibility::{
     check_accessibility_permission, check_permission_silent, get_permission_status,
@@ -47,4 +49,12 @@ pub use menu_bar::{
 pub use spotlight::{
     FileKind, FileResult, SpotlightError, SpotlightProvider, SpotlightQuery, DEFAULT_MAX_RESULTS,
     DEFAULT_TIMEOUT_MS,
+};
+pub use dock_visibility::{
+    get_dock_visibility, set_dock_visibility, toggle_dock_visibility, DockVisibilityError,
+    DockVisibilityManager,
+};
+pub use updates::{
+    AvailableUpdate, UpdateConfig, UpdateError, UpdateManager, UpdateStatus, DEFAULT_CHECK_INTERVAL,
+    DEFAULT_FEED_URL,
 };

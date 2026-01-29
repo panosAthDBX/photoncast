@@ -59,6 +59,9 @@ regex.workspace = true
 # File opening
 open = "5"
 
+# File trash (move to recycle bin)
+trash = "5"
+
 # ABI stability
 abi_stable.workspace = true
 

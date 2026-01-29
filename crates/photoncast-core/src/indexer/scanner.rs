@@ -16,7 +16,14 @@ use crate::indexer::metadata::parse_app_metadata;
 use crate::indexer::IndexedApp;
 
 /// Default paths to scan for applications.
-pub const SCAN_PATHS: &[&str] = &["/Applications", "/System/Applications", "~/Applications"];
+pub const SCAN_PATHS: &[&str] = &[
+    "/Applications",
+    "/Applications/Utilities",
+    "/System/Applications",
+    "/System/Applications/Utilities",
+    "/System/Library/CoreServices",
+    "~/Applications",
+];
 
 /// Patterns to exclude from scanning.
 pub const EXCLUDED_PATTERNS: &[&str] = &["*.prefPane", "*Uninstaller*.app", "*.app/Contents/*"];

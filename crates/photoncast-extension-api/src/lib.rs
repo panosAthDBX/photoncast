@@ -611,6 +611,9 @@ pub enum ActionHandler {
     CopyToClipboard(RString),
     PushView(RBox<ExtensionView>),
     SubmitForm,
+    MoveToTrash(RString),
+    /// Copy an image file to clipboard (path to image file).
+    CopyImageToClipboard(RString),
 }
 
 #[repr(C)]

@@ -96,6 +96,9 @@ security-framework.workspace = true
 # Caching
 lru.workspace = true
 
+# HTTP Client for update checking
+reqwest.workspace = true
+
 [dev-dependencies]
 proptest.workspace = true
 tempfile.workspace = true

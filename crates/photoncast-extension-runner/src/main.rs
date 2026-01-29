@@ -145,14 +145,9 @@ fn activate_extension(state: &RunnerState) -> Result<(), String> {
 }
 
 fn wait_for_shutdown(rx: mpsc::Receiver<()>, shutdown: Arc<AtomicBool>) {
-    if std::env::var("PHOTONCAST_EXTENSION_RUNNER_PERSIST").is_ok() {
-        let _ = rx.recv();
-        return;
-    }
-
-    if rx.recv_timeout(std::time::Duration::from_secs(5)).is_err() {
-        shutdown.store(true, Ordering::SeqCst);
-    }
+    // Wait indefinitely for shutdown signal from host
+    let _ = rx.recv();
+    shutdown.store(true, Ordering::SeqCst);
 }
 
 #[derive(Clone)]

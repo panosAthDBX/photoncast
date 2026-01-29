@@ -107,6 +107,10 @@ pub struct PreferencesWindow {
     editing_scope_extensions: Option<(String, String)>,
     /// Reference to the PhotonCast application for extension management
     photoncast_app: Option<Arc<RwLock<PhotonCastApp>>>,
+    /// Whether to show the restart confirmation dialog for dock visibility change
+    show_restart_dialog: bool,
+    /// The new dock visibility value waiting for restart confirmation
+    pending_dock_visibility: Option<bool>,
 }
 
 impl PreferencesWindow {
@@ -127,6 +131,8 @@ impl PreferencesWindow {
             has_changes: false,
             editing_scope_extensions: None,
             photoncast_app,
+            show_restart_dialog: false,
+            pending_dock_visibility: None,
         }
     }
 
@@ -172,6 +178,8 @@ impl PreferencesWindow {
         cx.notify();
     }
 
+    // Settings API method - kept for when Dock visibility toggle UI is added
+    #[allow(dead_code)]
     fn toggle_show_in_dock(&mut self, cx: &mut ViewContext<Self>) {
         self.config.general.show_in_dock = !self.config.general.show_in_dock;
         self.has_changes = true;

@@ -8,6 +8,54 @@ use photoncast_extension_api::{Action, ActionHandler};
 
 use super::ActionCallback;
 
+/// Copies an image file to the macOS clipboard using NSPasteboard.
+///
+/// This loads the image from the given path and writes it to the system clipboard
+/// so it can be pasted into other applications as an image (not a file reference).
+#[cfg(target_os = "macos")]
+fn copy_image_to_clipboard(path: &str) -> Result<(), String> {
+    use std::process::Command;
+    
+    // Use osascript to copy image to clipboard via AppleScript
+    // This is more reliable than raw NSPasteboard bindings and handles various image formats
+    let script = format!(
+        r#"set the clipboard to (read (POSIX file "{}") as «class PNGf»)"#,
+        path.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    
+    let output = Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .map_err(|e| format!("Failed to run osascript: {e}"))?;
+    
+    if output.status.success() {
+        Ok(())
+    } else {
+        // Try with TIFF format as fallback (works with more image types)
+        let script_tiff = format!(
+            r#"set the clipboard to (read (POSIX file "{}") as TIFF picture)"#,
+            path.replace('\\', "\\\\").replace('"', "\\\"")
+        );
+        
+        let output_tiff = Command::new("osascript")
+            .args(["-e", &script_tiff])
+            .output()
+            .map_err(|e| format!("Failed to run osascript: {e}"))?;
+        
+        if output_tiff.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Failed to copy image: {stderr}"))
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn copy_image_to_clipboard(_path: &str) -> Result<(), String> {
+    Err("Image clipboard copy is only supported on macOS".to_string())
+}
+
 /// Validates a URL supplied by an extension before opening.
 /// Only allows http/https schemes to prevent arbitrary protocol handlers.
 fn validate_url(url: &str) -> bool {
@@ -115,6 +163,34 @@ pub fn execute_action(
         },
         ActionHandler::SubmitForm => {
             // Handled by form view specifically
+        },
+        ActionHandler::MoveToTrash(path) => {
+            let path = path.to_string();
+            if validate_path(&path) {
+                match trash::delete(&path) {
+                    Ok(()) => {
+                        tracing::info!(path = %path, "Moved file to trash");
+                        should_close = true;
+                    },
+                    Err(err) => {
+                        tracing::error!(path = %path, error = %err, "Failed to move file to trash");
+                    },
+                }
+            }
+        },
+        ActionHandler::CopyImageToClipboard(path) => {
+            let path = path.to_string();
+            if validate_path(&path) {
+                match copy_image_to_clipboard(&path) {
+                    Ok(()) => {
+                        tracing::info!(path = %path, "Copied image to clipboard");
+                        should_close = true;
+                    },
+                    Err(err) => {
+                        tracing::error!(path = %path, error = %err, "Failed to copy image to clipboard");
+                    },
+                }
+            }
         },
     }
 

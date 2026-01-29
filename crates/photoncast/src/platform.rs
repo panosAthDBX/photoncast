@@ -354,6 +354,7 @@ mod macos {
     // Thread-local storage for the status item (NSStatusItem is MainThreadOnly)
     thread_local! {
         static MENU_BAR_STATUS_ITEM: RefCell<Option<Retained<NSStatusItem>>> = const { RefCell::new(None) };
+        static MENU_BAR_TARGET: RefCell<Option<Retained<MenuBarTarget>>> = const { RefCell::new(None) };
     }
 
     /// Callback type for menu bar actions
@@ -369,9 +370,16 @@ mod macos {
         ToggleLauncher,
         /// Open preferences
         OpenPreferences,
+        /// Check for updates
+        CheckForUpdates,
+        /// Show about dialog
+        About,
         /// Quit the application
         Quit,
     }
+
+    /// Tracks the last click type to distinguish left vs right clicks
+    static LAST_CLICK_WAS_RIGHT: AtomicBool = AtomicBool::new(false);
 
     /// Global callback for menu bar actions
     static MENU_BAR_CALLBACK: Mutex<Option<Arc<MenuBarCallback>>> = Mutex::new(None);
@@ -384,13 +392,16 @@ mod macos {
         struct MenuBarTarget;
 
         impl MenuBarTarget {
+            /// Called when a menu item is selected from the context menu
             #[unsafe(method(menuBarItemSelected:))]
             fn menu_bar_item_selected(&self, item: &NSMenuItem) {
                 let tag = item.tag();
                 let action = match tag {
                     1 => Some(MenuBarActionKind::ToggleLauncher),
                     2 => Some(MenuBarActionKind::OpenPreferences),
-                    3 => Some(MenuBarActionKind::Quit),
+                    3 => Some(MenuBarActionKind::CheckForUpdates),
+                    4 => Some(MenuBarActionKind::About),
+                    5 => Some(MenuBarActionKind::Quit),
                     _ => None,
                 };
 
@@ -402,21 +413,95 @@ mod macos {
                     }
                 }
             }
+
+            /// Called when the menu bar button is clicked (left click)
+            /// We determine if it was a left or right click based on LAST_CLICK_WAS_RIGHT
+            #[unsafe(method(menuBarButtonClicked:))]
+            fn menu_bar_button_clicked(&self, _sender: &NSButton) {
+                // Check if this was a right-click (handled separately via sendActionOn:)
+                let was_right_click = LAST_CLICK_WAS_RIGHT.swap(false, Ordering::SeqCst);
+
+                if was_right_click {
+                    // Right click: the menu will be shown automatically by NSStatusItem
+                    // We don't need to do anything here as NSStatusItem handles the menu
+                    debug!("Menu bar right-click detected, showing context menu");
+                } else {
+                    // Left click: toggle the launcher
+                    debug!("Menu bar left-click detected, toggling launcher");
+                    if let Ok(cb_guard) = MENU_BAR_CALLBACK.lock() {
+                        if let Some(callback) = cb_guard.as_ref() {
+                            callback(MenuBarActionKind::ToggleLauncher);
+                        }
+                    }
+                }
+            }
         }
 
         unsafe impl NSObjectProtocol for MenuBarTarget {}
     );
 
-    thread_local! {
-        static MENU_BAR_TARGET: RefCell<Option<Retained<MenuBarTarget>>> = const { RefCell::new(None) };
+    /// Loads the menu bar icon from the app bundle and sets it on the button.
+    /// Returns true if the icon was loaded successfully.
+    fn load_menu_bar_icon(button: &NSButton) -> bool {
+        use objc2_foundation::NSData;
+        
+        // Try to find the icon in the app bundle
+        let exe_path = std::env::current_exe();
+        
+        let icon_paths = [
+            // When running from app bundle
+            exe_path
+                .ok()
+                .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                .map(|p| p.join("../Resources/AppIcon.icns")),
+            // Development fallback
+            Some(std::path::PathBuf::from("resources/AppIcon.icns")),
+        ];
+        
+        for maybe_path in icon_paths.iter().flatten() {
+            if maybe_path.exists() {
+                debug!("Loading menu bar icon from: {}", maybe_path.display());
+                
+                // Read the icon file
+                if let Ok(icon_data) = std::fs::read(maybe_path) {
+                    // Create NSData from the bytes
+                    let ns_data = NSData::with_bytes(&icon_data);
+                    
+                    // Create NSImage from the data
+                    let image = NSImage::initWithData(NSImage::alloc(), &ns_data);
+                    
+                    if let Some(image) = image {
+                        // Set size appropriate for menu bar (18x18 is standard)
+                        let size = NSSize::new(18.0, 18.0);
+                        image.setSize(size);
+                        
+                        // Don't use template mode - our icon has colors
+                        // Template mode converts to grayscale based on alpha
+                        image.setTemplate(false);
+                        
+                        // Set the image on the button
+                        button.setImage(Some(&image));
+                        
+                        info!("Menu bar icon loaded successfully");
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        warn!("Could not load menu bar icon from any known path");
+        false
     }
 
-    /// Creates and shows the menu bar status item with a menu.
+    /// Creates and shows the menu bar status item with click handling.
+    ///
+    /// Left-click toggles the launcher window.
+    /// Right-click shows the context menu.
     ///
     /// This function must be called from the main thread (which GPUI ensures).
     ///
     /// # Arguments
-    /// * `callback` - Function called when menu items are selected
+    /// * `callback` - Function called when menu items are selected or launcher is toggled
     ///
     /// # Returns
     /// `Ok(())` on success, or an error message on failure.
@@ -424,7 +509,7 @@ mod macos {
     where
         F: Fn(MenuBarActionKind) + Send + Sync + 'static,
     {
-        info!("Creating menu bar status item");
+        info!("Creating menu bar status item with click handlers");
 
         // Store the callback
         {
@@ -441,50 +526,59 @@ mod macos {
         // Create status item with variable length (NSVariableStatusItemLength = -1)
         let status_item = status_bar.statusItemWithLength(-1.0);
 
-        // Set the button title to show an icon in the menu bar
-        // Use objc2 msg_send! since button() isn't exposed in objc2-app-kit 0.2
+        // Create the target for menu actions
+        let target = mtm.alloc::<MenuBarTarget>().set_ivars(());
+        #[allow(deprecated)]
+        let target: Retained<MenuBarTarget> = unsafe { msg_send_id![super(target), init] };
+
+        // Set up the button with title and click handling
         #[allow(deprecated)]
         let button: Option<Retained<NSButton>> = unsafe { msg_send_id![&status_item, button] };
 
         if let Some(button) = button {
-            let title = NSString::from_str("⚡");
-            button.setTitle(&title);
+            // Try to load the menu bar icon from the app bundle
+            let icon_loaded = load_menu_bar_icon(&button);
+            
+            if !icon_loaded {
+                // Fallback to text if icon loading fails
+                let title = NSString::from_str("PC");
+                button.setTitle(&title);
+                debug!("Using text fallback for menu bar icon");
+            }
+
+            // Set up the target for click handling
+            unsafe {
+                button.setTarget(Some(target.as_ref()));
+                // Use sendActionOn: to capture both left and right mouse clicks
+                // NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown = 1 << 1 | 1 << 3 = 2 | 8 = 10
+                // However, we need to detect which click it was, so we'll use a different approach
+                button.setAction(Some(sel!(menuBarButtonClicked:)));
+            }
         } else {
             warn!("Could not get status item button to set title");
         }
 
-        // Create the menu
-        let menu = create_status_menu(mtm);
+        // Create the context menu for right-click
+        let menu = create_context_menu(mtm, &target);
 
-        let target = mtm.alloc::<MenuBarTarget>().set_ivars(());
-        #[allow(deprecated)]
-        let target: Retained<MenuBarTarget> = unsafe { msg_send_id![super(target), init] };
-        for tag in [1, 2, 3] {
-            if let Some(item) = menu.itemWithTag(tag) {
-                unsafe {
-                    item.setTarget(Some(target.as_ref()));
-                    item.setAction(Some(sel!(menuBarItemSelected:)));
-                }
-            }
-        }
+        // Set the menu on the status item (this enables right-click menu)
+        status_item.setMenu(Some(&menu));
 
+        // Store the status item and target in thread-local storage to keep them alive
         MENU_BAR_TARGET.with(|cell| {
             *cell.borrow_mut() = Some(target);
         });
 
-        status_item.setMenu(Some(&menu));
-
-        // Store the status item in thread-local storage to keep it alive
         MENU_BAR_STATUS_ITEM.with(|cell| {
             *cell.borrow_mut() = Some(status_item);
         });
 
-        info!("Menu bar status item created successfully");
+        info!("Menu bar status item created successfully with click handlers");
         Ok(())
     }
 
-    /// Creates the dropdown menu for the status item.
-    fn create_status_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
+    /// Creates the context menu for the status item (shown on right-click).
+    fn create_context_menu(mtm: MainThreadMarker, target: &MenuBarTarget) -> Retained<NSMenu> {
         let menu = NSMenu::new(mtm);
 
         // "Open PhotonCast" item (shows ⌘Space shortcut hint)
@@ -494,13 +588,16 @@ mod macos {
             NSMenuItem::initWithTitle_action_keyEquivalent(
                 mtm.alloc::<NSMenuItem>(),
                 &open_title,
-                None, // No action - user uses global hotkey
+                Some(sel!(menuBarItemSelected:)),
                 &open_key,
             )
         };
         open_item.setTag(1);
-        // Disable the item since it doesn't have an action (shows greyed out with shortcut hint)
-        open_item.setEnabled(false);
+        unsafe {
+            open_item.setTarget(Some(target));
+        }
+        // Keep enabled to show it's clickable, even though shortcut hint is shown
+        open_item.setEnabled(true);
         menu.addItem(&open_item);
 
         // Separator
@@ -514,29 +611,71 @@ mod macos {
             NSMenuItem::initWithTitle_action_keyEquivalent(
                 mtm.alloc::<NSMenuItem>(),
                 &prefs_title,
-                None,
+                Some(sel!(menuBarItemSelected:)),
                 &prefs_key,
             )
         };
         prefs_item.setTag(2);
+        unsafe {
+            prefs_item.setTarget(Some(target));
+        }
         menu.addItem(&prefs_item);
+
+        // "Check for Updates" item
+        let updates_title = NSString::from_str("Check for Updates");
+        let updates_item = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                mtm.alloc::<NSMenuItem>(),
+                &updates_title,
+                Some(sel!(menuBarItemSelected:)),
+                &NSString::from_str(""),
+            )
+        };
+        updates_item.setTag(3);
+        unsafe {
+            updates_item.setTarget(Some(target));
+        }
+        menu.addItem(&updates_item);
 
         // Separator
         let separator2 = NSMenuItem::separatorItem(mtm);
         menu.addItem(&separator2);
 
-        // "Quit PhotonCast" item - uses NSApplication's terminate: selector
+        // "About PhotonCast" item
+        let about_title = NSString::from_str("About PhotonCast");
+        let about_item = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                mtm.alloc::<NSMenuItem>(),
+                &about_title,
+                Some(sel!(menuBarItemSelected:)),
+                &NSString::from_str(""),
+            )
+        };
+        about_item.setTag(4);
+        unsafe {
+            about_item.setTarget(Some(target));
+        }
+        menu.addItem(&about_item);
+
+        // Separator
+        let separator3 = NSMenuItem::separatorItem(mtm);
+        menu.addItem(&separator3);
+
+        // "Quit PhotonCast" item
         let quit_title = NSString::from_str("Quit PhotonCast");
         let quit_key = NSString::from_str("q");
         let quit_item = unsafe {
             NSMenuItem::initWithTitle_action_keyEquivalent(
                 mtm.alloc::<NSMenuItem>(),
                 &quit_title,
-                None,
+                Some(sel!(menuBarItemSelected:)),
                 &quit_key,
             )
         };
-        quit_item.setTag(3);
+        quit_item.setTag(5);
+        unsafe {
+            quit_item.setTarget(Some(target));
+        }
         menu.addItem(&quit_item);
 
         menu
@@ -619,6 +758,8 @@ pub fn get_app_path_for_bundle_id(_bundle_id: &str) -> Option<std::path::PathBuf
 pub enum MenuBarActionKind {
     ToggleLauncher,
     OpenPreferences,
+    CheckForUpdates,
+    About,
     Quit,
 }
 
