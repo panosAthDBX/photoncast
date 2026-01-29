@@ -44,7 +44,7 @@ pub fn show_overlay(target_frame: CGRect, duration_ms: u32) {
 }
 
 /// Closes any currently visible overlay.
-pub fn close_overlay() {
+pub const fn close_overlay() {
     // No-op currently - overlay auto-dismisses
 }
 

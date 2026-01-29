@@ -285,8 +285,8 @@ impl LauncherWindow {
             };
             let header_height = num_headers as f32 * 28.0;
             let items_height = events.len() as f32 * 56.0; // Slightly taller items
-            let total_height = (header_height + items_height)
-                .min((MAX_VISIBLE_RESULTS as f32 * 56.0) + 56.0);
+            let total_height =
+                (header_height + items_height).min((MAX_VISIBLE_RESULTS as f32 * 56.0) + 56.0);
 
             return div()
                 .id("results-list-calendar")
@@ -307,8 +307,7 @@ impl LauncherWindow {
         }
 
         // Check if we're showing suggestions (query is empty)
-        let is_suggestions =
-            self.search.query.is_empty() && !self.search.suggestions.is_empty();
+        let is_suggestions = self.search.query.is_empty() && !self.search.suggestions.is_empty();
 
         // Group results by type, counting groups during the single pass.
         let mut current_type: Option<ResultType> = None;
@@ -325,8 +324,7 @@ impl LauncherWindow {
                 // Show "Suggestions" header instead of type when showing suggestions
                 if is_suggestions && !shown_suggestions_header {
                     shown_suggestions_header = true;
-                    elements
-                        .push(self.render_suggestions_header(&colors).into_any_element());
+                    elements.push(self.render_suggestions_header(&colors).into_any_element());
                 } else if !is_suggestions {
                     elements.push(
                         self.render_group_header(result.result_type, &colors)
@@ -379,10 +377,7 @@ impl LauncherWindow {
     }
 
     /// Render a "Suggestions" header for empty query state
-    pub(super) fn render_suggestions_header(
-        &self,
-        colors: &LauncherColors,
-    ) -> impl IntoElement {
+    pub(super) fn render_suggestions_header(&self, colors: &LauncherColors) -> impl IntoElement {
         div()
             .h(px(24.0))
             .w_full()
@@ -628,10 +623,7 @@ impl LauncherWindow {
 
     /// Render the suggestions section
     #[allow(dead_code)]
-    pub(super) fn render_suggestions(
-        &self,
-        colors: &LauncherColors,
-    ) -> impl IntoElement {
+    pub(super) fn render_suggestions(&self, colors: &LauncherColors) -> impl IntoElement {
         let surface_hover = colors.surface_hover;
         let text_muted = colors.text_muted;
         let text_placeholder = colors.text_placeholder;
@@ -712,10 +704,7 @@ impl LauncherWindow {
     }
 
     /// Render "no results" state
-    pub(super) fn render_no_results(
-        &self,
-        colors: &LauncherColors,
-    ) -> impl IntoElement + '_ {
+    pub(super) fn render_no_results(&self, colors: &LauncherColors) -> impl IntoElement + '_ {
         let (message, hint) = match &self.search.mode {
             SearchMode::Calendar { error, .. } => {
                 let msg = error

@@ -141,10 +141,7 @@ impl CommandUsageTracker for InMemoryUsageTracker {
     }
 
     fn get_last_execution(&self, command_id: &str) -> Option<i64> {
-        self.executions
-            .read()
-            .get(command_id)
-            .map(|(_, ts)| *ts)
+        self.executions.read().get(command_id).map(|(_, ts)| *ts)
     }
 }
 

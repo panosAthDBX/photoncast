@@ -462,9 +462,7 @@ pub fn move_to_trash(path: &Path) -> Result<PathBuf> {
 
     // Use AppleScript to move to trash (uses proper NSFileManager)
     let escaped_path = escape_applescript_string(&path.display().to_string());
-    let script = format!(
-        r#"tell application "Finder" to delete POSIX file "{escaped_path}""#
-    );
+    let script = format!(r#"tell application "Finder" to delete POSIX file "{escaped_path}""#);
 
     let output = Command::new("osascript")
         .args(["-e", &script])
@@ -1047,8 +1045,10 @@ pub fn get_file_info(path: &Path) -> Result<FileInfo> {
         if is_directory {
             "Folder".to_string()
         } else {
-            path.extension()
-                .and_then(|e| e.to_str()).map_or_else(|| "Document".to_string(), |e| format!("{} file", e.to_uppercase()))
+            path.extension().and_then(|e| e.to_str()).map_or_else(
+                || "Document".to_string(),
+                |e| format!("{} file", e.to_uppercase()),
+            )
         }
     });
 

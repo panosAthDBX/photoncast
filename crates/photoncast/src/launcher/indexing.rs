@@ -367,7 +367,9 @@ impl LauncherWindow {
 
     /// Static version of `get_app_icon_path` for use in async context.
     /// Delegates to [`crate::icon_cache::get_icon_static`].
-    pub(super) fn get_app_icon_path_static(app_path: &std::path::Path) -> Option<std::path::PathBuf> {
+    pub(super) fn get_app_icon_path_static(
+        app_path: &std::path::Path,
+    ) -> Option<std::path::PathBuf> {
         crate::icon_cache::get_icon_static(app_path)
     }
 

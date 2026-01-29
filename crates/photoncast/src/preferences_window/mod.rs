@@ -1,7 +1,7 @@
 //! Preferences window UI with actual config management.
 
-mod appearance;
 mod app_management;
+mod appearance;
 mod calendar;
 mod clipboard;
 mod extensions;
@@ -111,7 +111,10 @@ pub struct PreferencesWindow {
 
 impl PreferencesWindow {
     #[must_use]
-    pub fn new(cx: &mut ViewContext<Self>, photoncast_app: Option<Arc<RwLock<PhotonCastApp>>>) -> Self {
+    pub fn new(
+        cx: &mut ViewContext<Self>,
+        photoncast_app: Option<Arc<RwLock<PhotonCastApp>>>,
+    ) -> Self {
         let config = load_config().unwrap_or_default();
 
         // Sync reduce motion setting with the animation system
@@ -1056,7 +1059,12 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_decrement(this, cx)))
-                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("-")),
+                            .child(
+                                div()
+                                    .text_size(TEXT_SIZE_SM)
+                                    .text_color(colors.text)
+                                    .child("-"),
+                            ),
                     )
                     .child(
                         div()
@@ -1077,7 +1085,12 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_increment(this, cx)))
-                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("+")),
+                            .child(
+                                div()
+                                    .text_size(TEXT_SIZE_SM)
+                                    .text_color(colors.text)
+                                    .child("+"),
+                            ),
                     ),
             )
     }
@@ -1135,7 +1148,12 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_decrement(this, cx)))
-                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("-")),
+                            .child(
+                                div()
+                                    .text_size(TEXT_SIZE_SM)
+                                    .text_color(colors.text)
+                                    .child("-"),
+                            ),
                     )
                     .child(
                         div()
@@ -1156,7 +1174,12 @@ impl PreferencesWindow {
                             .hover(|s| s.bg(colors.surface_hover))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _, cx| on_increment(this, cx)))
-                            .child(div().text_size(TEXT_SIZE_SM).text_color(colors.text).child("+")),
+                            .child(
+                                div()
+                                    .text_size(TEXT_SIZE_SM)
+                                    .text_color(colors.text)
+                                    .child("+"),
+                            ),
                     ),
             )
     }

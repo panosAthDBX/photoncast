@@ -149,9 +149,10 @@ impl FileProvider {
             _ => ResultType::File,
         };
 
-        let subtitle = file_result
-            .path
-            .parent().map_or_else(|| file_result.path.display().to_string(), |p| p.display().to_string());
+        let subtitle = file_result.path.parent().map_or_else(
+            || file_result.path.display().to_string(),
+            |p| p.display().to_string(),
+        );
 
         SearchResult {
             id: SearchResultId::new(format!("file:{}", file_result.path.display())),
@@ -164,7 +165,7 @@ impl FileProvider {
             score: 0.0,                // Score will be applied by the ranking system
             match_indices: Vec::new(), // Spotlight doesn't provide match indices
             requires_permissions: false,
-                    action: SearchAction::OpenFile {
+            action: SearchAction::OpenFile {
                 path: file_result.path,
             },
         }

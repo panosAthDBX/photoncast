@@ -347,45 +347,25 @@ impl PredicateBuilder {
             // Archives (zip, dmg, etc.)
             format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "{UTI_ARCHIVE}""#),
             // macOS apps
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE} == "com.apple.application-bundle""#
-            ),
+            format!(r#"{MD_ITEM_CONTENT_TYPE} == "com.apple.application-bundle""#),
             // Office documents - specific types
             format!(
                 r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.openxmlformats.wordprocessingml.document""#
             ), // docx
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.word.doc""#
-            ), // doc
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.openxmlformats.spreadsheetml.sheet""#
-            ), // xlsx
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.excel.xls""#
-            ), // xls
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.word.doc""#), // doc
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.openxmlformats.spreadsheetml.sheet""#), // xlsx
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.excel.xls""#), // xls
             format!(
                 r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.openxmlformats.presentationml.presentation""#
             ), // pptx
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.powerpoint.ppt""#
-            ), // ppt
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.pages.sffpages""#
-            ), // pages
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.numbers.sffnumbers""#
-            ), // numbers
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.keynote.sffkey""#
-            ), // keynote
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "public.comma-separated-values-text""#
-            ), // csv
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.microsoft.powerpoint.ppt""#), // ppt
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.pages.sffpages""#), // pages
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.numbers.sffnumbers""#), // numbers
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "com.apple.iwork.keynote.sffkey""#), // keynote
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "public.comma-separated-values-text""#), // csv
             format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "public.rtf""#), // rtf
             // Ebooks
-            format!(
-                r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.idpf.epub-container""#
-            ), // epub
+            format!(r#"{MD_ITEM_CONTENT_TYPE_TREE} == "org.idpf.epub-container""#), // epub
         ];
         self.clauses.push(format!("({})", conditions.join(" OR ")));
         // Exclude hidden files
@@ -612,8 +592,7 @@ impl PredicateBuilder {
     /// ```
     #[must_use]
     pub fn size_greater_than(mut self, bytes: u64) -> Self {
-        self.clauses
-            .push(format!("{MD_ITEM_FS_SIZE} > {bytes}"));
+        self.clauses.push(format!("{MD_ITEM_FS_SIZE} > {bytes}"));
         self
     }
 
@@ -635,8 +614,7 @@ impl PredicateBuilder {
     /// ```
     #[must_use]
     pub fn size_less_than(mut self, bytes: u64) -> Self {
-        self.clauses
-            .push(format!("{MD_ITEM_FS_SIZE} < {bytes}"));
+        self.clauses.push(format!("{MD_ITEM_FS_SIZE} < {bytes}"));
         self
     }
 
@@ -752,9 +730,8 @@ impl PredicateBuilder {
         if !dir_name.is_empty() {
             let escaped = escape_predicate_string(dir_name);
             // Match both /dirname/ (middle of path) and /dirname (end of path)
-            self.clauses.push(format!(
-                r#"NOT ({MD_ITEM_PATH} CONTAINS "/{escaped}/")"#
-            ));
+            self.clauses
+                .push(format!(r#"NOT ({MD_ITEM_PATH} CONTAINS "/{escaped}/")"#));
         }
         self
     }
@@ -950,8 +927,11 @@ impl OrPredicateBuilder {
         }
 
         // Build each builder's predicate
-        let predicates: Vec<Retained<NSPredicate>> =
-            self.builders.into_iter().map(PredicateBuilder::build).collect();
+        let predicates: Vec<Retained<NSPredicate>> = self
+            .builders
+            .into_iter()
+            .map(PredicateBuilder::build)
+            .collect();
 
         // Combine with OR
         let array = NSArray::from_retained_slice(&predicates);
@@ -1003,10 +983,7 @@ mod tests {
             escape_predicate_string(r#"say "hello""#),
             r#"say \"hello\""#
         );
-        assert_eq!(
-            escape_predicate_string(r"path\to\file"),
-            r"path\\to\\file"
-        );
+        assert_eq!(escape_predicate_string(r"path\to\file"), r"path\\to\\file");
     }
 
     #[test]

@@ -54,13 +54,13 @@ impl ExtensionViewColors {
             base: GpuiThemeColors::from_theme(theme),
 
             // Tag colors mapped to Catppuccin palette colors
-            tag_blue: hsla(217.0 / 360.0, 0.92, 0.76, 1.0),    // Blue
-            tag_green: hsla(115.0 / 360.0, 0.54, 0.76, 1.0),   // Green
-            tag_yellow: hsla(41.0 / 360.0, 0.86, 0.83, 1.0),   // Yellow
-            tag_orange: hsla(23.0 / 360.0, 0.92, 0.75, 1.0),   // Peach/Orange
-            tag_red: hsla(343.0 / 360.0, 0.81, 0.75, 1.0),     // Red
-            tag_purple: hsla(267.0 / 360.0, 0.84, 0.81, 1.0),  // Mauve/Purple
-            tag_pink: hsla(316.0 / 360.0, 0.72, 0.86, 1.0),    // Pink
+            tag_blue: hsla(217.0 / 360.0, 0.92, 0.76, 1.0), // Blue
+            tag_green: hsla(115.0 / 360.0, 0.54, 0.76, 1.0), // Green
+            tag_yellow: hsla(41.0 / 360.0, 0.86, 0.83, 1.0), // Yellow
+            tag_orange: hsla(23.0 / 360.0, 0.92, 0.75, 1.0), // Peach/Orange
+            tag_red: hsla(343.0 / 360.0, 0.81, 0.75, 1.0),  // Red
+            tag_purple: hsla(267.0 / 360.0, 0.84, 0.81, 1.0), // Mauve/Purple
+            tag_pink: hsla(316.0 / 360.0, 0.72, 0.86, 1.0), // Pink
             tag_default: theme.colors.text_muted.to_gpui(),
         }
     }

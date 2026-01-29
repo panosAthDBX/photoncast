@@ -94,7 +94,7 @@ impl SearchProvider for TimerProvider {
                 score: 10000.0,
                 match_indices: vec![],
                 requires_permissions: false,
-                    action: SearchAction::OpenSleepTimer {
+                action: SearchAction::OpenSleepTimer {
                     expression: "cancel".to_string(),
                 },
             });
@@ -116,7 +116,7 @@ impl SearchProvider for TimerProvider {
                 score: 10000.0,
                 match_indices: vec![],
                 requires_permissions: false,
-                    action: SearchAction::OpenSleepTimer {
+                action: SearchAction::OpenSleepTimer {
                     expression: "status".to_string(),
                 },
             });

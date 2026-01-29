@@ -4424,6 +4424,7 @@ dependencies = [
  "photoncast-apps",
  "photoncast-calendar",
  "photoncast-extension-api",
+ "photoncast-extension-ipc",
  "photoncast-quicklinks",
  "photoncast-theme",
  "photoncast-timer",
@@ -4487,6 +4488,29 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "photoncast-extension-ipc"
+version = "0.1.0-alpha"
+dependencies = [
+ "photoncast-extension-api",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "photoncast-extension-runner"
+version = "0.1.0-alpha"
+dependencies = [
+ "abi_stable",
+ "photoncast-core",
+ "photoncast-extension-api",
+ "photoncast-extension-ipc",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

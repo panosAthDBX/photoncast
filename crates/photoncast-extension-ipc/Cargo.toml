@@ -1,0 +1,19 @@
+[package]
+name = "photoncast-extension-ipc"
+description = "JSON-RPC protocol helpers for extension sandboxing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "photoncast_extension_ipc"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+photoncast-extension-api = { path = "../photoncast-extension-api" }

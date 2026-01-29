@@ -11,9 +11,9 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use abi_stable::std_types::RVec;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use abi_stable::std_types::RVec;
 use photoncast_extension_api::{DropdownOption, FieldType, FormField, FormView, ROption};
 
 use super::actions::CLOSE_VIEW_ACTION;
@@ -322,7 +322,12 @@ impl ExtensionFormView {
     }
 
     /// Opens file picker dialog.
-    fn open_file_picker(&mut self, field_id: &str, extensions: &[String], cx: &mut ViewContext<Self>) {
+    fn open_file_picker(
+        &mut self,
+        field_id: &str,
+        extensions: &[String],
+        cx: &mut ViewContext<Self>,
+    ) {
         let field_id = field_id.to_string();
         let extensions: Vec<String> = extensions.to_vec();
 
@@ -610,7 +615,11 @@ impl ExtensionFormView {
                 } else {
                     format!("{}", num)
                 };
-                let cursor_pos = self.cursor_positions.get(&field_id).copied().unwrap_or(text.len());
+                let cursor_pos = self
+                    .cursor_positions
+                    .get(&field_id)
+                    .copied()
+                    .unwrap_or(text.len());
 
                 self.render_text_input(&text, cursor_pos, is_focused, placeholder, colors)
             },
@@ -635,17 +644,16 @@ impl ExtensionFormView {
                             } else {
                                 colors.border
                             })
-                            .bg(if checked { colors.accent } else { colors.surface })
+                            .bg(if checked {
+                                colors.accent
+                            } else {
+                                colors.surface
+                            })
                             .flex()
                             .items_center()
                             .justify_center()
                             .when(checked, |el| {
-                                el.child(
-                                    div()
-                                        .text_color(gpui::white())
-                                        .text_sm()
-                                        .child("✓"),
-                                )
+                                el.child(div().text_color(gpui::white()).text_sm().child("✓"))
                             }),
                     )
                     .child(
@@ -693,11 +701,13 @@ impl ExtensionFormView {
                                     .text_color(colors.text)
                                     .child(selected_label),
                             )
-                            .child(
-                                div()
-                                    .text_color(colors.text_muted)
-                                    .child(if self.dropdown_open && is_focused { "▲" } else { "▼" }),
-                            ),
+                            .child(div().text_color(colors.text_muted).child(
+                                if self.dropdown_open && is_focused {
+                                    "▲"
+                                } else {
+                                    "▼"
+                                },
+                            )),
                     )
                     .when(self.dropdown_open && is_focused, |el| {
                         el.child(self.render_dropdown_options(options, colors))
@@ -745,11 +755,11 @@ impl ExtensionFormView {
                                 path
                             }),
                     )
-                    .child(
-                        div()
-                            .text_color(colors.text_muted)
-                            .child(if is_file { "📄" } else { "📁" }),
-                    )
+                    .child(div().text_color(colors.text_muted).child(if is_file {
+                        "📄"
+                    } else {
+                        "📁"
+                    }))
             },
             FieldType::DatePicker => {
                 let timestamp = match value {
@@ -836,12 +846,7 @@ impl ExtensionFormView {
                     .items_center()
                     .child(before_cursor.to_string())
                     .when(show_cursor, |el| {
-                        el.child(
-                            div()
-                                .w(px(1.0))
-                                .h(px(16.0))
-                                .bg(colors.accent),
-                        )
+                        el.child(div().w(px(1.0)).h(px(16.0)).bg(colors.accent))
                     })
                     .child(after_cursor.to_string())
             })
@@ -913,12 +918,7 @@ impl ExtensionFormView {
                     .items_center()
                     .gap(px(8.0))
                     .child(label)
-                    .child(
-                        div()
-                            .text_xs()
-                            .opacity(0.7)
-                            .child(shortcut.to_string()),
-                    ),
+                    .child(div().text_xs().opacity(0.7).child(shortcut.to_string())),
             )
     }
 }

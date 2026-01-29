@@ -15,194 +15,197 @@ use regex::Regex;
 use crate::error::{CalculatorError, Result};
 
 /// Keywords that indicate a date/time query.
-pub static TIMEZONE_KEYWORDS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
-    vec![
-        "time", "timezone", "tz", "est", "pst", "cst", "mst", "gmt", "utc", "bst", "cet", "eet",
-        "jst", "kst", "ist", "aest", "aedt", "nzst",
-    ]
-});
+pub static TIMEZONE_KEYWORDS: std::sync::LazyLock<Vec<&'static str>> =
+    std::sync::LazyLock::new(|| {
+        vec![
+            "time", "timezone", "tz", "est", "pst", "cst", "mst", "gmt", "utc", "bst", "cet",
+            "eet", "jst", "kst", "ist", "aest", "aedt", "nzst",
+        ]
+    });
 
 /// City to timezone mappings (~500 cities).
-static CITY_TIMEZONES: std::sync::LazyLock<HashMap<&'static str, Tz>> = std::sync::LazyLock::new(|| {
-    let mut m = HashMap::new();
+static CITY_TIMEZONES: std::sync::LazyLock<HashMap<&'static str, Tz>> =
+    std::sync::LazyLock::new(|| {
+        let mut m = HashMap::new();
 
-    // Major US cities
-    m.insert("new york", chrono_tz::America::New_York);
-    m.insert("nyc", chrono_tz::America::New_York);
-    m.insert("ny", chrono_tz::America::New_York);
-    m.insert("los angeles", chrono_tz::America::Los_Angeles);
-    m.insert("la", chrono_tz::America::Los_Angeles);
-    m.insert("san francisco", chrono_tz::America::Los_Angeles);
-    m.insert("sf", chrono_tz::America::Los_Angeles);
-    m.insert("chicago", chrono_tz::America::Chicago);
-    m.insert("houston", chrono_tz::America::Chicago);
-    m.insert("dallas", chrono_tz::America::Chicago);
-    m.insert("austin", chrono_tz::America::Chicago);
-    m.insert("denver", chrono_tz::America::Denver);
-    m.insert("phoenix", chrono_tz::America::Phoenix);
-    m.insert("seattle", chrono_tz::America::Los_Angeles);
-    m.insert("portland", chrono_tz::America::Los_Angeles);
-    m.insert("boston", chrono_tz::America::New_York);
-    m.insert("miami", chrono_tz::America::New_York);
-    m.insert("atlanta", chrono_tz::America::New_York);
-    m.insert("washington", chrono_tz::America::New_York);
-    m.insert("dc", chrono_tz::America::New_York);
-    m.insert("philadelphia", chrono_tz::America::New_York);
-    m.insert("las vegas", chrono_tz::America::Los_Angeles);
-    m.insert("vegas", chrono_tz::America::Los_Angeles);
-    m.insert("san diego", chrono_tz::America::Los_Angeles);
-    m.insert("detroit", chrono_tz::America::Detroit);
-    m.insert("minneapolis", chrono_tz::America::Chicago);
+        // Major US cities
+        m.insert("new york", chrono_tz::America::New_York);
+        m.insert("nyc", chrono_tz::America::New_York);
+        m.insert("ny", chrono_tz::America::New_York);
+        m.insert("los angeles", chrono_tz::America::Los_Angeles);
+        m.insert("la", chrono_tz::America::Los_Angeles);
+        m.insert("san francisco", chrono_tz::America::Los_Angeles);
+        m.insert("sf", chrono_tz::America::Los_Angeles);
+        m.insert("chicago", chrono_tz::America::Chicago);
+        m.insert("houston", chrono_tz::America::Chicago);
+        m.insert("dallas", chrono_tz::America::Chicago);
+        m.insert("austin", chrono_tz::America::Chicago);
+        m.insert("denver", chrono_tz::America::Denver);
+        m.insert("phoenix", chrono_tz::America::Phoenix);
+        m.insert("seattle", chrono_tz::America::Los_Angeles);
+        m.insert("portland", chrono_tz::America::Los_Angeles);
+        m.insert("boston", chrono_tz::America::New_York);
+        m.insert("miami", chrono_tz::America::New_York);
+        m.insert("atlanta", chrono_tz::America::New_York);
+        m.insert("washington", chrono_tz::America::New_York);
+        m.insert("dc", chrono_tz::America::New_York);
+        m.insert("philadelphia", chrono_tz::America::New_York);
+        m.insert("las vegas", chrono_tz::America::Los_Angeles);
+        m.insert("vegas", chrono_tz::America::Los_Angeles);
+        m.insert("san diego", chrono_tz::America::Los_Angeles);
+        m.insert("detroit", chrono_tz::America::Detroit);
+        m.insert("minneapolis", chrono_tz::America::Chicago);
 
-    // Major European cities
-    m.insert("london", chrono_tz::Europe::London);
-    m.insert("ldn", chrono_tz::Europe::London);
-    m.insert("uk", chrono_tz::Europe::London);
-    m.insert("paris", chrono_tz::Europe::Paris);
-    m.insert("berlin", chrono_tz::Europe::Berlin);
-    m.insert("munich", chrono_tz::Europe::Berlin);
-    m.insert("frankfurt", chrono_tz::Europe::Berlin);
-    m.insert("amsterdam", chrono_tz::Europe::Amsterdam);
-    m.insert("brussels", chrono_tz::Europe::Brussels);
-    m.insert("rome", chrono_tz::Europe::Rome);
-    m.insert("milan", chrono_tz::Europe::Rome);
-    m.insert("madrid", chrono_tz::Europe::Madrid);
-    m.insert("barcelona", chrono_tz::Europe::Madrid);
-    m.insert("lisbon", chrono_tz::Europe::Lisbon);
-    m.insert("vienna", chrono_tz::Europe::Vienna);
-    m.insert("zurich", chrono_tz::Europe::Zurich);
-    m.insert("geneva", chrono_tz::Europe::Zurich);
-    m.insert("stockholm", chrono_tz::Europe::Stockholm);
-    m.insert("oslo", chrono_tz::Europe::Oslo);
-    m.insert("copenhagen", chrono_tz::Europe::Copenhagen);
-    m.insert("helsinki", chrono_tz::Europe::Helsinki);
-    m.insert("dublin", chrono_tz::Europe::Dublin);
-    m.insert("prague", chrono_tz::Europe::Prague);
-    m.insert("warsaw", chrono_tz::Europe::Warsaw);
-    m.insert("budapest", chrono_tz::Europe::Budapest);
-    m.insert("athens", chrono_tz::Europe::Athens);
-    m.insert("moscow", chrono_tz::Europe::Moscow);
-    m.insert("istanbul", chrono_tz::Europe::Istanbul);
-    m.insert("kiev", chrono_tz::Europe::Kiev);
-    m.insert("kyiv", chrono_tz::Europe::Kiev);
+        // Major European cities
+        m.insert("london", chrono_tz::Europe::London);
+        m.insert("ldn", chrono_tz::Europe::London);
+        m.insert("uk", chrono_tz::Europe::London);
+        m.insert("paris", chrono_tz::Europe::Paris);
+        m.insert("berlin", chrono_tz::Europe::Berlin);
+        m.insert("munich", chrono_tz::Europe::Berlin);
+        m.insert("frankfurt", chrono_tz::Europe::Berlin);
+        m.insert("amsterdam", chrono_tz::Europe::Amsterdam);
+        m.insert("brussels", chrono_tz::Europe::Brussels);
+        m.insert("rome", chrono_tz::Europe::Rome);
+        m.insert("milan", chrono_tz::Europe::Rome);
+        m.insert("madrid", chrono_tz::Europe::Madrid);
+        m.insert("barcelona", chrono_tz::Europe::Madrid);
+        m.insert("lisbon", chrono_tz::Europe::Lisbon);
+        m.insert("vienna", chrono_tz::Europe::Vienna);
+        m.insert("zurich", chrono_tz::Europe::Zurich);
+        m.insert("geneva", chrono_tz::Europe::Zurich);
+        m.insert("stockholm", chrono_tz::Europe::Stockholm);
+        m.insert("oslo", chrono_tz::Europe::Oslo);
+        m.insert("copenhagen", chrono_tz::Europe::Copenhagen);
+        m.insert("helsinki", chrono_tz::Europe::Helsinki);
+        m.insert("dublin", chrono_tz::Europe::Dublin);
+        m.insert("prague", chrono_tz::Europe::Prague);
+        m.insert("warsaw", chrono_tz::Europe::Warsaw);
+        m.insert("budapest", chrono_tz::Europe::Budapest);
+        m.insert("athens", chrono_tz::Europe::Athens);
+        m.insert("moscow", chrono_tz::Europe::Moscow);
+        m.insert("istanbul", chrono_tz::Europe::Istanbul);
+        m.insert("kiev", chrono_tz::Europe::Kiev);
+        m.insert("kyiv", chrono_tz::Europe::Kiev);
 
-    // Major Asian cities
-    m.insert("tokyo", chrono_tz::Asia::Tokyo);
-    m.insert("osaka", chrono_tz::Asia::Tokyo);
-    m.insert("seoul", chrono_tz::Asia::Seoul);
-    m.insert("beijing", chrono_tz::Asia::Shanghai);
-    m.insert("shanghai", chrono_tz::Asia::Shanghai);
-    m.insert("hong kong", chrono_tz::Asia::Hong_Kong);
-    m.insert("hk", chrono_tz::Asia::Hong_Kong);
-    m.insert("singapore", chrono_tz::Asia::Singapore);
-    m.insert("sg", chrono_tz::Asia::Singapore);
-    m.insert("taipei", chrono_tz::Asia::Taipei);
-    m.insert("bangkok", chrono_tz::Asia::Bangkok);
-    m.insert("kuala lumpur", chrono_tz::Asia::Kuala_Lumpur);
-    m.insert("kl", chrono_tz::Asia::Kuala_Lumpur);
-    m.insert("jakarta", chrono_tz::Asia::Jakarta);
-    m.insert("manila", chrono_tz::Asia::Manila);
-    m.insert("ho chi minh", chrono_tz::Asia::Ho_Chi_Minh);
-    m.insert("hanoi", chrono_tz::Asia::Ho_Chi_Minh);
-    m.insert("mumbai", chrono_tz::Asia::Kolkata);
-    m.insert("delhi", chrono_tz::Asia::Kolkata);
-    m.insert("bangalore", chrono_tz::Asia::Kolkata);
-    m.insert("kolkata", chrono_tz::Asia::Kolkata);
-    m.insert("chennai", chrono_tz::Asia::Kolkata);
-    m.insert("india", chrono_tz::Asia::Kolkata);
-    m.insert("karachi", chrono_tz::Asia::Karachi);
-    m.insert("dubai", chrono_tz::Asia::Dubai);
-    m.insert("uae", chrono_tz::Asia::Dubai);
-    m.insert("abu dhabi", chrono_tz::Asia::Dubai);
-    m.insert("riyadh", chrono_tz::Asia::Riyadh);
-    m.insert("tel aviv", chrono_tz::Asia::Jerusalem);
-    m.insert("jerusalem", chrono_tz::Asia::Jerusalem);
-    m.insert("tehran", chrono_tz::Asia::Tehran);
-    m.insert("doha", chrono_tz::Asia::Qatar);
-    m.insert("qatar", chrono_tz::Asia::Qatar);
+        // Major Asian cities
+        m.insert("tokyo", chrono_tz::Asia::Tokyo);
+        m.insert("osaka", chrono_tz::Asia::Tokyo);
+        m.insert("seoul", chrono_tz::Asia::Seoul);
+        m.insert("beijing", chrono_tz::Asia::Shanghai);
+        m.insert("shanghai", chrono_tz::Asia::Shanghai);
+        m.insert("hong kong", chrono_tz::Asia::Hong_Kong);
+        m.insert("hk", chrono_tz::Asia::Hong_Kong);
+        m.insert("singapore", chrono_tz::Asia::Singapore);
+        m.insert("sg", chrono_tz::Asia::Singapore);
+        m.insert("taipei", chrono_tz::Asia::Taipei);
+        m.insert("bangkok", chrono_tz::Asia::Bangkok);
+        m.insert("kuala lumpur", chrono_tz::Asia::Kuala_Lumpur);
+        m.insert("kl", chrono_tz::Asia::Kuala_Lumpur);
+        m.insert("jakarta", chrono_tz::Asia::Jakarta);
+        m.insert("manila", chrono_tz::Asia::Manila);
+        m.insert("ho chi minh", chrono_tz::Asia::Ho_Chi_Minh);
+        m.insert("hanoi", chrono_tz::Asia::Ho_Chi_Minh);
+        m.insert("mumbai", chrono_tz::Asia::Kolkata);
+        m.insert("delhi", chrono_tz::Asia::Kolkata);
+        m.insert("bangalore", chrono_tz::Asia::Kolkata);
+        m.insert("kolkata", chrono_tz::Asia::Kolkata);
+        m.insert("chennai", chrono_tz::Asia::Kolkata);
+        m.insert("india", chrono_tz::Asia::Kolkata);
+        m.insert("karachi", chrono_tz::Asia::Karachi);
+        m.insert("dubai", chrono_tz::Asia::Dubai);
+        m.insert("uae", chrono_tz::Asia::Dubai);
+        m.insert("abu dhabi", chrono_tz::Asia::Dubai);
+        m.insert("riyadh", chrono_tz::Asia::Riyadh);
+        m.insert("tel aviv", chrono_tz::Asia::Jerusalem);
+        m.insert("jerusalem", chrono_tz::Asia::Jerusalem);
+        m.insert("tehran", chrono_tz::Asia::Tehran);
+        m.insert("doha", chrono_tz::Asia::Qatar);
+        m.insert("qatar", chrono_tz::Asia::Qatar);
 
-    // Australia & Pacific
-    m.insert("sydney", chrono_tz::Australia::Sydney);
-    m.insert("melbourne", chrono_tz::Australia::Melbourne);
-    m.insert("brisbane", chrono_tz::Australia::Brisbane);
-    m.insert("perth", chrono_tz::Australia::Perth);
-    m.insert("adelaide", chrono_tz::Australia::Adelaide);
-    m.insert("auckland", chrono_tz::Pacific::Auckland);
-    m.insert("wellington", chrono_tz::Pacific::Auckland);
-    m.insert("nz", chrono_tz::Pacific::Auckland);
-    m.insert("fiji", chrono_tz::Pacific::Fiji);
-    m.insert("hawaii", chrono_tz::Pacific::Honolulu);
-    m.insert("honolulu", chrono_tz::Pacific::Honolulu);
+        // Australia & Pacific
+        m.insert("sydney", chrono_tz::Australia::Sydney);
+        m.insert("melbourne", chrono_tz::Australia::Melbourne);
+        m.insert("brisbane", chrono_tz::Australia::Brisbane);
+        m.insert("perth", chrono_tz::Australia::Perth);
+        m.insert("adelaide", chrono_tz::Australia::Adelaide);
+        m.insert("auckland", chrono_tz::Pacific::Auckland);
+        m.insert("wellington", chrono_tz::Pacific::Auckland);
+        m.insert("nz", chrono_tz::Pacific::Auckland);
+        m.insert("fiji", chrono_tz::Pacific::Fiji);
+        m.insert("hawaii", chrono_tz::Pacific::Honolulu);
+        m.insert("honolulu", chrono_tz::Pacific::Honolulu);
 
-    // Americas (non-US)
-    m.insert("toronto", chrono_tz::America::Toronto);
-    m.insert("vancouver", chrono_tz::America::Vancouver);
-    m.insert("montreal", chrono_tz::America::Montreal);
-    m.insert("calgary", chrono_tz::America::Edmonton);
-    m.insert("mexico city", chrono_tz::America::Mexico_City);
-    m.insert("cdmx", chrono_tz::America::Mexico_City);
-    m.insert("sao paulo", chrono_tz::America::Sao_Paulo);
-    m.insert("rio", chrono_tz::America::Sao_Paulo);
-    m.insert("buenos aires", chrono_tz::America::Argentina::Buenos_Aires);
-    m.insert("lima", chrono_tz::America::Lima);
-    m.insert("bogota", chrono_tz::America::Bogota);
-    m.insert("santiago", chrono_tz::America::Santiago);
+        // Americas (non-US)
+        m.insert("toronto", chrono_tz::America::Toronto);
+        m.insert("vancouver", chrono_tz::America::Vancouver);
+        m.insert("montreal", chrono_tz::America::Montreal);
+        m.insert("calgary", chrono_tz::America::Edmonton);
+        m.insert("mexico city", chrono_tz::America::Mexico_City);
+        m.insert("cdmx", chrono_tz::America::Mexico_City);
+        m.insert("sao paulo", chrono_tz::America::Sao_Paulo);
+        m.insert("rio", chrono_tz::America::Sao_Paulo);
+        m.insert("buenos aires", chrono_tz::America::Argentina::Buenos_Aires);
+        m.insert("lima", chrono_tz::America::Lima);
+        m.insert("bogota", chrono_tz::America::Bogota);
+        m.insert("santiago", chrono_tz::America::Santiago);
 
-    // Africa
-    m.insert("cairo", chrono_tz::Africa::Cairo);
-    m.insert("johannesburg", chrono_tz::Africa::Johannesburg);
-    m.insert("cape town", chrono_tz::Africa::Johannesburg);
-    m.insert("lagos", chrono_tz::Africa::Lagos);
-    m.insert("nairobi", chrono_tz::Africa::Nairobi);
-    m.insert("casablanca", chrono_tz::Africa::Casablanca);
+        // Africa
+        m.insert("cairo", chrono_tz::Africa::Cairo);
+        m.insert("johannesburg", chrono_tz::Africa::Johannesburg);
+        m.insert("cape town", chrono_tz::Africa::Johannesburg);
+        m.insert("lagos", chrono_tz::Africa::Lagos);
+        m.insert("nairobi", chrono_tz::Africa::Nairobi);
+        m.insert("casablanca", chrono_tz::Africa::Casablanca);
 
-    m
-});
+        m
+    });
 
 /// Timezone abbreviation mappings.
-static TIMEZONE_ABBREVS: std::sync::LazyLock<HashMap<&'static str, Tz>> = std::sync::LazyLock::new(|| {
-    let mut m = HashMap::new();
+static TIMEZONE_ABBREVS: std::sync::LazyLock<HashMap<&'static str, Tz>> =
+    std::sync::LazyLock::new(|| {
+        let mut m = HashMap::new();
 
-    // US timezones
-    m.insert("est", chrono_tz::America::New_York);
-    m.insert("edt", chrono_tz::America::New_York);
-    m.insert("cst", chrono_tz::America::Chicago);
-    m.insert("cdt", chrono_tz::America::Chicago);
-    m.insert("mst", chrono_tz::America::Denver);
-    m.insert("mdt", chrono_tz::America::Denver);
-    m.insert("pst", chrono_tz::America::Los_Angeles);
-    m.insert("pdt", chrono_tz::America::Los_Angeles);
-    m.insert("akst", chrono_tz::America::Anchorage);
-    m.insert("hst", chrono_tz::Pacific::Honolulu);
+        // US timezones
+        m.insert("est", chrono_tz::America::New_York);
+        m.insert("edt", chrono_tz::America::New_York);
+        m.insert("cst", chrono_tz::America::Chicago);
+        m.insert("cdt", chrono_tz::America::Chicago);
+        m.insert("mst", chrono_tz::America::Denver);
+        m.insert("mdt", chrono_tz::America::Denver);
+        m.insert("pst", chrono_tz::America::Los_Angeles);
+        m.insert("pdt", chrono_tz::America::Los_Angeles);
+        m.insert("akst", chrono_tz::America::Anchorage);
+        m.insert("hst", chrono_tz::Pacific::Honolulu);
 
-    // European timezones
-    m.insert("gmt", chrono_tz::Etc::GMT);
-    m.insert("utc", chrono_tz::UTC);
-    m.insert("bst", chrono_tz::Europe::London);
-    m.insert("cet", chrono_tz::Europe::Paris);
-    m.insert("cest", chrono_tz::Europe::Paris);
-    m.insert("eet", chrono_tz::Europe::Athens);
-    m.insert("eest", chrono_tz::Europe::Athens);
-    m.insert("wet", chrono_tz::Europe::Lisbon);
+        // European timezones
+        m.insert("gmt", chrono_tz::Etc::GMT);
+        m.insert("utc", chrono_tz::UTC);
+        m.insert("bst", chrono_tz::Europe::London);
+        m.insert("cet", chrono_tz::Europe::Paris);
+        m.insert("cest", chrono_tz::Europe::Paris);
+        m.insert("eet", chrono_tz::Europe::Athens);
+        m.insert("eest", chrono_tz::Europe::Athens);
+        m.insert("wet", chrono_tz::Europe::Lisbon);
 
-    // Asian timezones
-    m.insert("jst", chrono_tz::Asia::Tokyo);
-    m.insert("kst", chrono_tz::Asia::Seoul);
-    m.insert("cst_china", chrono_tz::Asia::Shanghai);
-    m.insert("hkt", chrono_tz::Asia::Hong_Kong);
-    m.insert("sgt", chrono_tz::Asia::Singapore);
-    m.insert("ist", chrono_tz::Asia::Kolkata);
+        // Asian timezones
+        m.insert("jst", chrono_tz::Asia::Tokyo);
+        m.insert("kst", chrono_tz::Asia::Seoul);
+        m.insert("cst_china", chrono_tz::Asia::Shanghai);
+        m.insert("hkt", chrono_tz::Asia::Hong_Kong);
+        m.insert("sgt", chrono_tz::Asia::Singapore);
+        m.insert("ist", chrono_tz::Asia::Kolkata);
 
-    // Australian timezones
-    m.insert("aest", chrono_tz::Australia::Sydney);
-    m.insert("aedt", chrono_tz::Australia::Sydney);
-    m.insert("acst", chrono_tz::Australia::Adelaide);
-    m.insert("awst", chrono_tz::Australia::Perth);
-    m.insert("nzst", chrono_tz::Pacific::Auckland);
-    m.insert("nzdt", chrono_tz::Pacific::Auckland);
+        // Australian timezones
+        m.insert("aest", chrono_tz::Australia::Sydney);
+        m.insert("aedt", chrono_tz::Australia::Sydney);
+        m.insert("acst", chrono_tz::Australia::Adelaide);
+        m.insert("awst", chrono_tz::Australia::Perth);
+        m.insert("nzst", chrono_tz::Pacific::Auckland);
+        m.insert("nzdt", chrono_tz::Pacific::Auckland);
 
-    m
-});
+        m
+    });
 
 /// Result of a date/time calculation.
 #[derive(Debug, Clone)]

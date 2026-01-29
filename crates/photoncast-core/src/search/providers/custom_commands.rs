@@ -159,7 +159,7 @@ impl CustomCommandProvider {
             score,
             match_indices: indices,
             requires_permissions: false,
-                    action: SearchAction::ExecuteCustomCommand {
+            action: SearchAction::ExecuteCustomCommand {
                 command_id: command.id.clone(),
                 arguments: arguments.to_string(),
             },
@@ -521,10 +521,16 @@ mod tests {
         assert_eq!(results.len(), 3);
 
         // Check icon types
-        let with_icon = results.iter().find(|r| r.title == "Test With Icon").unwrap();
+        let with_icon = results
+            .iter()
+            .find(|r| r.title == "Test With Icon")
+            .unwrap();
         assert!(matches!(with_icon.icon, IconSource::SystemIcon { .. }));
 
-        let with_emoji = results.iter().find(|r| r.title == "Test With Emoji").unwrap();
+        let with_emoji = results
+            .iter()
+            .find(|r| r.title == "Test With Emoji")
+            .unwrap();
         assert!(matches!(with_emoji.icon, IconSource::Emoji { .. }));
 
         let no_icon = results.iter().find(|r| r.title == "Test No Icon").unwrap();

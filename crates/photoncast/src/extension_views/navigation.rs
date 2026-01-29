@@ -817,10 +817,7 @@ pub struct NavigationController {
 
 impl NavigationController {
     /// Creates a new navigation controller.
-    pub fn new(
-        sender: Arc<Mutex<Sender<ViewUpdate>>>,
-        valid: Arc<AtomicBool>,
-    ) -> Self {
+    pub fn new(sender: Arc<Mutex<Sender<ViewUpdate>>>, valid: Arc<AtomicBool>) -> Self {
         Self { sender, valid }
     }
 

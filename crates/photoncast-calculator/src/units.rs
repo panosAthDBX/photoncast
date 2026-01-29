@@ -10,7 +10,6 @@
 
 use std::collections::HashMap;
 
-
 use crate::error::{CalculatorError, Result};
 
 /// Map of unit patterns to their canonical form and category.

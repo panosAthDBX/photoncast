@@ -42,8 +42,8 @@ pub use form_view::ExtensionFormView;
 pub use grid_view::ExtensionGridView;
 pub use list_view::ExtensionListView;
 pub use navigation::{
-    Navigation, NavigationContainer, NavigationController, NavigationStack,
-    register_key_bindings as register_navigation_key_bindings,
+    register_key_bindings as register_navigation_key_bindings, Navigation, NavigationContainer,
+    NavigationController, NavigationStack,
 };
 pub use preview::ExtensionPreviewPane;
 

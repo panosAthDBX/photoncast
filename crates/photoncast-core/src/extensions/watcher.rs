@@ -154,10 +154,7 @@ impl ExtensionWatcher {
     ///
     /// Returns an error if the path cannot be watched.
     pub fn watch_extension(&mut self, extension_id: &str, path: &Path) -> Result<(), WatcherError> {
-        let watcher = self
-            .watcher
-            .as_mut()
-            .ok_or(WatcherError::NotStarted)?;
+        let watcher = self.watcher.as_mut().ok_or(WatcherError::NotStarted)?;
 
         // Add to our tracking map
         self.watched_paths.write().insert(

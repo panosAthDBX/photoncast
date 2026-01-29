@@ -20,7 +20,11 @@ use photoncast_core::extensions::registry::{ExtensionRegistry, ExtensionState};
 // Helper Functions
 // =============================================================================
 
-fn create_test_manifest(id: &str, num_commands: usize, num_preferences: usize) -> ExtensionManifest {
+fn create_test_manifest(
+    id: &str,
+    num_commands: usize,
+    num_preferences: usize,
+) -> ExtensionManifest {
     let commands: Vec<CommandManifest> = (0..num_commands)
         .map(|i| CommandManifest {
             id: format!("cmd{}", i),
@@ -292,10 +296,10 @@ fn bench_id_validation(c: &mut Criterion) {
     ];
 
     let invalid_ids = vec![
-        "invalid",                // single segment
-        "com..test",              // empty segment
-        "com.test@invalid",       // special character
-        "com.test.with spaces",   // spaces
+        "invalid",              // single segment
+        "com..test",            // empty segment
+        "com.test@invalid",     // special character
+        "com.test.with spaces", // spaces
     ];
 
     for id in valid_ids {
@@ -305,9 +309,10 @@ fn bench_id_validation(c: &mut Criterion) {
                 let parts: Vec<&str> = id.split('.').collect();
                 let valid = parts.len() >= 2
                     && !parts.iter().any(|p| p.is_empty())
-                    && parts
-                        .iter()
-                        .all(|p| p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+                    && parts.iter().all(|p| {
+                        p.chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                    });
                 black_box(valid)
             })
         });
@@ -319,9 +324,10 @@ fn bench_id_validation(c: &mut Criterion) {
                 let parts: Vec<&str> = id.split('.').collect();
                 let valid = parts.len() >= 2
                     && !parts.iter().any(|p| p.is_empty())
-                    && parts
-                        .iter()
-                        .all(|p| p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+                    && parts.iter().all(|p| {
+                        p.chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                    });
                 black_box(valid)
             })
         });

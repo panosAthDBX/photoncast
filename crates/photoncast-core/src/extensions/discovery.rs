@@ -6,13 +6,11 @@ use crate::extensions::manifest::{
 };
 use crate::utils::paths;
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct DiscoveryOptions {
     pub dev_mode: bool,
     pub dev_paths: Vec<PathBuf>,
 }
-
 
 #[derive(Debug)]
 pub struct ExtensionDiscovery {

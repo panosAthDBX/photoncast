@@ -93,9 +93,7 @@ pub fn verify_code_signature_identity(
         .lines()
         .find_map(|line| {
             let trimmed = line.trim();
-            trimmed
-                .strip_prefix("TeamIdentifier=")
-                .map(str::trim)
+            trimmed.strip_prefix("TeamIdentifier=").map(str::trim)
         })
         .ok_or_else(|| {
             CodeSignatureError::IdentityVerificationFailed(format!(
@@ -177,10 +175,7 @@ mod tests {
         drop(f);
 
         let result = verify_code_signature(&file_path);
-        assert!(
-            result.is_err(),
-            "Expected error for unsigned/invalid file"
-        );
+        assert!(result.is_err(), "Expected error for unsigned/invalid file");
     }
 
     #[test]
@@ -225,7 +220,10 @@ mod tests {
         std::fs::write(&file_path, b"fake").expect("failed to write");
 
         let result = verify_code_signature_identity(&file_path, &[]);
-        assert!(result.is_err(), "Expected error with empty allowed_team_ids");
+        assert!(
+            result.is_err(),
+            "Expected error with empty allowed_team_ids"
+        );
 
         let err_msg = result.unwrap_err().to_string();
         assert!(

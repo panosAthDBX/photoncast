@@ -11,9 +11,19 @@ pub struct ExtensionConfig {
     pub dev_mode: bool,
     #[serde(default)]
     pub dev_paths: Vec<String>,
+    #[serde(default = "default_execution_mode")]
+    pub execution_mode: ExtensionExecutionMode,
     /// Hot-reload debounce duration in milliseconds.
     #[serde(default = "default_reload_debounce_ms")]
     pub reload_debounce_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionExecutionMode {
+    InProcess,
+    Sandbox,
+    Auto,
 }
 
 const fn default_enabled() -> bool {
@@ -26,9 +36,14 @@ impl Default for ExtensionConfig {
             enabled: true,
             dev_mode: false,
             dev_paths: Vec::new(),
+            execution_mode: default_execution_mode(),
             reload_debounce_ms: default_reload_debounce_ms(),
         }
     }
+}
+
+const fn default_execution_mode() -> ExtensionExecutionMode {
+    ExtensionExecutionMode::Auto
 }
 
 const fn default_reload_debounce_ms() -> u64 {
@@ -50,6 +65,20 @@ impl ExtensionConfig {
             }
         }
         self.dev_mode
+    }
+
+    #[must_use]
+    pub fn effective_execution_mode(&self) -> ExtensionExecutionMode {
+        match self.execution_mode {
+            ExtensionExecutionMode::Auto => {
+                if self.effective_dev_mode() {
+                    ExtensionExecutionMode::InProcess
+                } else {
+                    ExtensionExecutionMode::Sandbox
+                }
+            },
+            mode => mode,
+        }
     }
 
     /// Logs the current dev mode status on startup.
@@ -100,6 +129,7 @@ mod tests {
         assert!(config.enabled);
         assert!(!config.dev_mode);
         assert!(config.dev_paths.is_empty());
+        assert_eq!(config.execution_mode, ExtensionExecutionMode::Auto);
         assert_eq!(config.reload_debounce_ms, 200);
     }
 
@@ -140,6 +170,7 @@ mod tests {
             enabled: false,
             dev_mode: true,
             dev_paths: vec!["/tmp/my-ext".to_string()],
+            execution_mode: ExtensionExecutionMode::Sandbox,
             reload_debounce_ms: 300,
         };
         let json = serde_json::to_string(&config).expect("serialize failed");
@@ -148,6 +179,7 @@ mod tests {
         assert!(!deserialized.enabled);
         assert!(deserialized.dev_mode);
         assert_eq!(deserialized.dev_paths, vec!["/tmp/my-ext"]);
+        assert_eq!(deserialized.execution_mode, ExtensionExecutionMode::Sandbox);
         assert_eq!(deserialized.reload_debounce_ms, 300);
     }
 
@@ -158,6 +190,7 @@ mod tests {
         assert!(config.enabled);
         assert!(!config.dev_mode);
         assert!(config.dev_paths.is_empty());
+        assert_eq!(config.execution_mode, ExtensionExecutionMode::Auto);
         assert_eq!(config.reload_debounce_ms, 200);
     }
 

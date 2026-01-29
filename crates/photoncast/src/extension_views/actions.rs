@@ -97,7 +97,11 @@ pub fn execute_action(
         },
         ActionHandler::CopyToClipboard(text) => {
             let text = text.to_string();
-            let preview = if text.len() > 100 { &text[..100] } else { &text };
+            let preview = if text.len() > 100 {
+                &text[..100]
+            } else {
+                &text
+            };
             tracing::info!(
                 content_length = text.len(),
                 preview = %preview,

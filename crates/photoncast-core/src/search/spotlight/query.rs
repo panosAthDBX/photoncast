@@ -123,7 +123,8 @@ impl MetadataQueryWrapper {
             .map(NSString::from_str)
             .collect();
 
-        let scope_refs: Vec<&NSString> = ns_scopes.iter().map(std::convert::AsRef::as_ref).collect();
+        let scope_refs: Vec<&NSString> =
+            ns_scopes.iter().map(std::convert::AsRef::as_ref).collect();
         let array: Retained<NSArray<NSString>> = NSArray::from_slice(&scope_refs);
 
         // Safety: setSearchScopes expects an array of NSString or NSURL.

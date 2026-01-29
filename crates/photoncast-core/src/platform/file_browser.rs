@@ -635,13 +635,7 @@ mod tests {
         // Find where folders end and files begin
         let folder_end = names
             .iter()
-            .position(|n| {
-                !result
-                    .iter()
-                    .find(|e| e.name == *n)
-                    .unwrap()
-                    .is_directory()
-            })
+            .position(|n| !result.iter().find(|e| e.name == *n).unwrap().is_directory())
             .unwrap_or(names.len());
 
         // Verify folders come first

@@ -4,11 +4,11 @@
 //! (via `directories::ProjectDirs`) and hashes each app path to produce
 //! a deterministic `<hash>.png` filename.
 
+use parking_lot::Mutex;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use parking_lot::Mutex;
 use std::time::Instant;
 
 /// In-memory cache that avoids repeated filesystem `stat` calls for icon paths.

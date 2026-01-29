@@ -19,13 +19,17 @@ impl ExtensionState {
     pub const fn can_transition(self, next: ExtensionState) -> bool {
         matches!(
             (self, next),
-            (ExtensionState::Discovered | ExtensionState::Disabled,
-ExtensionState::Loaded) |
-(ExtensionState::Loaded,
-ExtensionState::Active | ExtensionState::Failed | ExtensionState::Unloaded) |
-(ExtensionState::Active, ExtensionState::Failed | ExtensionState::Disabled) |
-(ExtensionState::Disabled, ExtensionState::Unloaded) |
-(ExtensionState::Failed, ExtensionState::Disabled)
+            (
+                ExtensionState::Discovered | ExtensionState::Disabled,
+                ExtensionState::Loaded
+            ) | (
+                ExtensionState::Loaded,
+                ExtensionState::Active | ExtensionState::Failed | ExtensionState::Unloaded
+            ) | (
+                ExtensionState::Active,
+                ExtensionState::Failed | ExtensionState::Disabled
+            ) | (ExtensionState::Disabled, ExtensionState::Unloaded)
+                | (ExtensionState::Failed, ExtensionState::Disabled)
         )
     }
 }

@@ -3,7 +3,10 @@
 use super::*;
 
 impl PreferencesWindow {
-    pub(super) fn render_extensions_section(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    pub(super) fn render_extensions_section(
+        &mut self,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let colors = get_colors(cx);
 
         // Get extensions from PhotonCastApp if available

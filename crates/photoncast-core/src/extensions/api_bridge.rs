@@ -131,7 +131,9 @@ impl ViewHandleTrait for HostViewHandleApi {
     }
 
     fn set_error(&self, error: ROption<RString>) {
-        let error = error.into_option().map(photoncast_extension_api::RString::into_string);
+        let error = error
+            .into_option()
+            .map(photoncast_extension_api::RString::into_string);
         self.handle.set_error(error);
     }
 }

@@ -29,7 +29,7 @@ impl gpui::Global for PhotonTheme {}
 impl PhotonTheme {
     /// Creates a new theme with the given flavor and accent.
     #[must_use]
-    pub fn new(flavor: CatppuccinFlavor, accent: AccentColor) -> Self {
+    pub const fn new(flavor: CatppuccinFlavor, accent: AccentColor) -> Self {
         let palette = CatppuccinPalette::for_flavor(flavor);
         let colors = ThemeColors::from_palette(&palette, accent);
 
@@ -44,14 +44,14 @@ impl PhotonTheme {
 
     /// Builder method to set auto-sync with system theme.
     #[must_use]
-    pub fn with_auto_sync(mut self, auto_sync: bool) -> Self {
+    pub const fn with_auto_sync(mut self, auto_sync: bool) -> Self {
         self.auto_sync = auto_sync;
         self
     }
 
     /// Builder method to set the accent color.
     #[must_use]
-    pub fn with_accent(mut self, accent: AccentColor) -> Self {
+    pub const fn with_accent(mut self, accent: AccentColor) -> Self {
         self.accent = accent;
         self.colors = ThemeColors::from_palette(&self.palette, accent);
         self
@@ -59,7 +59,7 @@ impl PhotonTheme {
 
     /// Builder method to set the flavor.
     #[must_use]
-    pub fn with_flavor(mut self, flavor: CatppuccinFlavor) -> Self {
+    pub const fn with_flavor(mut self, flavor: CatppuccinFlavor) -> Self {
         self.flavor = flavor;
         self.palette = CatppuccinPalette::for_flavor(flavor);
         self.colors = ThemeColors::from_palette(&self.palette, self.accent);

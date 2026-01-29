@@ -51,6 +51,7 @@ libloading.workspace = true
 
 # Productivity modules
 photoncast-extension-api = { path = "../photoncast-extension-api" }
+photoncast-extension-ipc = { path = "../photoncast-extension-ipc" }
 photoncast-quicklinks = { path = "../photoncast-quicklinks", default-features = false }
 photoncast-timer = { path = "../photoncast-timer", default-features = false }
 photoncast-window = { path = "../photoncast-window", default-features = false }

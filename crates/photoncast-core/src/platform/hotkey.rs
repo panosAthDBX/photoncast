@@ -44,14 +44,10 @@ impl HotkeyError {
                     .to_string()
             },
             Self::ConflictDetected { app, suggestion } => {
-                format!(
-                    "The hotkey you selected conflicts with {app}. {suggestion}"
-                )
+                format!("The hotkey you selected conflicts with {app}. {suggestion}")
             },
             Self::RegistrationFailed { reason } => {
-                format!(
-                    "Failed to register hotkey: {reason}. Try a different key combination."
-                )
+                format!("Failed to register hotkey: {reason}. Try a different key combination.")
             },
             Self::InvalidBinding => {
                 "The selected key combination is not valid. Please choose a different hotkey."

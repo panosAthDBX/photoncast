@@ -131,10 +131,7 @@ impl LauncherWindow {
     }
 
     /// Render the search bar component
-    pub(super) fn render_search_bar(
-        &self,
-        cx: &mut ViewContext<Self>,
-    ) -> impl IntoElement + '_ {
+    pub(super) fn render_search_bar(&self, cx: &mut ViewContext<Self>) -> impl IntoElement + '_ {
         let colors = get_launcher_colors(cx);
         // Determine icon and placeholder based on search mode
         let (icon, placeholder) = match &self.search.mode {

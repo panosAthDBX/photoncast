@@ -99,34 +99,26 @@ impl FileTypeFilter {
                     || path
                         .extension()
                         .and_then(|e| e.to_str())
-                        .is_some_and(|ext| {
-                            IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str())
-                        })
+                        .is_some_and(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
             },
             Self::Videos => {
                 matches!(kind, FileKind::Video)
                     || path
                         .extension()
                         .and_then(|e| e.to_str())
-                        .is_some_and(|ext| {
-                            VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str())
-                        })
+                        .is_some_and(|ext| VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
             },
             Self::Audio => {
                 matches!(kind, FileKind::Audio)
                     || path
                         .extension()
                         .and_then(|e| e.to_str())
-                        .is_some_and(|ext| {
-                            AUDIO_EXTENSIONS.contains(&ext.to_lowercase().as_str())
-                        })
+                        .is_some_and(|ext| AUDIO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
             },
             Self::Archives => path
                 .extension()
                 .and_then(|e| e.to_str())
-                .is_some_and(|ext| {
-                    ARCHIVE_EXTENSIONS.contains(&ext.to_lowercase().as_str())
-                }),
+                .is_some_and(|ext| ARCHIVE_EXTENSIONS.contains(&ext.to_lowercase().as_str())),
             Self::Code => path
                 .extension()
                 .and_then(|e| e.to_str())

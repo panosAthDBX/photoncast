@@ -192,7 +192,8 @@ impl Screenshot {
         // Reveal in Finder
         let parent_path = self
             .path
-            .parent().map_or_else(|| path_str.clone(), |p| p.to_string_lossy().to_string());
+            .parent()
+            .map_or_else(|| path_str.clone(), |p| p.to_string_lossy().to_string());
         actions.push(Action {
             id: RString::from("reveal"),
             title: RString::from("Reveal in Finder"),
@@ -275,8 +276,7 @@ impl Screenshot {
     /// Creates a preview for this screenshot using a cached thumbnail if available.
     /// Falls back to the original image path rather than generating a thumbnail inline.
     fn preview(&self) -> Preview {
-        let preview_path = get_cached_thumbnail(&self.path)
-            .unwrap_or_else(|| self.path.clone());
+        let preview_path = get_cached_thumbnail(&self.path).unwrap_or_else(|| self.path.clone());
         let path_str = preview_path.to_string_lossy().to_string();
         Preview::Image {
             source: RString::from(path_str),
@@ -351,9 +351,7 @@ fn scan_screenshots_cached(folder: &str, cache: &ScanCache) -> Vec<Screenshot> {
     let path = resolve_folder_path(folder);
 
     // Check if cache is valid
-    let dir_modified = std::fs::metadata(&path)
-        .and_then(|m| m.modified())
-        .ok();
+    let dir_modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
 
     if let Some(ref dir_mod) = dir_modified {
         let cached = cache.lock().unwrap();
@@ -411,7 +409,11 @@ impl CommandHandlerTrait for BrowseScreenshotsHandler {
         let screenshots = scan_screenshots_cached(&folder, &self.scan_cache);
 
         // Filter by query if provided
-        let query = args.query.as_ref().map(photoncast_extension_api::RString::as_str).unwrap_or("");
+        let query = args
+            .query
+            .as_ref()
+            .map(photoncast_extension_api::RString::as_str)
+            .unwrap_or("");
         let query_lower = query.to_lowercase();
 
         let filtered: Vec<&Screenshot> = if query.is_empty() {

@@ -1,0 +1,19 @@
+pub const EXTENSION_SEARCH: &str = "extension.search";
+pub const EXTENSION_COMMAND: &str = "extension.command";
+pub const EXTENSION_SHUTDOWN: &str = "extension.shutdown";
+
+pub const HOST_RENDER_VIEW: &str = "host.render_view";
+pub const HOST_UPDATE_VIEW: &str = "host.update_view";
+pub const HOST_UPDATE_ITEMS: &str = "host.update_items";
+pub const HOST_SET_LOADING: &str = "host.set_loading";
+pub const HOST_SET_ERROR: &str = "host.set_error";
+pub const HOST_SHOW_TOAST: &str = "host.show_toast";
+pub const HOST_SHOW_HUD: &str = "host.show_hud";
+pub const HOST_COPY_CLIPBOARD: &str = "host.copy_to_clipboard";
+pub const HOST_READ_CLIPBOARD: &str = "host.read_clipboard";
+pub const HOST_SELECTED_TEXT: &str = "host.selected_text";
+pub const HOST_OPEN_URL: &str = "host.open_url";
+pub const HOST_OPEN_FILE: &str = "host.open_file";
+pub const HOST_REVEAL_IN_FINDER: &str = "host.reveal_in_finder";
+pub const HOST_LAUNCH_COMMAND: &str = "host.launch_command";
+pub const HOST_GET_FRONTMOST_APP: &str = "host.get_frontmost_application";

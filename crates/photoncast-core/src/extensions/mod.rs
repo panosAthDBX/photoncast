@@ -13,6 +13,7 @@ pub mod manifest;
 pub mod permissions;
 pub mod registry;
 pub mod runtime;
+pub mod sandbox;
 pub mod signing;
 pub mod storage;
 pub mod watcher;
@@ -33,5 +34,6 @@ pub use permissions::{
 };
 pub use registry::{ExtensionRegistry, ExtensionState, RegistryError};
 pub use runtime::{ExtensionRuntimeImpl, ExtensionRuntimeSpawner};
+pub use sandbox::{SandboxError, SandboxedExtension};
 pub use storage::{ExtensionStorageImpl, PreferenceStoreImpl};
 pub use watcher::{ExtensionWatcher, WatcherError, WatcherEvent};

@@ -720,7 +720,8 @@ mod tests {
             modifiers: &'static [&'static str],
         }
 
-        let shortcuts = [ActionShortcut {
+        let shortcuts = [
+            ActionShortcut {
                 action: AppAction::Launch,
                 key: "Return",
                 modifiers: &[],
@@ -759,7 +760,8 @@ mod tests {
                 action: AppAction::ToggleAutoQuit,
                 key: "A",
                 modifiers: &["Cmd", "Shift"],
-            }];
+            },
+        ];
 
         // Verify shortcuts are unique
         let mut shortcut_keys: Vec<String> = shortcuts

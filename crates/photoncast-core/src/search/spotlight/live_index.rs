@@ -544,8 +544,10 @@ fn run_live_query_with_generation(inner: Arc<LiveFileIndexInner>, expected_gen: 
         scope_configs.len()
     );
     for (path, config) in &scope_configs {
-        let ext_info = config
-            .as_ref().map_or_else(|| "user_files".to_string(), |c| format!("extensions={:?}", c.extensions));
+        let ext_info = config.as_ref().map_or_else(
+            || "user_files".to_string(),
+            |c| format!("extensions={:?}", c.extensions),
+        );
         tracing::debug!("[FileIndex]   - {} ({})", path.display(), ext_info);
     }
     tracing::debug!("[FileIndex] ========================================");

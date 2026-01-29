@@ -626,11 +626,7 @@ impl QuicklinksManageView {
                 .find(|l| l.id == original_id)
                 .cloned();
 
-            if let Some(link) = self
-                .quicklinks
-                .iter_mut()
-                .find(|l| l.id == original_id)
-            {
+            if let Some(link) = self.quicklinks.iter_mut().find(|l| l.id == original_id) {
                 link.name = editing.name.trim().to_string();
                 link.link = editing.link.trim().to_string();
                 link.alias = if editing.alias.trim().is_empty() {
@@ -650,9 +646,7 @@ impl QuicklinksManageView {
                     cx.spawn(|this, mut cx| async move {
                         let result = cx
                             .background_executor()
-                            .spawn(async move {
-                                runtime.block_on(storage.update(&link_clone))
-                            })
+                            .spawn(async move { runtime.block_on(storage.update(&link_clone)) })
                             .await;
                         if let Err(e) = result {
                             tracing::error!("Failed to update quicklink: {}", e);

@@ -59,14 +59,13 @@ impl FrecencyScore {
     /// ```
     #[must_use]
     pub fn calculate(launch_count: u32, last_used: Option<SystemTime>) -> Self {
-        let recency = last_used
-            .map_or(0.0, |t| {
-                let elapsed = SystemTime::now()
-                    .duration_since(t)
-                    .unwrap_or(Duration::ZERO);
-                let hours = elapsed.as_secs_f64() / 3600.0;
-                0.5_f64.powf(hours / Self::HALF_LIFE_HOURS)
-            });
+        let recency = last_used.map_or(0.0, |t| {
+            let elapsed = SystemTime::now()
+                .duration_since(t)
+                .unwrap_or(Duration::ZERO);
+            let hours = elapsed.as_secs_f64() / 3600.0;
+            0.5_f64.powf(hours / Self::HALF_LIFE_HOURS)
+        });
 
         Self {
             frequency: launch_count,
@@ -464,8 +463,12 @@ impl ResultRanker {
                 .score()
                 .mul_add(Self::FRECENCY_MULTIPLIER, result.score);
 
-            result.score =
-                self.apply_boosts_precomputed(base_score, &query_lower, &result.title, path.as_deref());
+            result.score = self.apply_boosts_precomputed(
+                base_score,
+                &query_lower,
+                &result.title,
+                path.as_deref(),
+            );
         }
 
         // Sort with tiebreaking

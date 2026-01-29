@@ -21,7 +21,14 @@ use super::ActionCallback;
 
 actions!(
     extension_grid,
-    [SelectNext, SelectPrevious, SelectUp, SelectDown, Activate, Cancel]
+    [
+        SelectNext,
+        SelectPrevious,
+        SelectUp,
+        SelectDown,
+        Activate,
+        Cancel
+    ]
 );
 
 /// Registers key bindings for the extension grid view.
@@ -282,7 +289,10 @@ impl ExtensionGridView {
                     .text_2xl()
                     .child("🌐")
             },
-            ImageSource::Base64 { data: _, mime_type: _ } => {
+            ImageSource::Base64 {
+                data: _,
+                mime_type: _,
+            } => {
                 // Base64 images need to be decoded
                 // For now, show placeholder
                 div()

@@ -172,8 +172,9 @@ pub struct DateOffset {
 impl DateOffset {
     /// Parse a date offset string like "+2d", "-1M", "+3h30m".
     pub fn parse(s: &str) -> Result<Self> {
-        static OFFSET_RE: std::sync::LazyLock<Regex> =
-            std::sync::LazyLock::new(|| Regex::new(r"([+-]?\d+)([mhdMy])").expect("Invalid offset regex"));
+        static OFFSET_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+            Regex::new(r"([+-]?\d+)([mhdMy])").expect("Invalid offset regex")
+        });
 
         let s = s.trim();
         if s.is_empty() {
@@ -275,20 +276,25 @@ static PLACEHOLDER_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| 
     Regex::new(r"\{([a-zA-Z]+)([^}]*)\}").expect("Invalid placeholder regex")
 });
 
-static ATTR_NAME_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r#"name\s*=\s*"([^"]*)""#).expect("Invalid name attr regex"));
+static ATTR_NAME_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"name\s*=\s*"([^"]*)""#).expect("Invalid name attr regex")
+});
 
-static ATTR_DEFAULT_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r#"default\s*=\s*"([^"]*)""#).expect("Invalid default attr regex"));
+static ATTR_DEFAULT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"default\s*=\s*"([^"]*)""#).expect("Invalid default attr regex")
+});
 
-static ATTR_OPTIONS_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r#"options\s*=\s*"([^"]*)""#).expect("Invalid options attr regex"));
+static ATTR_OPTIONS_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"options\s*=\s*"([^"]*)""#).expect("Invalid options attr regex")
+});
 
-static ATTR_FORMAT_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r#"format\s*=\s*"([^"]*)""#).expect("Invalid format attr regex"));
+static ATTR_FORMAT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"format\s*=\s*"([^"]*)""#).expect("Invalid format attr regex")
+});
 
-static ATTR_OFFSET_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r#"offset\s*=\s*"([^"]*)""#).expect("Invalid offset attr regex"));
+static ATTR_OFFSET_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"offset\s*=\s*"([^"]*)""#).expect("Invalid offset attr regex")
+});
 
 /// Parse all placeholders from a link string.
 ///

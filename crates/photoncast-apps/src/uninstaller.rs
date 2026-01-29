@@ -534,7 +534,7 @@ mod tests {
         // Create a new file with selection toggled
         let toggled = RelatedFile {
             selected: false,
-            ..file.clone()
+            ..file
         };
 
         // All other properties should remain the same

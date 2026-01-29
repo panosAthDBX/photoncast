@@ -234,7 +234,8 @@ mod tests {
     fn test_storage_get_missing_key_returns_none() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("test_storage.db");
-        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+        let storage =
+            ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
 
         let result = storage.get(RStr::from_str("nonexistent"));
         match result {
@@ -249,7 +250,8 @@ mod tests {
     fn test_storage_set_and_get_roundtrip() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("test_storage.db");
-        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+        let storage =
+            ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
 
         // Set a value
         let set_result = storage.set(RStr::from_str("my_key"), RStr::from_str("my_value"));
@@ -270,7 +272,8 @@ mod tests {
     fn test_storage_set_overwrites_existing() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("test_storage.db");
-        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+        let storage =
+            ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
 
         storage.set(RStr::from_str("key"), RStr::from_str("value1"));
         storage.set(RStr::from_str("key"), RStr::from_str("value2"));
@@ -288,7 +291,8 @@ mod tests {
     fn test_storage_delete() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("test_storage.db");
-        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+        let storage =
+            ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
 
         storage.set(RStr::from_str("key"), RStr::from_str("value"));
         storage.delete(RStr::from_str("key"));
@@ -305,14 +309,18 @@ mod tests {
     fn test_storage_list_keys() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("test_storage.db");
-        let storage = ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
+        let storage =
+            ExtensionStorageImpl::new(db_path, "test-ext").expect("failed to create storage");
 
         storage.set(RStr::from_str("beta"), RStr::from_str("v1"));
         storage.set(RStr::from_str("alpha"), RStr::from_str("v2"));
 
         match storage.list() {
             RResult::ROk(keys) => {
-                let keys: Vec<&str> = keys.iter().map(photoncast_extension_api::RString::as_str).collect();
+                let keys: Vec<&str> = keys
+                    .iter()
+                    .map(photoncast_extension_api::RString::as_str)
+                    .collect();
                 assert_eq!(keys, vec!["alpha", "beta"]); // sorted
             },
             RResult::RErr(e) => panic!("Unexpected error: {e:?}"),
@@ -323,8 +331,10 @@ mod tests {
     fn test_storage_namespace_isolation() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("test_storage.db");
-        let storage_a = ExtensionStorageImpl::new(db_path.clone(), "ext-a").expect("failed to create storage");
-        let storage_b = ExtensionStorageImpl::new(db_path, "ext-b").expect("failed to create storage");
+        let storage_a =
+            ExtensionStorageImpl::new(db_path.clone(), "ext-a").expect("failed to create storage");
+        let storage_b =
+            ExtensionStorageImpl::new(db_path, "ext-b").expect("failed to create storage");
 
         storage_a.set(RStr::from_str("key"), RStr::from_str("from_a"));
         storage_b.set(RStr::from_str("key"), RStr::from_str("from_b"));

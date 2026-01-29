@@ -186,7 +186,11 @@ impl LauncherWindow {
     }
 
     /// Starts the selection change animation.
-    pub(super) fn start_selection_animation(&mut self, previous_index: usize, cx: &mut ViewContext<Self>) {
+    pub(super) fn start_selection_animation(
+        &mut self,
+        previous_index: usize,
+        cx: &mut ViewContext<Self>,
+    ) {
         self.animation.previous_selected_index = Some(previous_index);
         let duration = selection_change_duration();
         if duration.is_zero() {

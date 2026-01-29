@@ -80,9 +80,7 @@ impl ExecutorError {
                 format!("Working directory not found: {path}")
             },
             Self::ShellNotFound { shell } => {
-                format!(
-                    "Shell not found: {shell}. Check your shell configuration."
-                )
+                format!("Shell not found: {shell}. Check your shell configuration.")
             },
             Self::ExecutionFailed { exit_code, message } => {
                 format!("Command failed (exit code {exit_code}): {message}")

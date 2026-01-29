@@ -279,8 +279,7 @@ pub fn lerp_color(
 }
 
 /// Animation state for window transitions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WindowAnimationState {
     /// Window is appearing (animating in).
     Appearing,
@@ -293,10 +292,8 @@ pub enum WindowAnimationState {
     Hidden,
 }
 
-
 /// Animation state for item selection/hover.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ItemAnimationState {
     /// Item is in normal state.
     #[default]
@@ -314,7 +311,6 @@ pub enum ItemAnimationState {
     /// Item is transitioning from selected state.
     SelectOut,
 }
-
 
 #[cfg(test)]
 mod tests {

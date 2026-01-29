@@ -32,8 +32,8 @@ use photoncast_timer::commands::TimerManager;
 
 use crate::app_events::{self, AppEvent};
 use crate::constants::{
-    EXPANDED_HEIGHT, ICON_SIZE_LG, ICON_SIZE_MD, ICON_SIZE_SM, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
-    LIST_ITEM_HEIGHT, SEARCH_BAR_HEIGHT, TEXT_SIZE_LG, TEXT_SIZE_MD, ThemeColorSet,
+    ThemeColorSet, EXPANDED_HEIGHT, ICON_SIZE_LG, ICON_SIZE_MD, ICON_SIZE_SM, LAUNCHER_HEIGHT,
+    LAUNCHER_WIDTH, LIST_ITEM_HEIGHT, SEARCH_BAR_HEIGHT, TEXT_SIZE_LG, TEXT_SIZE_MD,
 };
 use crate::{
     Activate, Cancel, ConfirmDialog, CopyBundleId, CopyFile, CopyPath, ForceQuitApp, HideApp,
@@ -238,7 +238,10 @@ pub struct LauncherWindow {
     index_initialized: bool,
     pending_confirmation: Option<(SystemCommand, ConfirmationDialog)>,
     pending_permissions_consent: Option<crate::permissions_dialog::PendingPermissionsConsent>,
-    first_launch_consent_queue: Vec<(String, photoncast_core::extensions::permissions::PermissionsDialog)>,
+    first_launch_consent_queue: Vec<(
+        String,
+        photoncast_core::extensions::permissions::PermissionsDialog,
+    )>,
     first_launch_checked: bool,
     timer_manager: Arc<tokio::sync::RwLock<TimerManager>>,
     app_manager: Arc<AppManager>,
@@ -298,17 +301,19 @@ impl LauncherSharedState {
         let timer_db_path = photoncast_core::utils::paths::data_dir().join("timer.db");
         #[allow(clippy::arc_with_non_send_sync)]
         let timer_manager = Arc::new(tokio::sync::RwLock::new({
-            shared_runtime.block_on(TimerManager::new(timer_db_path.clone()))
+            shared_runtime
+                .block_on(TimerManager::new(timer_db_path.clone()))
                 .unwrap_or_else(|e| {
                     tracing::warn!(
                         "Failed to open timer db at {:?}: {}, using /tmp fallback",
                         timer_db_path,
                         e
                     );
-                    shared_runtime.block_on(TimerManager::new(std::path::PathBuf::from(
-                        "/tmp/photoncast_timer.db",
-                    )))
-                    .expect("Critical: cannot initialize timer manager even with fallback path")
+                    shared_runtime
+                        .block_on(TimerManager::new(std::path::PathBuf::from(
+                            "/tmp/photoncast_timer.db",
+                        )))
+                        .expect("Critical: cannot initialize timer manager even with fallback path")
                 })
         }));
         let app_manager = Arc::new(AppManager::new(AppsConfig::default()));
@@ -393,7 +398,9 @@ impl From<CoreResultType> for ResultType {
     fn from(core_type: CoreResultType) -> Self {
         match core_type {
             CoreResultType::Application => Self::Application,
-            CoreResultType::SystemCommand | CoreResultType::CustomCommand | CoreResultType::Extension => Self::Command,
+            CoreResultType::SystemCommand
+            | CoreResultType::CustomCommand
+            | CoreResultType::Extension => Self::Command,
             CoreResultType::QuickLink => Self::QuickLink,
             CoreResultType::File => Self::File,
             CoreResultType::Folder => Self::Folder,
@@ -518,8 +525,8 @@ impl LauncherWindow {
 
         // Set up appearance observation for auto theme switching.
         // Stored on the window so the subscription lives as long as the window.
-        window._appearance_subscription = Some(cx.observe_window_appearance(
-            |_view: &mut Self, cx| {
+        window._appearance_subscription =
+            Some(cx.observe_window_appearance(|_view: &mut Self, cx| {
                 use photoncast_core::platform::appearance::flavor_from_window_appearance;
                 let appearance = cx.window_appearance();
                 let current_theme = cx.try_global::<PhotonTheme>().cloned();
@@ -529,7 +536,8 @@ impl LauncherWindow {
                         if theme.flavor != new_flavor {
                             tracing::info!(
                                 "System appearance changed: {:?} -> {:?}",
-                                theme.flavor, new_flavor
+                                theme.flavor,
+                                new_flavor
                             );
                             let new_theme =
                                 PhotonTheme::new(new_flavor, theme.accent).with_auto_sync(true);
@@ -538,8 +546,7 @@ impl LauncherWindow {
                         }
                     }
                 }
-            },
-        ));
+            }));
 
         // Start the appear animation
         window.start_appear_animation(cx);
@@ -732,7 +739,6 @@ impl LauncherWindow {
         self.previous_frontmost_window_title = window_title;
     }
 
-
     // Action handlers
 
     /// Confirms and executes the pending command
@@ -837,7 +843,10 @@ impl LauncherWindow {
                                 cx,
                             );
                             // Focus the extension view so it receives keyboard events
-                            if let Ok(list_view) = rendered.clone().downcast::<crate::extension_views::ExtensionListView>() {
+                            if let Ok(list_view) = rendered
+                                .clone()
+                                .downcast::<crate::extension_views::ExtensionListView>(
+                            ) {
                                 cx.focus_view(&list_view);
                             }
                             self.extension_view.view = Some(rendered);
@@ -902,7 +911,6 @@ impl LauncherWindow {
             }
         }
     }
-
 
     /// Get the current selection range (start, end) where start <= end
     fn selection_range(&self) -> Option<(usize, usize)> {
@@ -1274,7 +1282,6 @@ impl LauncherWindow {
         cx.notify();
     }
 }
-
 
 // ============================================================================
 // Helper Functions (public for testing)

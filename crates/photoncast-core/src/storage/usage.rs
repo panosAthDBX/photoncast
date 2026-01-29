@@ -141,9 +141,8 @@ impl UsageTracker {
     ) -> Result<FrecencyScore> {
         let conn = self.db.connection();
 
-        let sql = format!(
-            "SELECT {count_column}, {ts_column} FROM {table} WHERE {key_column} = ?1"
-        );
+        let sql =
+            format!("SELECT {count_column}, {ts_column} FROM {table} WHERE {key_column} = ?1");
 
         let result: Result<(u32, i64), _> =
             conn.query_row(&sql, [key_value], |row| Ok((row.get(0)?, row.get(1)?)));
@@ -200,7 +199,13 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn record_command_execution(&self, command_id: &str) -> Result<()> {
-        self.record_use("command_usage", "use_count", "last_used_at", "command_id", command_id)
+        self.record_use(
+            "command_usage",
+            "use_count",
+            "last_used_at",
+            "command_id",
+            command_id,
+        )
     }
 
     /// Records a command execution asynchronously.
@@ -223,7 +228,13 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn get_command_frecency(&self, command_id: &str) -> Result<FrecencyScore> {
-        self.get_frecency_for("command_usage", "use_count", "last_used_at", "command_id", command_id)
+        self.get_frecency_for(
+            "command_usage",
+            "use_count",
+            "last_used_at",
+            "command_id",
+            command_id,
+        )
     }
 
     /// Gets the frecency score for a command asynchronously.
@@ -250,7 +261,13 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn record_file_open(&self, path: &str) -> Result<()> {
-        self.record_use("file_usage", "open_count", "last_opened_at", "file_path", path)
+        self.record_use(
+            "file_usage",
+            "open_count",
+            "last_opened_at",
+            "file_path",
+            path,
+        )
     }
 
     /// Records a file open asynchronously.
@@ -273,7 +290,13 @@ impl UsageTracker {
     ///
     /// Returns an error if the database operation fails.
     pub fn get_file_frecency(&self, path: &str) -> Result<FrecencyScore> {
-        self.get_frecency_for("file_usage", "open_count", "last_opened_at", "file_path", path)
+        self.get_frecency_for(
+            "file_usage",
+            "open_count",
+            "last_opened_at",
+            "file_path",
+            path,
+        )
     }
 
     /// Gets the frecency score for a file asynchronously.

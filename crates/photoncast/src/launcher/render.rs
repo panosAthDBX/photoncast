@@ -1218,4 +1218,3 @@ impl FocusableView for LauncherWindow {
         self.focus_handle.clone()
     }
 }
-

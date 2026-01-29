@@ -6,13 +6,17 @@ impl LauncherWindow {
     /// Handler for Uninstall App action (⌘⌫)
     pub(super) fn uninstall_app(&mut self, _: &UninstallApp, cx: &mut ViewContext<Self>) {
         // Clone the path to avoid borrow issues
-        let app_path = self.search.results.get(self.search.selected_index).and_then(|result| {
-            if result.result_type == ResultType::Application {
-                result.app_path.clone()
-            } else {
-                None
-            }
-        });
+        let app_path = self
+            .search
+            .results
+            .get(self.search.selected_index)
+            .and_then(|result| {
+                if result.result_type == ResultType::Application {
+                    result.app_path.clone()
+                } else {
+                    None
+                }
+            });
 
         if let Some(path) = app_path {
             // Show the uninstall preview dialog
@@ -23,12 +27,17 @@ impl LauncherWindow {
     }
 
     /// Handler for Toggle Auto Quit action (⌘⇧A)
-    pub(super) fn toggle_auto_quit_for_selected(&mut self, _: &ToggleAutoQuit, cx: &mut ViewContext<Self>) {
+    pub(super) fn toggle_auto_quit_for_selected(
+        &mut self,
+        _: &ToggleAutoQuit,
+        cx: &mut ViewContext<Self>,
+    ) {
         if let Some(result) = self.search.results.get(self.search.selected_index).cloned() {
             if result.result_type == ResultType::Application {
                 if let Some(bundle_id) = &result.bundle_id {
                     let is_enabled = self
-                        .auto_quit.manager
+                        .auto_quit
+                        .manager
                         .read()
                         .is_auto_quit_enabled(bundle_id);
                     if is_enabled {
@@ -114,7 +123,11 @@ impl LauncherWindow {
     }
 
     /// Toggles selection of a related file in the uninstall preview
-    pub(super) fn toggle_uninstall_file_selection(&mut self, index: usize, cx: &mut ViewContext<Self>) {
+    pub(super) fn toggle_uninstall_file_selection(
+        &mut self,
+        index: usize,
+        cx: &mut ViewContext<Self>,
+    ) {
         if let Some(preview) = &mut self.uninstall.preview {
             if let Some(file) = preview.related_files.get_mut(index) {
                 file.selected = !file.selected;

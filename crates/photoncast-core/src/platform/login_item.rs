@@ -155,7 +155,8 @@ impl LoginItemManager {
                     hidden: false
                 }
             end tell
-            "#.to_string();
+            "#
+        .to_string();
 
         match Command::new("osascript").args(["-e", &script]).output() {
             Ok(output) => {

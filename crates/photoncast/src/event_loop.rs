@@ -79,11 +79,7 @@ impl EventLoopState {
                 target_window_title,
             } => {
                 info!("Window command requested: {}", command_id);
-                crate::execute_window_command(
-                    &command_id,
-                    target_bundle_id,
-                    target_window_title,
-                );
+                crate::execute_window_command(&command_id, target_bundle_id, target_window_title);
             },
         }
         true
@@ -222,8 +218,7 @@ impl EventLoopState {
             let _ = cx.update(|cx| {
                 if let Some(handle) = open_quicklinks_window(cx) {
                     let _ = handle.update(cx, |view, cx| {
-                        let links =
-                            runtime.block_on(storage.load_all()).unwrap_or_default();
+                        let links = runtime.block_on(storage.load_all()).unwrap_or_default();
                         view.set_links(links, cx);
                         cx.activate(true);
                         cx.activate_window();
@@ -237,18 +232,18 @@ impl EventLoopState {
     fn handle_open_calendar(&mut self, command_id: &str, cx: &mut AsyncAppContext) {
         info!("Open calendar requested: {}", command_id);
         let (title, result) = match command_id {
-            "calendar_today" => {
-                ("Today's Events", self.calendar_command.fetch_today_events())
-            },
-            "calendar_week" => {
-                ("This Week", self.calendar_command.fetch_week_events())
-            },
-            "calendar_upcoming" => {
-                ("My Schedule", self.calendar_command.fetch_upcoming_events(7))
-            },
+            "calendar_today" => ("Today's Events", self.calendar_command.fetch_today_events()),
+            "calendar_week" => ("This Week", self.calendar_command.fetch_week_events()),
+            "calendar_upcoming" => (
+                "My Schedule",
+                self.calendar_command.fetch_upcoming_events(7),
+            ),
             other => {
                 warn!("Unknown calendar command: {}", other);
-                ("My Schedule", self.calendar_command.fetch_upcoming_events(7))
+                (
+                    "My Schedule",
+                    self.calendar_command.fetch_upcoming_events(7),
+                )
             },
         };
 
@@ -266,8 +261,7 @@ impl EventLoopState {
                             cx.focus_self();
                         });
                     } else {
-                        self.current_handle =
-                            open_launcher_window(cx, &self.launcher_state);
+                        self.current_handle = open_launcher_window(cx, &self.launcher_state);
                     }
                 });
             },
@@ -284,8 +278,7 @@ impl EventLoopState {
                             cx.focus_self();
                         });
                     } else {
-                        self.current_handle =
-                            open_launcher_window(cx, &self.launcher_state);
+                        self.current_handle = open_launcher_window(cx, &self.launcher_state);
                     }
                 });
             },

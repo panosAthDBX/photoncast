@@ -9,9 +9,9 @@ use std::time::Duration;
 use parking_lot::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::extensions::{ExtensionConfig, ExtensionManager, ExtensionManagerError};
 use crate::extensions::permissions::PermissionsDialog;
 use crate::extensions::registry::ExtensionState;
+use crate::extensions::{ExtensionConfig, ExtensionManager, ExtensionManagerError};
 use crate::indexer::IndexedApp;
 use crate::search::providers::{
     AppProvider, AppsProvider, CalendarProvider, CommandProvider, CustomCommandProvider,
@@ -69,7 +69,7 @@ impl std::fmt::Display for ExtensionLaunchError {
         match self {
             Self::PermissionsConsentRequired { extension_id, .. } => {
                 write!(f, "Extension {extension_id} requires permissions consent")
-            }
+            },
             Self::Other(msg) => write!(f, "{msg}"),
         }
     }
@@ -146,7 +146,7 @@ impl PhotonCastApp {
         );
         let mut extension_manager = ExtensionManager::new();
         extension_manager.discover(&extension_config);
-        
+
         // Log discovered extensions
         {
             let discovered = extension_manager.registry().list();
@@ -344,7 +344,10 @@ impl PhotonCastApp {
             clipboard: ROption::RNone,
             extra: ROption::RNone,
         };
-        match manager.launch_command(extension_id, command_id, args).into_result() {
+        match manager
+            .launch_command(extension_id, command_id, args)
+            .into_result()
+        {
             Ok(_) => {
                 info!(
                     extension_id = extension_id,
@@ -388,7 +391,8 @@ impl PhotonCastApp {
 
         for record in manager.registry().list() {
             if record.enabled && !manager.is_loaded(&record.manifest.extension.id) {
-                if let Some(dialog) = manager.check_permissions_consent(&record.manifest.extension.id)
+                if let Some(dialog) =
+                    manager.check_permissions_consent(&record.manifest.extension.id)
                 {
                     result.push((record.manifest.extension.id.clone(), dialog));
                 }
@@ -404,7 +408,15 @@ impl PhotonCastApp {
     #[must_use]
     pub fn get_all_extensions(
         &self,
-    ) -> Vec<(String, String, bool, ExtensionState, Vec<String>, bool, Vec<String>)> {
+    ) -> Vec<(
+        String,
+        String,
+        bool,
+        ExtensionState,
+        Vec<String>,
+        bool,
+        Vec<String>,
+    )> {
         let manager = self.extension_manager.read();
         let mut result = Vec::new();
 
@@ -457,9 +469,10 @@ impl PhotonCastApp {
 
         // Get current state first
         let new_enabled = {
-            let record = manager.registry().get(extension_id).ok_or_else(|| {
-                format!("Extension not found: {extension_id}")
-            })?;
+            let record = manager
+                .registry()
+                .get(extension_id)
+                .ok_or_else(|| format!("Extension not found: {extension_id}"))?;
             !record.enabled
         };
 

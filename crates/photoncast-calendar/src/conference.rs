@@ -3,8 +3,9 @@
 use regex::Regex;
 
 /// Conference provider patterns.
-static ZOOM_PATTERN: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"https?://[a-z0-9.-]*zoom\.us/(j/|my/)[a-zA-Z0-9?&=/._-]+").unwrap());
+static ZOOM_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"https?://[a-z0-9.-]*zoom\.us/(j/|my/)[a-zA-Z0-9?&=/._-]+").unwrap()
+});
 
 static GOOGLE_MEET_PATTERN: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"https?://meet\.google\.com/[a-z-]+").unwrap());

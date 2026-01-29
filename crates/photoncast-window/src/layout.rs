@@ -468,8 +468,8 @@ impl LayoutCalculator {
                 Self::frame_left(
                     x + margin,
                     y + margin,
-                    width - 2.0 * margin,
-                    height - 2.0 * margin,
+                    2.0f64.mul_add(-margin, width),
+                    2.0f64.mul_add(-margin, height),
                 )
             },
             WindowLayout::CenterHalf => {

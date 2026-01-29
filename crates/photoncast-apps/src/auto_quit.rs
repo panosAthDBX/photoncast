@@ -60,7 +60,7 @@ pub const SUGGESTED_AUTO_QUIT_APPS: &[(&str, &str)] = &[
 
 /// Returns the suggested apps as a slice of (bundle_id, display_name) tuples.
 #[must_use]
-pub fn suggested_auto_quit_apps() -> &'static [(&'static str, &'static str)] {
+pub const fn suggested_auto_quit_apps() -> &'static [(&'static str, &'static str)] {
     SUGGESTED_AUTO_QUIT_APPS
 }
 
@@ -171,7 +171,7 @@ pub struct AutoQuitAppConfig {
     pub last_active: Option<DateTime<Utc>>,
 }
 
-fn default_timeout_minutes() -> u32 {
+const fn default_timeout_minutes() -> u32 {
     DEFAULT_AUTO_QUIT_TIMEOUT_MINUTES
 }
 
@@ -257,7 +257,7 @@ impl AutoQuitManager {
 
     /// Returns a reference to the current configuration.
     #[must_use]
-    pub fn config(&self) -> &AutoQuitConfig {
+    pub const fn config(&self) -> &AutoQuitConfig {
         &self.config
     }
 

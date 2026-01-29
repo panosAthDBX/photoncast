@@ -196,9 +196,7 @@ fn init_hotkeys(event_tx: &mpsc::Sender<AppEvent>) {
 ///
 /// Uses the provided runtime handle for the background clipboard monitoring thread
 /// instead of creating a separate Tokio runtime.
-fn init_clipboard(
-    runtime_handle: &tokio::runtime::Handle,
-) -> Option<Arc<RwLock<ClipboardState>>> {
+fn init_clipboard(runtime_handle: &tokio::runtime::Handle) -> Option<Arc<RwLock<ClipboardState>>> {
     let clipboard_config = ClipboardConfig::default();
 
     let clipboard_storage = match ClipboardStorage::open(&clipboard_config) {
@@ -263,9 +261,8 @@ fn main() {
     // Create a single shared Tokio runtime for the entire application.
     // All async work (clipboard, quicklinks, timers, etc.) uses this runtime
     // instead of creating separate runtimes per subsystem.
-    let shared_runtime = Arc::new(
-        tokio::runtime::Runtime::new().expect("Failed to create shared Tokio runtime"),
-    );
+    let shared_runtime =
+        Arc::new(tokio::runtime::Runtime::new().expect("Failed to create shared Tokio runtime"));
 
     // Initialize clipboard subsystem (storage + background monitor)
     let clipboard_state = init_clipboard(shared_runtime.handle());
@@ -320,7 +317,10 @@ fn main() {
                 photoncast_core::utils::paths::data_dir().join("quicklinks.db"),
             )
             .unwrap_or_else(|e| {
-                error!("Failed to open quick links storage, falling back to in-memory: {}", e);
+                error!(
+                    "Failed to open quick links storage, falling back to in-memory: {}",
+                    e
+                );
                 photoncast_quicklinks::QuickLinksStorage::open_in_memory()
                     .expect("failed to open in-memory quick links storage")
             });
@@ -349,8 +349,7 @@ fn main() {
                 app_manager: photoncast_apps::AppManager::new(
                     photoncast_apps::AppsConfig::default(),
                 ),
-                calendar_command:
-                    photoncast_calendar::CalendarCommand::with_default_config(),
+                calendar_command: photoncast_calendar::CalendarCommand::with_default_config(),
             };
 
             // Timer polling setup (runs on main thread, executes actions in background)
@@ -929,7 +928,9 @@ const PREFS_HEIGHT: Pixels = px(1040.0);
 /// Opens a new preferences window and returns its handle
 fn open_preferences_window(
     cx: &mut AppContext,
-    photoncast_app: Option<std::sync::Arc<parking_lot::RwLock<photoncast_core::app::PhotonCastApp>>>,
+    photoncast_app: Option<
+        std::sync::Arc<parking_lot::RwLock<photoncast_core::app::PhotonCastApp>>,
+    >,
 ) -> Option<WindowHandle<PreferencesWindow>> {
     open_window_centered(
         cx,

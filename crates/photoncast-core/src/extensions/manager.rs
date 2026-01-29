@@ -27,6 +27,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use serde_json::Value;
+
 use abi_stable::std_types::{ROption, RString};
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -36,7 +38,7 @@ use photoncast_extension_api::{
 };
 
 use crate::extensions::cache::ExtensionCache;
-use crate::extensions::config::ExtensionConfig;
+use crate::extensions::config::{ExtensionConfig, ExtensionExecutionMode};
 use crate::extensions::context::make_extension_context;
 use crate::extensions::discovery::{DiscoveryOptions, ExtensionDiscovery};
 use crate::extensions::dylib_cache::DylibCache;
@@ -46,9 +48,18 @@ use crate::extensions::manifest::{load_manifest, ExtensionManifest, ManifestErro
 use crate::extensions::permissions::{requires_consent, PermissionsDialog, PermissionsStore};
 use crate::extensions::registry::{ExtensionRegistry, ExtensionState, RegistryError};
 use crate::extensions::runtime::ExtensionRuntimeImpl;
+use crate::extensions::sandbox::{spawn_sandboxed_extension, SandboxError, SandboxedExtension};
 use crate::extensions::storage::{ExtensionStorageImpl, PreferenceStoreImpl};
 use crate::search::{IconSource, ResultType, SearchAction, SearchResult, SearchResultId};
 use crate::utils::paths;
+
+use photoncast_extension_ipc::messages::{
+    CommandArguments as IpcCommandArguments, CommandRequest, CommandResponse, SearchRequest,
+    SearchResponse,
+};
+use photoncast_extension_ipc::methods::{EXTENSION_COMMAND, EXTENSION_SEARCH, EXTENSION_SHUTDOWN};
+
+const SANDBOX_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 pub enum ExtensionManagerError {
@@ -81,6 +92,8 @@ pub enum ExtensionManagerError {
     PathResolutionFailed { reason: String },
     #[error("code signature error: {0}")]
     CodeSignature(#[from] crate::extensions::signing::CodeSignatureError),
+    #[error("sandbox error: {0}")]
+    Sandbox(#[from] SandboxError),
 }
 
 /// Result of an extension reload operation.
@@ -150,6 +163,7 @@ pub struct ExtensionManager {
     dylib_cache: DylibCache,
     permissions_store: PermissionsStore,
     dev_mode: bool,
+    execution_mode: ExtensionExecutionMode,
 }
 
 impl Default for ExtensionManager {
@@ -162,19 +176,32 @@ impl Default for ExtensionManager {
             invocation_guard: CommandInvocationGuard::default(),
             dylib_cache: DylibCache::new(paths::cache_dir().join("extensions_dylib")),
             permissions_store: PermissionsStore::load().unwrap_or_else(|e| {
-                tracing::warn!("Failed to load extension permissions, using defaults: {}", e);
+                tracing::warn!(
+                    "Failed to load extension permissions, using defaults: {}",
+                    e
+                );
                 PermissionsStore::default()
             }),
             dev_mode: false,
+            execution_mode: ExtensionExecutionMode::Auto,
         }
     }
 }
 
 struct LoadedExtension {
     manifest: ExtensionManifest,
-    instance: ExtensionBox,
     host: ExtensionHostImpl,
     host_services: ExtensionHostServices,
+    kind: LoadedExtensionKind,
+}
+
+enum LoadedExtensionKind {
+    InProcess(InProcessExtension),
+    Sandbox(SandboxedExtension),
+}
+
+struct InProcessExtension {
+    instance: ExtensionBox,
     runtime: ExtensionRuntimeImpl,
     cache: ExtensionCache,
     /// Keeps the dylib loaded for the extension's lifetime.
@@ -209,8 +236,28 @@ impl ExtensionManager {
         self.dev_mode
     }
 
+    #[must_use]
+    pub fn execution_mode(&self) -> ExtensionExecutionMode {
+        self.execution_mode
+    }
+
+    #[must_use]
+    fn effective_execution_mode(&self) -> ExtensionExecutionMode {
+        match self.execution_mode {
+            ExtensionExecutionMode::Auto => {
+                if self.dev_mode {
+                    ExtensionExecutionMode::InProcess
+                } else {
+                    ExtensionExecutionMode::Sandbox
+                }
+            },
+            mode => mode,
+        }
+    }
+
     pub fn discover(&mut self, config: &ExtensionConfig) {
         self.dev_mode = config.effective_dev_mode();
+        self.execution_mode = config.effective_execution_mode();
 
         let options = DiscoveryOptions {
             dev_mode: self.dev_mode,
@@ -328,10 +375,6 @@ impl ExtensionManager {
             super::signing::verify_code_signature(&entry_path)?;
         }
 
-        let library = ExtensionLoader::load(&entry_path)?;
-        let api_version = ExtensionLoader::resolve_api_version(library.raw())?;
-        ExtensionLoader::check_api_version(api_version)?;
-
         let host_services = ExtensionHostServices {
             preference_store: PreferenceStoreImpl::new(record.manifest.preferences.clone()),
             storage: std::sync::Arc::new(std::sync::Mutex::new(
@@ -351,74 +394,116 @@ impl ExtensionManager {
                 .collect(),
         };
         let host = ExtensionHostImpl::with_services(host_services.clone());
-        let runtime = ExtensionRuntimeImpl::new();
-        let cache = ExtensionCache::new(
-            record.manifest.extension.id.clone(),
-            paths::cache_dir()
-                .join("extensions")
-                .join(&record.manifest.extension.id),
-        );
+        match self.effective_execution_mode() {
+            ExtensionExecutionMode::Sandbox => {
+                let sandbox =
+                    spawn_sandboxed_extension(&record.manifest, &entry_path, host.clone())?;
+                let loaded = LoadedExtension {
+                    manifest: record.manifest.clone(),
+                    host,
+                    host_services,
+                    kind: LoadedExtensionKind::Sandbox(sandbox),
+                };
+                self.registry.update_state(id, ExtensionState::Active)?;
+                self.loaded.insert(id.to_string(), loaded);
+                Ok(())
+            },
+            ExtensionExecutionMode::InProcess => {
+                let library = ExtensionLoader::load(&entry_path)?;
+                let api_version = ExtensionLoader::resolve_api_version(library.raw())?;
+                ExtensionLoader::check_api_version(api_version)?;
 
-        // Note: directory creation for extension data/cache/assets is handled
-        // by `make_extension_context()` in context.rs, so we don't duplicate it here.
+                let runtime = ExtensionRuntimeImpl::new();
+                let cache = ExtensionCache::new(
+                    record.manifest.extension.id.clone(),
+                    paths::cache_dir()
+                        .join("extensions")
+                        .join(&record.manifest.extension.id),
+                );
 
-        let root_module = ExtensionLoader::load_root_module(&library)?;
-        let instance = root_module.instantiate_extension();
+                // Note: directory creation for extension data/cache/assets is handled
+                // by `make_extension_context()` in context.rs, so we don't duplicate it here.
 
-        let mut loaded = LoadedExtension {
-            manifest: record.manifest.clone(),
-            instance,
-            host,
-            host_services,
-            runtime,
-            cache,
-            library,
-            cached_dylib_path: None,
-        };
+                let root_module = ExtensionLoader::load_root_module(&library)?;
+                let instance = root_module.instantiate_extension();
 
-        if let Err(err) = loaded
-            .instance
-            .activate(make_extension_context(
-                &loaded.host_services,
-                &loaded.host,
-                &loaded.runtime,
-                &loaded.cache,
-                &loaded.manifest,
-            ))
-            .into_result()
-        {
-            return Err(ExtensionManagerError::Api(err));
+                let mut in_process = InProcessExtension {
+                    instance,
+                    runtime,
+                    cache,
+                    library,
+                    cached_dylib_path: None,
+                };
+
+                if let Err(err) = in_process
+                    .instance
+                    .activate(make_extension_context(
+                        &host_services,
+                        &host,
+                        &in_process.runtime,
+                        &in_process.cache,
+                        &record.manifest,
+                    ))
+                    .into_result()
+                {
+                    return Err(ExtensionManagerError::Api(err));
+                }
+
+                let startup_ctx = make_extension_context(
+                    &host_services,
+                    &host,
+                    &in_process.runtime,
+                    &in_process.cache,
+                    &record.manifest,
+                );
+                if let Err(err) = in_process.instance.on_startup(&startup_ctx).into_result() {
+                    tracing::warn!(
+                        extension_id = id,
+                        error = %err,
+                        "Extension on_startup hook failed"
+                    );
+                }
+
+                let loaded = LoadedExtension {
+                    manifest: record.manifest.clone(),
+                    host,
+                    host_services,
+                    kind: LoadedExtensionKind::InProcess(in_process),
+                };
+
+                self.registry.update_state(id, ExtensionState::Active)?;
+                self.loaded.insert(id.to_string(), loaded);
+                Ok(())
+            },
+            ExtensionExecutionMode::Auto => Err(ExtensionManagerError::Sandbox(
+                SandboxError::MissingManifestDir {
+                    extension_id: record.manifest.extension.id.clone(),
+                },
+            )),
         }
-
-        // Call on_startup hook (errors are logged but don't prevent activation)
-        let startup_ctx = make_extension_context(
-            &loaded.host_services,
-            &loaded.host,
-            &loaded.runtime,
-            &loaded.cache,
-            &loaded.manifest,
-        );
-        if let Err(err) = loaded.instance.on_startup(&startup_ctx).into_result() {
-            tracing::warn!(
-                extension_id = id,
-                error = %err,
-                "Extension on_startup hook failed"
-            );
-        }
-
-        self.registry.update_state(id, ExtensionState::Active)?;
-        self.loaded.insert(id.to_string(), loaded);
-
-        Ok(())
     }
 
     #[allow(clippy::result_large_err)]
     pub fn deactivate_and_unload(&mut self, id: &str) -> Result<(), ExtensionManagerError> {
-        if let Some(mut loaded) = self.loaded.remove(id) {
-            if let Err(err) = loaded.instance.deactivate().into_result() {
-                return Err(ExtensionManagerError::Api(err));
+        if let Some(loaded) = self.loaded.remove(id) {
+            match loaded.kind {
+                LoadedExtensionKind::InProcess(mut in_process) => {
+                    if let Err(err) = in_process.instance.deactivate().into_result() {
+                        return Err(ExtensionManagerError::Api(err));
+                    }
+                },
+                LoadedExtensionKind::Sandbox(mut sandbox) => {
+                    if let Err(err) = sandbox
+                        .connection
+                        .send_request(EXTENSION_SHUTDOWN, Value::Null)
+                    {
+                        tracing::warn!(extension_id = %id, error = %err, "Failed to send sandbox shutdown request");
+                    }
+                    if let Err(err) = wait_for_sandbox_exit(&mut sandbox.process) {
+                        tracing::warn!(extension_id = %id, error = %err, "Failed to stop sandbox process");
+                    }
+                },
             }
-            drop(loaded);
             self.registry.update_state(id, ExtensionState::Unloaded)?;
         }
         Ok(())
@@ -526,6 +611,14 @@ impl ExtensionManager {
     ///
     /// A `ReloadResult` containing timing information and success status.
     pub fn reload_extension(&mut self, id: &str, extension_path: &Path) -> ReloadResult {
+        if self.effective_execution_mode() == ExtensionExecutionMode::Sandbox {
+            return ReloadResult::failure(
+                id.to_string(),
+                Duration::ZERO,
+                "Reload is not supported for sandboxed extensions".to_string(),
+            );
+        }
+
         let start = Instant::now();
 
         tracing::info!(
@@ -723,11 +816,8 @@ impl ExtensionManager {
             Some(load_path)
         };
 
-        let mut loaded = LoadedExtension {
-            manifest: manifest.clone(),
+        let mut in_process = InProcessExtension {
             instance,
-            host,
-            host_services,
             runtime,
             cache,
             library,
@@ -735,14 +825,14 @@ impl ExtensionManager {
         };
 
         // Activate the extension
-        if let Err(err) = loaded
+        if let Err(err) = in_process
             .instance
             .activate(make_extension_context(
-                &loaded.host_services,
-                &loaded.host,
-                &loaded.runtime,
-                &loaded.cache,
-                &loaded.manifest,
+                &host_services,
+                &host,
+                &in_process.runtime,
+                &in_process.cache,
+                &manifest,
             ))
             .into_result()
         {
@@ -760,13 +850,13 @@ impl ExtensionManager {
 
         // Call on_startup hook (errors are logged but don't prevent activation)
         let startup_ctx = make_extension_context(
-            &loaded.host_services,
-            &loaded.host,
-            &loaded.runtime,
-            &loaded.cache,
-            &loaded.manifest,
+            &host_services,
+            &host,
+            &in_process.runtime,
+            &in_process.cache,
+            &manifest,
         );
-        if let Err(err) = loaded.instance.on_startup(&startup_ctx).into_result() {
+        if let Err(err) = in_process.instance.on_startup(&startup_ctx).into_result() {
             tracing::warn!(
                 extension_id = id,
                 error = %err,
@@ -781,6 +871,13 @@ impl ExtensionManager {
             self.mark_failed(id, &error_msg);
             return ReloadResult::failure(id.to_string(), duration, error_msg);
         }
+
+        let loaded = LoadedExtension {
+            manifest: manifest.clone(),
+            host,
+            host_services,
+            kind: LoadedExtensionKind::InProcess(in_process),
+        };
 
         self.loaded.insert(id.to_string(), loaded);
 
@@ -828,7 +925,8 @@ impl ExtensionManager {
     pub fn get_extension_path(&self, id: &str) -> Option<PathBuf> {
         self.registry.get(id).map(|record| {
             PathBuf::from(&record.manifest.entry.path)
-                .parent().map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf)
+                .parent()
+                .map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf)
         })
     }
 
@@ -867,180 +965,320 @@ impl ExtensionManager {
         }
 
         MATCHER.with_borrow_mut(|matcher| {
-        COMMAND_MATCHER.with_borrow_mut(|command_matcher| {
+            COMMAND_MATCHER.with_borrow_mut(|command_matcher| {
+                for loaded in self.loaded.values() {
+                    let extension_id = loaded.manifest.extension.id.clone();
+                    match &loaded.kind {
+                        LoadedExtensionKind::InProcess(in_process) => {
+                            let provider = in_process.instance.search_provider().into_option();
+                            if let Some(provider) = provider {
+                                let items = provider.search(RString::from(query), max_results);
+                                for item in items {
+                                    let title = item.title.into_string();
+                                    let match_indices = matcher
+                                        .score(query, &title)
+                                        .map(|(_, indices)| indices)
+                                        .unwrap_or_default();
 
-        for loaded in self.loaded.values() {
-            let extension_id = loaded.manifest.extension.id.clone();
-            if let Some(provider) = loaded.instance.search_provider().into_option() {
-                let items = provider.search(RString::from(query), max_results);
-                for item in items {
-                    let title = item.title.into_string();
-                    let match_indices = matcher
-                        .score(query, &title)
-                        .map(|(_, indices)| indices)
-                        .unwrap_or_default();
+                                    results.push(SearchResult {
+                                        id: SearchResultId::new(format!(
+                                            "ext:{}:{}",
+                                            extension_id, item.id
+                                        )),
+                                        title,
+                                        subtitle: item
+                                            .subtitle
+                                            .clone()
+                                            .map(photoncast_extension_api::RString::into_string)
+                                            .unwrap_or_default(),
+                                        icon: map_extension_icon(item.icon),
+                                        result_type: ResultType::Extension,
+                                        score: item.score,
+                                        match_indices,
+                                        action: SearchAction::ExecuteExtensionCommand {
+                                            extension_id: extension_id.clone(),
+                                            command_id: item.id.to_string(),
+                                        },
+                                        requires_permissions: false,
+                                    });
+                                }
+                            }
 
-                    results.push(SearchResult {
-                        id: SearchResultId::new(format!("ext:{}:{}", extension_id, item.id)),
-                        title,
-                        subtitle: item
-                            .subtitle
+                            let commands = in_process.instance.commands();
+                            for command in commands {
+                                let name = command.name.to_string();
+                                let mut best_score =
+                                    command_matcher.score(query, &name).map(|(score, indices)| {
+                                        (score.saturating_add(100), indices, true)
+                                    });
+
+                                if let Some((score, indices)) =
+                                    command_matcher.score(query, command.id.as_str())
+                                {
+                                    match &best_score {
+                                        Some((best, _, _)) if score <= *best => {},
+                                        _ => {
+                                            best_score =
+                                                Some((score.saturating_add(50), indices, false));
+                                        },
+                                    }
+                                }
+
+                                for keyword in &command.keywords {
+                                    if let Some((score, indices)) =
+                                        command_matcher.score(query, keyword.as_str())
+                                    {
+                                        match &best_score {
+                                            Some((best, _, _)) if score <= *best => {},
+                                            _ => {
+                                                best_score = Some((score, indices, false));
+                                            },
+                                        }
+                                    }
+                                }
+
+                                let Some((score, indices, name_match)) = best_score else {
+                                    continue;
+                                };
+
+                                let subtitle = command.subtitle.clone().into_option().map_or_else(
+                                    || loaded.manifest.extension.name.clone(),
+                                    photoncast_extension_api::RString::into_string,
+                                );
+
+                                #[allow(clippy::map_unwrap_or)]
+                                let icon = command
+                                    .icon
+                                    .clone()
+                                    .into_option()
+                                    .map(map_extension_icon)
+                                    .unwrap_or_else(|| IconSource::SystemIcon {
+                                        name: "puzzlepiece".to_string(),
+                                    });
+
+                                results.push(SearchResult {
+                                    id: SearchResultId::new(format!(
+                                        "ext-command:{}:{}",
+                                        extension_id, command.id
+                                    )),
+                                    title: name,
+                                    subtitle,
+                                    icon,
+                                    result_type: ResultType::Extension,
+                                    score: f64::from(score),
+                                    match_indices: if name_match { indices } else { Vec::new() },
+                                    action: SearchAction::ExecuteExtensionCommand {
+                                        extension_id: extension_id.clone(),
+                                        command_id: command.id.to_string(),
+                                    },
+                                    requires_permissions: false,
+                                });
+                            }
+                        },
+                        LoadedExtensionKind::Sandbox(sandbox) => {
+                            let request = SearchRequest {
+                                query: query.to_string(),
+                                max_results,
+                            };
+                            let Ok(params) = serde_json::to_value(request) else {
+                                continue;
+                            };
+                            let Ok(response_value) =
+                                sandbox.connection.send_request(EXTENSION_SEARCH, params)
+                            else {
+                                continue;
+                            };
+                            let Ok(response) =
+                                serde_json::from_value::<SearchResponse>(response_value)
+                            else {
+                                continue;
+                            };
+
+                            for item in response.items {
+                                let match_indices = matcher
+                                    .score(query, &item.title)
+                                    .map(|(_, indices)| indices)
+                                    .unwrap_or_default();
+
+                                results.push(SearchResult {
+                                    id: SearchResultId::new(format!(
+                                        "ext:{}:{}",
+                                        extension_id, item.id
+                                    )),
+                                    title: item.title,
+                                    subtitle: item.subtitle.unwrap_or_default(),
+                                    icon: map_extension_icon(item.icon),
+                                    result_type: ResultType::Extension,
+                                    score: item.score,
+                                    match_indices,
+                                    action: SearchAction::ExecuteExtensionCommand {
+                                        extension_id: extension_id.clone(),
+                                        command_id: item.id.clone(),
+                                    },
+                                    requires_permissions: false,
+                                });
+                            }
+                        },
+                    }
+                }
+
+                // Also search commands from unloaded but enabled extensions
+                for record in self.registry.list() {
+                    // Skip if already loaded or disabled
+                    if self.loaded.contains_key(&record.manifest.extension.id) || !record.enabled {
+                        continue;
+                    }
+
+                    let extension_id = &record.manifest.extension.id;
+                    let extension_name = &record.manifest.extension.name;
+
+                    // Check if this extension needs permissions consent
+                    let needs_consent = self.check_permissions_consent(extension_id).is_some();
+
+                    for command in &record.manifest.commands {
+                        let name = &command.name;
+                        let mut best_score = command_matcher
+                            .score(query, name)
+                            .map(|(score, indices)| (score.saturating_add(100), indices, true));
+
+                        if let Some((score, indices)) = command_matcher.score(query, &command.id) {
+                            match &best_score {
+                                Some((best, _, _)) if score <= *best => {},
+                                _ => {
+                                    best_score = Some((score.saturating_add(50), indices, false));
+                                },
+                            }
+                        }
+
+                        for keyword in &command.keywords {
+                            if let Some((score, indices)) = command_matcher.score(query, keyword) {
+                                match &best_score {
+                                    Some((best, _, _)) if score <= *best => {},
+                                    _ => {
+                                        best_score = Some((score, indices, false));
+                                    },
+                                }
+                            }
+                        }
+
+                        let Some((score, indices, name_match)) = best_score else {
+                            continue;
+                        };
+
+                        let subtitle = command.subtitle.clone().unwrap_or_else(|| {
+                            if needs_consent {
+                                format!("{extension_name} (requires permissions)")
+                            } else {
+                                extension_name.clone()
+                            }
+                        });
+
+                        #[allow(clippy::map_unwrap_or)]
+                        let icon = command
+                            .icon
                             .clone()
-                            .map(photoncast_extension_api::RString::into_string)
-                            .unwrap_or_default(),
-                        icon: map_extension_icon(item.icon),
-                        result_type: ResultType::Extension,
-                        score: item.score,
-                        match_indices,
-                        action: SearchAction::ExecuteExtensionCommand {
-                            extension_id: extension_id.clone(),
-                            command_id: item.id.to_string(),
-                        },
-                        requires_permissions: false,
-                    });
-                }
-            }
+                            .map(|i| IconSource::SystemIcon { name: i })
+                            .unwrap_or_else(|| IconSource::SystemIcon {
+                                name: "puzzlepiece".to_string(),
+                            });
 
-            for command in loaded.instance.commands() {
-                let name = command.name.to_string();
-                let mut best_score = command_matcher
-                    .score(query, &name)
-                    .map(|(score, indices)| (score.saturating_add(100), indices, true));
-
-                if let Some((score, indices)) = command_matcher.score(query, command.id.as_str()) {
-                    match &best_score {
-                        Some((best, _, _)) if score <= *best => {},
-                        _ => {
-                            best_score = Some((score.saturating_add(50), indices, false));
-                        },
-                    }
-                }
-
-                for keyword in &command.keywords {
-                    if let Some((score, indices)) = command_matcher.score(query, keyword.as_str()) {
-                        match &best_score {
-                            Some((best, _, _)) if score <= *best => {},
-                            _ => {
-                                best_score = Some((score, indices, false));
+                        results.push(SearchResult {
+                            id: SearchResultId::new(format!(
+                                "ext-command:{}:{}",
+                                extension_id, command.id
+                            )),
+                            title: name.clone(),
+                            subtitle,
+                            icon,
+                            result_type: ResultType::Extension,
+                            score: f64::from(score),
+                            match_indices: if name_match { indices } else { Vec::new() },
+                            action: SearchAction::ExecuteExtensionCommand {
+                                extension_id: extension_id.clone(),
+                                command_id: command.id.clone(),
                             },
+                            requires_permissions: needs_consent,
+                        });
+                    }
+                }
+
+                // Also include sandboxed extensions' manifest commands to support command-only entries.
+                for loaded in self.loaded.values() {
+                    if !matches!(loaded.kind, LoadedExtensionKind::Sandbox(_)) {
+                        continue;
+                    }
+
+                    let extension_id = &loaded.manifest.extension.id;
+                    let extension_name = &loaded.manifest.extension.name;
+                    let needs_consent = self.check_permissions_consent(extension_id).is_some();
+
+                    for command in &loaded.manifest.commands {
+                        let name = &command.name;
+                        let mut best_score = command_matcher
+                            .score(query, name)
+                            .map(|(score, indices)| (score.saturating_add(100), indices, true));
+
+                        if let Some((score, indices)) = command_matcher.score(query, &command.id) {
+                            match &best_score {
+                                Some((best, _, _)) if score <= *best => {},
+                                _ => {
+                                    best_score = Some((score.saturating_add(50), indices, false));
+                                },
+                            }
                         }
-                    }
-                }
 
-                let Some((score, indices, name_match)) = best_score else {
-                    continue;
-                };
+                        for keyword in &command.keywords {
+                            if let Some((score, indices)) = command_matcher.score(query, keyword) {
+                                match &best_score {
+                                    Some((best, _, _)) if score <= *best => {},
+                                    _ => {
+                                        best_score = Some((score, indices, false));
+                                    },
+                                }
+                            }
+                        }
 
-                let subtitle = command
-                    .subtitle
-                    .clone()
-                    .into_option().map_or_else(|| loaded.manifest.extension.name.clone(), photoncast_extension_api::RString::into_string);
+                        let Some((score, indices, name_match)) = best_score else {
+                            continue;
+                        };
 
-                #[allow(clippy::map_unwrap_or)]
-                let icon = command
-                    .icon
-                    .clone()
-                    .into_option()
-                    .map(map_extension_icon)
-                    .unwrap_or_else(|| IconSource::SystemIcon {
-                        name: "puzzlepiece".to_string(),
-                    });
+                        let subtitle = command.subtitle.clone().unwrap_or_else(|| {
+                            if needs_consent {
+                                format!("{extension_name} (requires permissions)")
+                            } else {
+                                extension_name.clone()
+                            }
+                        });
 
-                results.push(SearchResult {
-                    id: SearchResultId::new(format!("ext-command:{}:{}", extension_id, command.id)),
-                    title: name,
-                    subtitle,
-                    icon,
-                    result_type: ResultType::Extension,
-                    score: f64::from(score),
-                    match_indices: if name_match { indices } else { Vec::new() },
-                    action: SearchAction::ExecuteExtensionCommand {
-                        extension_id: extension_id.clone(),
-                        command_id: command.id.to_string(),
-                    },
-                    requires_permissions: false,
-                });
-            }
-        }
+                        #[allow(clippy::map_unwrap_or)]
+                        let icon = command
+                            .icon
+                            .clone()
+                            .map(|i| IconSource::SystemIcon { name: i })
+                            .unwrap_or_else(|| IconSource::SystemIcon {
+                                name: "puzzlepiece".to_string(),
+                            });
 
-        // Also search commands from unloaded but enabled extensions
-        for record in self.registry.list() {
-            // Skip if already loaded or disabled
-            if self.loaded.contains_key(&record.manifest.extension.id) || !record.enabled {
-                continue;
-            }
-
-            let extension_id = &record.manifest.extension.id;
-            let extension_name = &record.manifest.extension.name;
-
-            // Check if this extension needs permissions consent
-            let needs_consent = self.check_permissions_consent(extension_id).is_some();
-
-            for command in &record.manifest.commands {
-                let name = &command.name;
-                let mut best_score = command_matcher
-                    .score(query, name)
-                    .map(|(score, indices)| (score.saturating_add(100), indices, true));
-
-                if let Some((score, indices)) = command_matcher.score(query, &command.id) {
-                    match &best_score {
-                        Some((best, _, _)) if score <= *best => {},
-                        _ => {
-                            best_score = Some((score.saturating_add(50), indices, false));
-                        },
-                    }
-                }
-
-                for keyword in &command.keywords {
-                    if let Some((score, indices)) = command_matcher.score(query, keyword) {
-                        match &best_score {
-                            Some((best, _, _)) if score <= *best => {},
-                            _ => {
-                                best_score = Some((score, indices, false));
+                        results.push(SearchResult {
+                            id: SearchResultId::new(format!(
+                                "ext-command:{}:{}",
+                                extension_id, command.id
+                            )),
+                            title: name.clone(),
+                            subtitle,
+                            icon,
+                            result_type: ResultType::Extension,
+                            score: f64::from(score),
+                            match_indices: if name_match { indices } else { Vec::new() },
+                            action: SearchAction::ExecuteExtensionCommand {
+                                extension_id: extension_id.clone(),
+                                command_id: command.id.clone(),
                             },
-                        }
+                            requires_permissions: needs_consent,
+                        });
                     }
                 }
-
-                let Some((score, indices, name_match)) = best_score else {
-                    continue;
-                };
-
-                let subtitle = command.subtitle.clone().unwrap_or_else(|| {
-                    if needs_consent {
-                        format!("{extension_name} (requires permissions)")
-                    } else {
-                        extension_name.clone()
-                    }
-                });
-
-                #[allow(clippy::map_unwrap_or)]
-                let icon = command
-                    .icon
-                    .clone()
-                    .map(|i| IconSource::SystemIcon { name: i })
-                    .unwrap_or_else(|| IconSource::SystemIcon {
-                        name: "puzzlepiece".to_string(),
-                    });
-
-                results.push(SearchResult {
-                    id: SearchResultId::new(format!("ext-command:{}:{}", extension_id, command.id)),
-                    title: name.clone(),
-                    subtitle,
-                    icon,
-                    result_type: ResultType::Extension,
-                    score: f64::from(score),
-                    match_indices: if name_match { indices } else { Vec::new() },
-                    action: SearchAction::ExecuteExtensionCommand {
-                        extension_id: extension_id.clone(),
-                        command_id: command.id.clone(),
-                    },
-                    requires_permissions: needs_consent,
-                });
-            }
-        }
-
-        }); // COMMAND_MATCHER
+            }); // COMMAND_MATCHER
         }); // MATCHER
 
         results.sort_by(|a, b| b.score.total_cmp(&a.score));
@@ -1055,11 +1293,7 @@ impl ExtensionManager {
         command_id: &str,
         args: CommandArguments,
     ) -> ExtensionApiResult<CommandInvocationResult> {
-        if !self
-            .registry
-            .get(extension_id)
-            .is_some_and(|r| r.enabled)
-        {
+        if !self.registry.get(extension_id).is_some_and(|r| r.enabled) {
             return Err(ExtensionApiError::message("extension disabled")).into();
         }
 
@@ -1074,31 +1308,71 @@ impl ExtensionManager {
             None => return Err(ExtensionApiError::message("extension not loaded")).into(),
         };
 
-        for command in loaded.instance.commands() {
-            if command.id.as_str() == command_id {
-                if let Err(err) = command
-                    .handler
-                    .handle(
-                        make_extension_context(
-                            &loaded.host_services,
-                            &loaded.host,
-                            &loaded.runtime,
-                            &loaded.cache,
-                            &loaded.manifest,
-                        ),
-                        args,
-                    )
-                    .into_result()
-                {
-                    return Err(ExtensionApiError::message(format!("{err}"))).into();
+        match &loaded.kind {
+            LoadedExtensionKind::InProcess(in_process) => {
+                for command in in_process.instance.commands() {
+                    if command.id.as_str() == command_id {
+                        if let Err(err) = command
+                            .handler
+                            .handle(
+                                make_extension_context(
+                                    &loaded.host_services,
+                                    &loaded.host,
+                                    &in_process.runtime,
+                                    &in_process.cache,
+                                    &loaded.manifest,
+                                ),
+                                args,
+                            )
+                            .into_result()
+                        {
+                            return Err(ExtensionApiError::message(format!("{err}"))).into();
+                        }
+                        self.invocation_guard.complete(extension_id, command_id);
+                        return Ok(CommandInvocationResult {
+                            success: true,
+                            message: ROption::RNone,
+                        })
+                        .into();
+                    }
                 }
+            },
+            LoadedExtensionKind::Sandbox(sandbox) => {
+                let args = match api_args_to_ipc(args).into_result() {
+                    Ok(value) => value,
+                    Err(err) => return Err(err).into(),
+                };
+                let request = CommandRequest {
+                    command_id: command_id.to_string(),
+                    args,
+                };
+                let params = match serde_json::to_value(request)
+                    .map_err(|err| ExtensionApiError::message(err.to_string()))
+                {
+                    Ok(value) => value,
+                    Err(err) => return Err(err).into(),
+                };
+                let response = match sandbox
+                    .connection
+                    .send_request(EXTENSION_COMMAND, params)
+                    .map_err(|err| ExtensionApiError::message(err.to_string()))
+                {
+                    Ok(value) => value,
+                    Err(err) => return Err(err).into(),
+                };
+                let response: CommandResponse = match serde_json::from_value(response)
+                    .map_err(|err| ExtensionApiError::message(err.to_string()))
+                {
+                    Ok(value) => value,
+                    Err(err) => return Err(err).into(),
+                };
                 self.invocation_guard.complete(extension_id, command_id);
                 return Ok(CommandInvocationResult {
-                    success: true,
-                    message: ROption::RNone,
+                    success: response.success,
+                    message: response.message.map(RString::from).into(),
                 })
                 .into();
-            }
+            },
         }
 
         self.invocation_guard.complete(extension_id, command_id);
@@ -1119,6 +1393,49 @@ impl ExtensionManager {
         // Take the last (most recent) view
         handles.pop().and_then(|h| h.view())
     }
+}
+
+fn wait_for_sandbox_exit(child: &mut std::process::Child) -> Result<(), std::io::Error> {
+    let start = Instant::now();
+    loop {
+        if child.try_wait()?.is_some() {
+            return Ok(());
+        }
+        if start.elapsed() > SANDBOX_SHUTDOWN_TIMEOUT {
+            let _ = child.kill();
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn api_args_to_ipc(args: CommandArguments) -> ExtensionApiResult<IpcCommandArguments> {
+    let extra = match args
+        .extra
+        .into_option()
+        .map(|value| serde_json::from_str::<Value>(value.get()))
+        .transpose()
+    {
+        Ok(value) => value,
+        Err(err) => return Err(ExtensionApiError::message(err.to_string())).into(),
+    };
+
+    Ok(IpcCommandArguments {
+        query: args
+            .query
+            .into_option()
+            .map(photoncast_extension_api::RString::into_string),
+        selection: args
+            .selection
+            .into_option()
+            .map(photoncast_extension_api::RString::into_string),
+        clipboard: args
+            .clipboard
+            .into_option()
+            .map(photoncast_extension_api::RString::into_string),
+        extra,
+    })
+    .into()
 }
 
 fn map_extension_icon(icon: photoncast_extension_api::IconSource) -> IconSource {
@@ -1155,7 +1472,8 @@ fn resolve_entry_path(
 
     // Use the manifest's directory (set during discovery) to resolve the entry path
     let base_dir = manifest
-        .directory.as_deref()
+        .directory
+        .as_deref()
         .unwrap_or_else(|| Path::new("."));
 
     let joined = base_dir.join(&manifest.entry.path);
@@ -1241,7 +1559,9 @@ mod tests {
     #[test]
     fn test_get_extension_permissions_returns_none_for_unknown() {
         let manager = ExtensionManager::new();
-        assert!(manager.get_extension_permissions("com.example.unknown").is_none());
+        assert!(manager
+            .get_extension_permissions("com.example.unknown")
+            .is_none());
     }
 
     // =============================================================================
@@ -1276,19 +1596,19 @@ mod tests {
     #[test]
     fn test_command_invocation_guard_prevents_circular() {
         let guard = CommandInvocationGuard::default();
-        
+
         // First call should be allowed
         assert!(guard.is_invocation_allowed("ext1", "cmd1"));
-        
+
         // Same call again should be blocked (circular)
         assert!(!guard.is_invocation_allowed("ext1", "cmd1"));
-        
+
         // Different command should be allowed
         assert!(guard.is_invocation_allowed("ext1", "cmd2"));
-        
+
         // Complete the first call
         guard.complete("ext1", "cmd1");
-        
+
         // Now the first call should be allowed again
         assert!(guard.is_invocation_allowed("ext1", "cmd1"));
     }
@@ -1296,13 +1616,13 @@ mod tests {
     #[test]
     fn test_command_invocation_guard_different_extensions() {
         let guard = CommandInvocationGuard::default();
-        
+
         // Start invocation for ext1
         assert!(guard.is_invocation_allowed("ext1", "cmd1"));
-        
+
         // Different extension should still be allowed
         assert!(guard.is_invocation_allowed("ext2", "cmd1"));
-        
+
         // Cleanup
         guard.complete("ext1", "cmd1");
         guard.complete("ext2", "cmd1");

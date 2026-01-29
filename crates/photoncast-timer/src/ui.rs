@@ -257,16 +257,11 @@ impl Render for TimerSetConfirmation {
                             .text_color(colors.success)
                             .child("Timer Set"),
                     )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(colors.success)
-                            .child(format!(
-                                "{} in {}",
-                                self.action.display_name(),
-                                self.countdown
-                            )),
-                    ),
+                    .child(div().text_xs().text_color(colors.success).child(format!(
+                        "{} in {}",
+                        self.action.display_name(),
+                        self.countdown
+                    ))),
             )
     }
 }

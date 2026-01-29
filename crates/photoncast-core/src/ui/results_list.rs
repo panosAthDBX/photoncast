@@ -183,7 +183,9 @@ impl ResultsList {
     /// Gets the currently selected result.
     #[must_use]
     pub fn selected(&self) -> Option<&SearchResult> {
-        self.flat_results.get(self.selected_index).map(std::convert::AsRef::as_ref)
+        self.flat_results
+            .get(self.selected_index)
+            .map(std::convert::AsRef::as_ref)
     }
 
     /// Returns true if the list is empty.

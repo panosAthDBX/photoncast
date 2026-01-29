@@ -77,7 +77,10 @@ mod tests {
     #[test]
     fn test_expand_tilde_bare() {
         let result = expand_tilde("~");
-        assert!(result.to_str().unwrap() != "~", "bare ~ should expand to home dir");
+        assert!(
+            result.to_str().unwrap() != "~",
+            "bare ~ should expand to home dir"
+        );
         assert!(result.is_absolute());
     }
 

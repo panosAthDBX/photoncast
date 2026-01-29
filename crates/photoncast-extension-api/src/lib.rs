@@ -4,6 +4,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::doc_markdown)]
+#![allow(clippy::option_if_let_else)]
 #![allow(non_camel_case_types)]
 // abi_stable's sabi_trait macro generates non-local impl blocks
 #![allow(non_local_definitions)]
@@ -269,9 +270,11 @@ pub trait Extension: Send + Sync {
     fn on_startup(&mut self, _ctx: &ExtensionContext) -> ExtensionApiResult<()> {
         ExtensionApiResult::ROk(())
     }
+    #[allow(clippy::option_if_let_else)]
     fn search_provider(&self) -> ROption<ExtensionSearchProvider_TO<'static, RBox<()>>> {
         ROption::RNone
     }
+    #[allow(clippy::option_if_let_else)]
     fn commands(&self) -> RVec<ExtensionCommand> {
         RVec::new()
     }
@@ -418,7 +421,10 @@ pub enum Accessory {
 #[derive(Debug, Clone, StableAbi, Serialize, Deserialize)]
 pub enum Preview {
     Markdown(RString),
-    Image { source: RString, alt: RString },
+    Image {
+        source: RString,
+        alt: RString,
+    },
     Metadata {
         #[serde(with = "tuple2_vec_serde")]
         items: RVec<Tuple2<RString, RString>>,
@@ -1058,7 +1064,7 @@ impl abi_stable::library::RootModule for ExtensionApiRootModule_Ref {
 pub type ExtensionBox = Extension_TO<'static, RBox<()>>;
 
 #[no_mangle]
-pub extern "C" fn photoncast_extension_api_version() -> u32 {
+pub const extern "C" fn photoncast_extension_api_version() -> u32 {
     EXTENSION_API_VERSION
 }
 

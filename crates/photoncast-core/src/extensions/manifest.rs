@@ -279,7 +279,8 @@ pub fn read_manifest_with_cache(
     let modified_at = metadata
         .modified()
         .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or_else(|| Utc::now().timestamp(), |d| d.as_secs() as i64);
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or_else(|| Utc::now().timestamp(), |d| d.as_secs() as i64);
 
     let path_key = manifest_path.to_string_lossy().to_string();
 

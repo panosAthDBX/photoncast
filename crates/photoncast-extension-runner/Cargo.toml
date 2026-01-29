@@ -1,0 +1,22 @@
+[package]
+name = "photoncast-extension-runner"
+description = "Sandboxed extension runner for PhotonCast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "photoncast-extension-runner"
+path = "src/main.rs"
+
+[dependencies]
+photoncast-core = { path = "../photoncast-core" }
+photoncast-extension-api = { path = "../photoncast-extension-api" }
+photoncast-extension-ipc = { path = "../photoncast-extension-ipc" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+abi_stable.workspace = true

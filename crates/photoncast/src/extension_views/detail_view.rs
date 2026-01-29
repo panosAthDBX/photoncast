@@ -20,7 +20,10 @@ use super::ActionCallback;
 // Actions
 // ============================================================================
 
-actions!(extension_detail, [Activate, Cancel, NextAction, PreviousAction]);
+actions!(
+    extension_detail,
+    [Activate, Cancel, NextAction, PreviousAction]
+);
 
 /// Registers key bindings for the extension detail view.
 pub fn register_key_bindings(cx: &mut gpui::AppContext) {
@@ -76,7 +79,11 @@ impl ExtensionDetailView {
     // ========================================================================
 
     fn activate(&mut self, _: &Activate, cx: &mut ViewContext<Self>) {
-        let action = self.detail_view.actions.get(self.selected_action_index).cloned();
+        let action = self
+            .detail_view
+            .actions
+            .get(self.selected_action_index)
+            .cloned();
         if let Some(action) = action {
             self.execute_action(&action, cx);
         }
@@ -152,7 +159,10 @@ impl ExtensionDetailView {
                         .child(rest.to_string())
                         .into_any_element(),
                 );
-            } else if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+            } else if let Some(rest) = trimmed
+                .strip_prefix("- ")
+                .or_else(|| trimmed.strip_prefix("* "))
+            {
                 elements.push(
                     div()
                         .flex()
@@ -224,13 +234,12 @@ impl ExtensionDetailView {
                     .child("METADATA"),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.0))
-                    .children(self.detail_view.metadata.iter().map(|item| {
-                        self.render_metadata_item(item, colors).into_any_element()
-                    })),
+                div().flex().flex_col().gap(px(6.0)).children(
+                    self.detail_view
+                        .metadata
+                        .iter()
+                        .map(|item| self.render_metadata_item(item, colors).into_any_element()),
+                ),
             )
     }
 
@@ -340,8 +349,10 @@ impl ExtensionDetailView {
         is_selected: bool,
         colors: &ExtensionViewColors,
     ) -> impl IntoElement {
-        let is_destructive =
-            matches!(action.style, photoncast_extension_api::ActionStyle::Destructive);
+        let is_destructive = matches!(
+            action.style,
+            photoncast_extension_api::ActionStyle::Destructive
+        );
         let is_primary = matches!(action.style, photoncast_extension_api::ActionStyle::Primary);
 
         let bg_color = if is_primary {
@@ -367,9 +378,7 @@ impl ExtensionDetailView {
             .cursor_pointer()
             .bg(bg_color)
             .text_color(text_color)
-            .when(is_selected, |el| {
-                el.border_2().border_color(colors.accent)
-            })
+            .when(is_selected, |el| el.border_2().border_color(colors.accent))
             .hover(|el| {
                 if is_primary {
                     el.bg(colors.accent_hover)

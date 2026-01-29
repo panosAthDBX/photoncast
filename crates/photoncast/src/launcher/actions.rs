@@ -27,7 +27,10 @@ impl LauncherWindow {
             tracing::info!("Calendar mode with {} events", events.len());
             !events.is_empty()
         } else {
-            tracing::info!("Non-calendar mode with {} results", self.search.results.len());
+            tracing::info!(
+                "Non-calendar mode with {} results",
+                self.search.results.len()
+            );
             !self.search.results.is_empty()
         };
 
@@ -264,7 +267,8 @@ impl LauncherWindow {
                     self.actions_menu.visible = false;
                     if let Some(bundle_id) = &app_bundle_id {
                         let is_enabled = {
-                            self.auto_quit.manager
+                            self.auto_quit
+                                .manager
                                 .read()
                                 .is_auto_quit_enabled(bundle_id)
                         };
@@ -407,7 +411,12 @@ impl LauncherWindow {
             return;
         }
 
-        if let Some(core_result) = self.search.core_results.get(self.search.selected_index).cloned() {
+        if let Some(core_result) = self
+            .search
+            .core_results
+            .get(self.search.selected_index)
+            .cloned()
+        {
             match &core_result.action {
                 SearchAction::OpenFile { path } | SearchAction::RevealInFinder { path } => {
                     // Open Finder and reveal the file
@@ -457,7 +466,12 @@ impl LauncherWindow {
             return;
         }
 
-        if let Some(core_result) = self.search.core_results.get(self.search.selected_index).cloned() {
+        if let Some(core_result) = self
+            .search
+            .core_results
+            .get(self.search.selected_index)
+            .cloned()
+        {
             match &core_result.action {
                 SearchAction::OpenFile { path } | SearchAction::RevealInFinder { path } => {
                     // Trigger Quick Look using qlmanage
@@ -480,7 +494,12 @@ impl LauncherWindow {
 
     /// Handles the Copy Path action (Cmd+C).
     pub(super) fn copy_path(&mut self, _: &CopyPath, cx: &mut ViewContext<Self>) {
-        if let Some(core_result) = self.search.core_results.get(self.search.selected_index).cloned() {
+        if let Some(core_result) = self
+            .search
+            .core_results
+            .get(self.search.selected_index)
+            .cloned()
+        {
             let path_str = match &core_result.action {
                 SearchAction::OpenFile { path } | SearchAction::RevealInFinder { path } => {
                     Some(path.display().to_string())
@@ -512,7 +531,12 @@ impl LauncherWindow {
     /// Handles the Copy File action (Cmd+Shift+C).
     /// Copies the actual file to clipboard so it can be pasted in apps like Slack, `WhatsApp`, etc.
     pub(super) fn copy_file(&mut self, _: &CopyFile, cx: &mut ViewContext<Self>) {
-        if let Some(core_result) = self.search.core_results.get(self.search.selected_index).cloned() {
+        if let Some(core_result) = self
+            .search
+            .core_results
+            .get(self.search.selected_index)
+            .cloned()
+        {
             let path = match &core_result.action {
                 SearchAction::OpenFile { path } | SearchAction::RevealInFinder { path } => {
                     Some(path.clone())

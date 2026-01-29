@@ -69,7 +69,7 @@ pub struct ThemeColors {
 impl ThemeColors {
     /// Creates theme colors from a Catppuccin palette and accent color.
     #[must_use]
-    pub fn from_palette(palette: &CatppuccinPalette, accent: AccentColor) -> Self {
+    pub const fn from_palette(palette: &CatppuccinPalette, accent: AccentColor) -> Self {
         let accent_color = palette.get_accent(accent);
 
         Self {
@@ -114,8 +114,8 @@ mod tests {
         let palette = CatppuccinPalette::mocha();
         let colors = ThemeColors::from_palette(&palette, AccentColor::Mauve);
 
-        assert!(colors.background.a == 1.0);
-        assert!(colors.text.a == 1.0);
+        assert!((colors.background.a - 1.0).abs() < f32::EPSILON);
+        assert!((colors.text.a - 1.0).abs() < f32::EPSILON);
         assert!(colors.selection.a < 1.0);
     }
 
@@ -125,6 +125,6 @@ mod tests {
         let blue_colors = ThemeColors::from_palette(&palette, AccentColor::Blue);
         let red_colors = ThemeColors::from_palette(&palette, AccentColor::Red);
 
-        assert_ne!(blue_colors.accent.h, red_colors.accent.h);
+        assert!((blue_colors.accent.h - red_colors.accent.h).abs() > f32::EPSILON);
     }
 }

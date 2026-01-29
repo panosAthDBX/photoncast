@@ -3,7 +3,10 @@
 use super::*;
 
 impl PreferencesWindow {
-    pub(super) fn render_app_management_section(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    pub(super) fn render_app_management_section(
+        &self,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let colors = get_colors(cx);
         div()
             .flex()

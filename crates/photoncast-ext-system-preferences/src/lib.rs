@@ -141,7 +141,13 @@ const SETTINGS_PANES: &[SettingsPane] = &[
         name: "Privacy & Security",
         icon: "lock.shield",
         url: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension",
-        keywords: &["permissions", "location", "camera", "microphone", "security"],
+        keywords: &[
+            "permissions",
+            "location",
+            "camera",
+            "microphone",
+            "security",
+        ],
     },
     SettingsPane {
         id: "battery",
@@ -211,7 +217,12 @@ const SETTINGS_PANES: &[SettingsPane] = &[
         name: "Desktop & Dock",
         icon: "dock.rectangle",
         url: "x-apple.systempreferences:com.apple.Desktop-Settings.extension",
-        keywords: &["wallpaper", "screen saver", "hot corners", "mission control"],
+        keywords: &[
+            "wallpaper",
+            "screen saver",
+            "hot corners",
+            "mission control",
+        ],
     },
     SettingsPane {
         id: "time-machine",
@@ -256,7 +267,11 @@ struct OpenSettingsHandler;
 impl CommandHandlerTrait for OpenSettingsHandler {
     fn handle(&self, ctx: ExtensionContext, args: CommandArguments) -> ExtensionApiResult<()> {
         // Filter panes based on query
-        let query = args.query.as_ref().map(photoncast_extension_api::RString::as_str).unwrap_or("");
+        let query = args
+            .query
+            .as_ref()
+            .map(photoncast_extension_api::RString::as_str)
+            .unwrap_or("");
 
         let filtered_panes: Vec<&SettingsPane> = if query.is_empty() {
             SETTINGS_PANES.iter().collect()
@@ -302,7 +317,7 @@ pub struct SystemPreferencesExtension {
 }
 
 impl SystemPreferencesExtension {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self { ctx: None }
     }
 }

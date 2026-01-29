@@ -121,27 +121,21 @@ fn get_app_launch_time(app: &NSRunningApplication) -> DateTime<Utc> {
     // Try to get launch date from NSRunningApplication
     let launch_date = app.launchDate();
 
-    match launch_date {
-        Some(date) => {
-            // NSDate.timeIntervalSince1970 returns seconds since Unix epoch
-            let timestamp = date.timeIntervalSince1970();
-            #[allow(clippy::cast_possible_truncation)]
-            let secs = timestamp as i64;
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                clippy::cast_precision_loss
-            )]
-            let nanos = ((timestamp - secs as f64) * 1_000_000_000.0) as u32;
-            Utc.timestamp_opt(secs, nanos)
-                .single()
-                .unwrap_or_else(Utc::now)
-        },
-        None => {
-            // Fallback to current time if launch date not available
-            Utc::now()
-        },
-    }
+    launch_date.map_or_else(Utc::now, |date| {
+        // NSDate.timeIntervalSince1970 returns seconds since Unix epoch
+        let timestamp = date.timeIntervalSince1970();
+        #[allow(clippy::cast_possible_truncation)]
+        let secs = timestamp as i64;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let nanos = ((timestamp - secs as f64) * 1_000_000_000.0) as u32;
+        Utc.timestamp_opt(secs, nanos)
+            .single()
+            .unwrap_or_else(Utc::now)
+    })
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -669,24 +663,27 @@ pub fn force_quit_app_action(pid: i32) -> ActionResult<()> {
 
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
 
-    if let Some(app) = app {
-        let success = app.forceTerminate();
-        if success {
-            tracing::info!("Successfully force terminated PID {}", pid);
-            Ok(())
-        } else {
-            // Fall back to SIGKILL
-            tracing::warn!("forceTerminate failed for PID {}, using SIGKILL", pid);
+    app.map_or_else(
+        || {
+            // App not in NSRunningApplication, try SIGKILL directly
+            tracing::warn!(
+                "App PID {} not found via NSRunningApplication, using SIGKILL",
+                pid
+            );
             send_sigkill_action(pid)
-        }
-    } else {
-        // App not in NSRunningApplication, try SIGKILL directly
-        tracing::warn!(
-            "App PID {} not found via NSRunningApplication, using SIGKILL",
-            pid
-        );
-        send_sigkill_action(pid)
-    }
+        },
+        |app| {
+            let success = app.forceTerminate();
+            if success {
+                tracing::info!("Successfully force terminated PID {}", pid);
+                Ok(())
+            } else {
+                // Fall back to SIGKILL
+                tracing::warn!("forceTerminate failed for PID {}, using SIGKILL", pid);
+                send_sigkill_action(pid)
+            }
+        },
+    )
 }
 
 #[cfg(not(target_os = "macos"))]

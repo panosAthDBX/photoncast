@@ -67,18 +67,17 @@ impl ExtensionPreviewPane {
                         .child(rest.to_string())
                         .into_any_element(),
                 );
-            } else if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+            } else if let Some(rest) = trimmed
+                .strip_prefix("- ")
+                .or_else(|| trimmed.strip_prefix("* "))
+            {
                 elements.push(
                     div()
                         .flex()
                         .items_start()
                         .gap(px(8.0))
                         .mb(px(4.0))
-                        .child(
-                            div()
-                                .text_color(self.colors.text_muted)
-                                .child("•"),
-                        )
+                        .child(div().text_color(self.colors.text_muted).child("•"))
                         .child(
                             div()
                                 .text_sm()
@@ -164,10 +163,7 @@ impl ExtensionPreviewPane {
                     .max_w_full()
                     .overflow_hidden()
                     .rounded(px(8.0))
-                    .child(
-                        img(path)
-                            .max_w_full()
-                    ),
+                    .child(img(path).max_w_full()),
             )
             .when(!alt.is_empty(), |el| {
                 el.child(
@@ -180,10 +176,7 @@ impl ExtensionPreviewPane {
     }
 
     /// Renders metadata as key-value pairs.
-    fn render_metadata(
-        &self,
-        items: &[(String, String)],
-    ) -> impl IntoElement {
+    fn render_metadata(&self, items: &[(String, String)]) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -236,10 +229,9 @@ impl IntoElement for ExtensionPreviewPane {
                 Preview::Markdown(markdown) => {
                     self.render_markdown(markdown.as_str()).into_any_element()
                 },
-                Preview::Image { source, alt } => {
-                    self.render_image(source.as_str(), alt.as_str())
-                        .into_any_element()
-                },
+                Preview::Image { source, alt } => self
+                    .render_image(source.as_str(), alt.as_str())
+                    .into_any_element(),
                 Preview::Metadata { items } => {
                     let converted: Vec<(String, String)> = items
                         .iter()

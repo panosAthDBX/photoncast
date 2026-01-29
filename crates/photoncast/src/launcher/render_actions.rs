@@ -102,10 +102,7 @@ impl LauncherWindow {
     }
 
     /// Render the actions menu popup (Cmd+K)
-    pub(super) fn render_actions_menu(
-        &self,
-        cx: &ViewContext<Self>,
-    ) -> impl IntoElement {
+    pub(super) fn render_actions_menu(&self, cx: &ViewContext<Self>) -> impl IntoElement {
         let colors = get_launcher_colors(cx);
         // Determine available actions based on search mode and selection
         let is_file_mode = matches!(self.search.mode, SearchMode::FileSearch);
@@ -122,19 +119,17 @@ impl LauncherWindow {
         let selected = self.actions_menu.selected_index;
 
         // For calendar mode, check if selected event has conference
-        let has_conference =
-            if let SearchMode::Calendar { events, .. } = &self.search.mode {
-                events
-                    .get(self.search.selected_index)
-                    .is_some_and(|e| e.conference_url.is_some())
-            } else {
-                false
-            };
+        let has_conference = if let SearchMode::Calendar { events, .. } = &self.search.mode {
+            events
+                .get(self.search.selected_index)
+                .is_some_and(|e| e.conference_url.is_some())
+        } else {
+            false
+        };
 
         // Task 7.3: Check if selected result is an app and if it's running
         let selected_result = self.search.results.get(self.search.selected_index);
-        let is_app =
-            selected_result.is_some_and(|r| r.result_type == ResultType::Application);
+        let is_app = selected_result.is_some_and(|r| r.result_type == ResultType::Application);
         let app_bundle_id = selected_result.and_then(|r| r.bundle_id.clone());
         let is_running = app_bundle_id
             .as_ref()

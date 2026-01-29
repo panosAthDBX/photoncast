@@ -13,21 +13,28 @@ use regex::Regex;
 use crate::error::{Result, TimerError};
 use crate::scheduler::TimerAction;
 
-static RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+static RELATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
     r"(?i)^(?P<action>sleep|shutdown|restart|lock)\s+in\s+(?P<amount>[\d.]+)\s*(?P<unit>s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours)$"
-).unwrap());
+).unwrap()
+});
 
-static DURATION_ONLY_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+static DURATION_ONLY_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
     r"(?i)^(?P<amount>[\d.]+)\s*(?P<unit>s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours)$"
-).unwrap());
+).unwrap()
+});
 
-static TIME_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
-    r"(?i)^(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm)?$"
-).unwrap());
+static TIME_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm)?$")
+        .unwrap()
+});
 
-static ACTION_TIME_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(
+static ACTION_TIME_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
     r"(?i)^(?P<action>sleep|shutdown|restart|lock)\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm)?$"
-).unwrap());
+).unwrap()
+});
 
 /// Parsed timer expression.
 #[derive(Debug, Clone)]

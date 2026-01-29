@@ -497,7 +497,10 @@ mod tests {
 
         // Wait for the prefetcher to reach Running (or beyond) with a generous timeout
         let reached = prefetcher.wait_for_status(PrefetchStatus::Running, Duration::from_secs(5));
-        assert!(reached, "Prefetcher did not reach Running status within timeout");
+        assert!(
+            reached,
+            "Prefetcher did not reach Running status within timeout"
+        );
 
         let status = prefetcher.status();
         assert!(
@@ -540,7 +543,10 @@ mod tests {
 
         // Wait for the prefetcher to reach Running (or beyond) with a generous timeout
         let reached = prefetcher.wait_for_status(PrefetchStatus::Running, Duration::from_secs(5));
-        assert!(reached, "Prefetcher did not reach Running status within timeout");
+        assert!(
+            reached,
+            "Prefetcher did not reach Running status within timeout"
+        );
 
         let status = prefetcher.status();
         assert!(

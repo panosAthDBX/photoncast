@@ -107,6 +107,6 @@ fn running_app_result(app: &RunningApp, score: u32, indices: Vec<usize>) -> Sear
         score: f64::from(score),
         match_indices: indices,
         requires_permissions: false,
-                    action: SearchAction::ForceQuitApp { pid: app.pid },
+        action: SearchAction::ForceQuitApp { pid: app.pid },
     }
 }

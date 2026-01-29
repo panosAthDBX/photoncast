@@ -218,8 +218,8 @@ impl TimerScheduler {
     pub async fn get_timer(&self) -> Result<Option<ActiveTimer>> {
         let db = self.db.read().await;
 
-        let mut stmt = db
-            .prepare("SELECT action, execute_at, created_at FROM active_timer WHERE id = 1")?;
+        let mut stmt =
+            db.prepare("SELECT action, execute_at, created_at FROM active_timer WHERE id = 1")?;
 
         let timer = stmt
             .query_row([], |row| {

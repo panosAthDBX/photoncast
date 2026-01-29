@@ -69,10 +69,7 @@ async fn fetch_favicon_data(url: &str) -> Result<Option<Vec<u8>>> {
         // Validate each favicon URL before fetching (SSRF protection)
         if let Ok(parsed_favicon_url) = Url::parse(&favicon_url) {
             if !is_allowed_url(&parsed_favicon_url) {
-                tracing::warn!(
-                    "Blocked favicon fetch for disallowed URL: {}",
-                    favicon_url
-                );
+                tracing::warn!("Blocked favicon fetch for disallowed URL: {}", favicon_url);
                 continue;
             }
         }

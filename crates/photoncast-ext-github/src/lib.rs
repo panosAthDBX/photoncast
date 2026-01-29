@@ -165,7 +165,7 @@ struct GitHubSearchProvider {
 }
 
 impl GitHubSearchProvider {
-    fn new(api_token: Option<String>, default_org: Option<String>) -> Self {
+    const fn new(api_token: Option<String>, default_org: Option<String>) -> Self {
         Self {
             api_token,
             default_org,
@@ -289,7 +289,7 @@ impl ExtensionSearchProvider for GitHubSearchProvider {
             .enumerate()
             .map(|(i, repo)| {
                 #[allow(clippy::cast_precision_loss)]
-                let score = 1.0 - (i as f64 * 0.1);
+                let score = (i as f64).mul_add(-0.1, 1.0);
                 ExtensionSearchItem {
                     id: RString::from(repo.full_name.as_str()),
                     title: RString::from(repo.name.as_str()),
@@ -384,7 +384,7 @@ pub struct GitHubExtension {
 }
 
 impl GitHubExtension {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self { ctx: None }
     }
 }
@@ -468,10 +468,7 @@ impl Extension for GitHubExtension {
                 name: RString::from("folder"),
             }),
             subtitle: ROption::RSome(RString::from("Search GitHub repositories")),
-            permissions: RVec::from(vec![
-                RString::from("network"),
-                RString::from("clipboard"),
-            ]),
+            permissions: RVec::from(vec![RString::from("network"), RString::from("clipboard")]),
         }])
     }
 }

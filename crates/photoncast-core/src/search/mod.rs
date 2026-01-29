@@ -61,8 +61,7 @@ pub use index::{
     UsageRecord,
 };
 pub use providers::{
-    AppProvider, CommandProvider, FileProvider, OptimizedAppProvider,
-    SearchProvider,
+    AppProvider, CommandProvider, FileProvider, OptimizedAppProvider, SearchProvider,
 };
 pub use ranking::{BoostConfig, FrecencyScore, ResultRanker, UsageData};
 

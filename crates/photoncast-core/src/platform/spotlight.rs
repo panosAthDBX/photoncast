@@ -292,7 +292,9 @@ impl SpotlightQuery {
 
         // Execute with timeout
         let timeout = Duration::from_millis(self.timeout_ms);
-        let output = if let Ok(result) = tokio::time::timeout(timeout, cmd.output()).await { result? } else {
+        let output = if let Ok(result) = tokio::time::timeout(timeout, cmd.output()).await {
+            result?
+        } else {
             warn!(
                 query = %self.query,
                 timeout_ms = self.timeout_ms,

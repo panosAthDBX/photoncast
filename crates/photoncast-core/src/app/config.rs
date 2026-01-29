@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// User configuration for PhotonCast.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
     /// General application settings.
     #[serde(default)]
@@ -48,7 +47,6 @@ pub struct Config {
     #[serde(default)]
     pub file_search: FileSearchConfig,
 }
-
 
 /// General application settings.
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -3,7 +3,10 @@
 use super::*;
 
 impl PreferencesWindow {
-    pub(super) fn render_file_search_section(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    pub(super) fn render_file_search_section(
+        &self,
+        cx: &mut ViewContext<Self>,
+    ) -> impl IntoElement {
         let colors = get_colors(cx);
         let hotkey_display = self.config.file_search.hotkey.display_string();
 

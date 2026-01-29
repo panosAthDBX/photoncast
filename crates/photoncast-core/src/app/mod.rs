@@ -10,6 +10,7 @@ pub mod integration;
 pub mod keybindings;
 pub mod state;
 
+pub use crate::extensions::registry::ExtensionState;
 pub use actions::*;
 pub use config::Config;
 pub use config_file::{
@@ -19,7 +20,6 @@ pub use config_file::{
 pub use integration::{
     ExtensionLaunchError, IntegrationConfig, PhotonCastApp, SearchOutcome, SEARCH_TIMEOUT_MESSAGE,
 };
-pub use crate::extensions::registry::ExtensionState;
 pub use keybindings::{
     default_keybindings_path, Keybindings, KeybindingsError, KeybindingsResult, Shortcut,
 };

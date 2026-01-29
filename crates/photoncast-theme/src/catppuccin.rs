@@ -141,7 +141,7 @@ impl Hsla {
         self
     }
 
-    /// Converts to gpui::Hsla.
+    /// Converts to `gpui::Hsla`.
     #[must_use]
     pub fn to_gpui(self) -> gpui::Hsla {
         gpui::hsla(self.h, self.s, self.l, self.a)
@@ -197,7 +197,7 @@ pub struct CatppuccinPalette {
 impl CatppuccinPalette {
     /// Creates the Mocha (dark, high contrast) palette.
     #[must_use]
-    pub fn mocha() -> Self {
+    pub const fn mocha() -> Self {
         Self {
             rosewater: hsla(10.0, 0.56, 0.91, 1.0),
             flamingo: hsla(0.0, 0.59, 0.88, 1.0),
@@ -231,7 +231,7 @@ impl CatppuccinPalette {
 
     /// Creates the Latte (light) palette.
     #[must_use]
-    pub fn latte() -> Self {
+    pub const fn latte() -> Self {
         Self {
             rosewater: hsla(10.0, 0.58, 0.74, 1.0),
             flamingo: hsla(0.0, 0.60, 0.67, 1.0),
@@ -265,7 +265,7 @@ impl CatppuccinPalette {
 
     /// Creates the Frappé (dark, low contrast) palette.
     #[must_use]
-    pub fn frappe() -> Self {
+    pub const fn frappe() -> Self {
         Self {
             rosewater: hsla(10.0, 0.57, 0.88, 1.0),
             flamingo: hsla(0.0, 0.59, 0.84, 1.0),
@@ -299,7 +299,7 @@ impl CatppuccinPalette {
 
     /// Creates the Macchiato (dark, medium contrast) palette.
     #[must_use]
-    pub fn macchiato() -> Self {
+    pub const fn macchiato() -> Self {
         Self {
             rosewater: hsla(10.0, 0.58, 0.90, 1.0),
             flamingo: hsla(0.0, 0.58, 0.86, 1.0),
@@ -333,7 +333,7 @@ impl CatppuccinPalette {
 
     /// Creates a palette for the given flavor.
     #[must_use]
-    pub fn for_flavor(flavor: CatppuccinFlavor) -> Self {
+    pub const fn for_flavor(flavor: CatppuccinFlavor) -> Self {
         match flavor {
             CatppuccinFlavor::Latte => Self::latte(),
             CatppuccinFlavor::Frappe => Self::frappe(),
@@ -344,7 +344,7 @@ impl CatppuccinPalette {
 
     /// Gets the accent color for the given variant.
     #[must_use]
-    pub fn get_accent(&self, accent: AccentColor) -> Hsla {
+    pub const fn get_accent(&self, accent: AccentColor) -> Hsla {
         match accent {
             AccentColor::Rosewater => self.rosewater,
             AccentColor::Flamingo => self.flamingo,
@@ -448,6 +448,6 @@ mod tests {
     fn test_hsla_with_alpha() {
         let color = hsla(180.0, 0.5, 0.5, 1.0);
         let translucent = color.with_alpha(0.5);
-        assert_eq!(translucent.a, 0.5);
+        assert!((translucent.a - 0.5).abs() < f32::EPSILON);
     }
 }

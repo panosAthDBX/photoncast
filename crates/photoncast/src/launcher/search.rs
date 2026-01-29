@@ -44,7 +44,7 @@ impl LauncherWindow {
                             score: 100.0, // High score for frecent apps
                             match_indices: vec![],
                             requires_permissions: false,
-            action: SearchAction::LaunchApp {
+                            action: SearchAction::LaunchApp {
                                 bundle_id: indexed_app.bundle_id.as_str().to_string(),
                                 path: indexed_app.path.clone(),
                             },
@@ -68,18 +68,26 @@ impl LauncherWindow {
                 .flat_map(|g| g.results)
                 .take(6)
                 .collect();
-            tracing::debug!("Loaded {} fallback suggestions", self.search.suggestions.len());
+            tracing::debug!(
+                "Loaded {} fallback suggestions",
+                self.search.suggestions.len()
+            );
         }
 
         // If query is empty, populate results with suggestions so they're navigable
-        if self.search.query.is_empty() && !matches!(self.search.mode, SearchMode::Calendar { .. }) {
+        if self.search.query.is_empty() && !matches!(self.search.mode, SearchMode::Calendar { .. })
+        {
             self.search.core_results = self.search.suggestions.clone();
             self.search.results = self
-                .search.core_results
+                .search
+                .core_results
                 .iter()
                 .map(Self::search_result_to_result_item)
                 .collect();
-            tracing::debug!("Populated {} results from suggestions", self.search.results.len());
+            tracing::debug!(
+                "Populated {} results from suggestions",
+                self.search.results.len()
+            );
         }
 
         // Notify to trigger re-render
@@ -98,7 +106,8 @@ impl LauncherWindow {
             let filtered: Vec<_> = if query_lower.is_empty() {
                 self.meeting.all_events.clone()
             } else {
-                self.meeting.all_events
+                self.meeting
+                    .all_events
                     .iter()
                     .filter(|e| e.title.to_lowercase().contains(&query_lower))
                     .cloned()
@@ -120,7 +129,8 @@ impl LauncherWindow {
             self.search.base_results.clear();
             self.search.core_results = self.search.suggestions.clone();
             self.search.results = self
-                .search.core_results
+                .search
+                .core_results
                 .iter()
                 .map(Self::search_result_to_result_item)
                 .collect();
@@ -257,7 +267,7 @@ impl LauncherWindow {
                                 score: 0.0,
                                 match_indices: vec![],
                                 requires_permissions: false,
-            action: SearchAction::OpenFile { path },
+                                action: SearchAction::OpenFile { path },
                             }
                         })
                         .collect()
@@ -308,7 +318,7 @@ impl LauncherWindow {
                     score: 15000.0, // Very high score to show at top
                     match_indices: vec![],
                     requires_permissions: false,
-            action: SearchAction::OpenSleepTimer {
+                    action: SearchAction::OpenSleepTimer {
                         expression: "cancel".to_string(),
                     },
                 };
@@ -316,7 +326,8 @@ impl LauncherWindow {
                 let _ = this.update(&mut cx, |view, cx| {
                     // Insert active timer at the beginning of results
                     view.search.core_results.insert(0, search_result.clone());
-                    view.search.results
+                    view.search
+                        .results
                         .insert(0, Self::search_result_to_result_item(&search_result));
                     cx.notify();
                 });
@@ -330,9 +341,11 @@ impl LauncherWindow {
         self.search.results.clear();
 
         if let Some(result) = &self.calculator.result {
-            self.search.core_results
+            self.search
+                .core_results
                 .push(Self::calculator_result_to_search_result(result));
-            self.search.results
+            self.search
+                .results
                 .push(Self::calculator_result_to_result_item(result));
         }
 
@@ -341,7 +354,8 @@ impl LauncherWindow {
                 break;
             }
             self.search.core_results.push(result.clone());
-            self.search.results
+            self.search
+                .results
                 .push(Self::search_result_to_result_item(result));
         }
     }
@@ -366,7 +380,8 @@ impl LauncherWindow {
         if self.actions_menu.visible {
             let action_count = self.get_actions_count();
             if action_count > 0 {
-                self.actions_menu.selected_index = (self.actions_menu.selected_index + 1) % action_count;
+                self.actions_menu.selected_index =
+                    (self.actions_menu.selected_index + 1) % action_count;
                 cx.notify();
             }
             return;
@@ -619,7 +634,12 @@ impl LauncherWindow {
             }
         }
 
-        if let Some(core_result) = self.search.core_results.get(self.search.selected_index).cloned() {
+        if let Some(core_result) = self
+            .search
+            .core_results
+            .get(self.search.selected_index)
+            .cloned()
+        {
             let title = core_result.title.clone();
 
             // Handle the action based on its type
@@ -845,7 +865,10 @@ impl LauncherWindow {
                     // Quick Look is handled separately
                     tracing::info!(path = %path.display(), "Quick Look not yet implemented");
                 },
-                SearchAction::ExecuteCustomCommand { command_id, arguments } => {
+                SearchAction::ExecuteCustomCommand {
+                    command_id,
+                    arguments,
+                } => {
                     // Custom commands are executed via custom_commands module
                     tracing::info!(
                         command_id = %command_id,
@@ -904,7 +927,10 @@ impl LauncherWindow {
                     }
                     self.hide(cx);
                 },
-                SearchAction::ExecuteExtensionCommand { extension_id, command_id } => {
+                SearchAction::ExecuteExtensionCommand {
+                    extension_id,
+                    command_id,
+                } => {
                     // Extension commands are executed via extension manager
                     let result = self
                         .photoncast_app
@@ -1355,7 +1381,11 @@ impl LauncherWindow {
         }
 
         // Find current group
-        let current_type = self.search.results.get(self.search.selected_index).map(|r| r.result_type);
+        let current_type = self
+            .search
+            .results
+            .get(self.search.selected_index)
+            .map(|r| r.result_type);
 
         if let Some(current_type) = current_type {
             // Find the first item of the next group
@@ -1397,12 +1427,17 @@ impl LauncherWindow {
         }
 
         // Find current group
-        let current_type = self.search.results.get(self.search.selected_index).map(|r| r.result_type);
+        let current_type = self
+            .search
+            .results
+            .get(self.search.selected_index)
+            .map(|r| r.result_type);
 
         if let Some(current_type) = current_type {
             // Find the first item of current group
             let current_group_start = self
-                .search.results
+                .search
+                .results
                 .iter()
                 .position(|r| r.result_type == current_type)
                 .unwrap_or(0);
@@ -1411,7 +1446,8 @@ impl LauncherWindow {
                 // Find the previous group's first item
                 let prev_type = self.search.results[current_group_start - 1].result_type;
                 let prev_group_start = self
-                    .search.results
+                    .search
+                    .results
                     .iter()
                     .position(|r| r.result_type == prev_type)
                     .unwrap_or(0);
@@ -1421,7 +1457,8 @@ impl LauncherWindow {
                 let last_type = self.search.results.last().map(|r| r.result_type);
                 if let Some(last_type) = last_type {
                     let last_group_start = self
-                        .search.results
+                        .search
+                        .results
                         .iter()
                         .position(|r| r.result_type == last_type)
                         .unwrap_or(0);

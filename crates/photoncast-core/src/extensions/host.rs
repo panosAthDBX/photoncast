@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use abi_stable::std_types::RVec;
@@ -20,6 +21,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub struct ExtensionHostImpl {
     pub view_handles: std::sync::Arc<RwLock<Vec<HostViewHandle>>>,
+    pub view_handle_index: std::sync::Arc<RwLock<HashMap<u64, HostViewHandle>>>,
     pub services: Option<ExtensionHostServices>,
 }
 
@@ -43,6 +45,7 @@ impl ExtensionHostImpl {
     pub fn new() -> Self {
         Self {
             view_handles: std::sync::Arc::new(RwLock::new(Vec::new())),
+            view_handle_index: std::sync::Arc::new(RwLock::new(HashMap::new())),
             services: None,
         }
     }
@@ -51,6 +54,7 @@ impl ExtensionHostImpl {
     pub fn with_services(services: ExtensionHostServices) -> Self {
         Self {
             view_handles: std::sync::Arc::new(RwLock::new(Vec::new())),
+            view_handle_index: std::sync::Arc::new(RwLock::new(HashMap::new())),
             services: Some(services),
         }
     }
@@ -63,6 +67,75 @@ impl Default for ExtensionHostImpl {
 }
 
 impl ExtensionHostImpl {
+    pub fn render_view_handle(&self, view: ExtensionView) -> HostViewHandle {
+        let handle = HostViewHandle::new();
+        handle.update(view);
+        let handle_id = handle.id().value();
+        self.view_handles.write().push(handle.clone());
+        self.view_handle_index
+            .write()
+            .insert(handle_id, handle.clone());
+        handle
+    }
+
+    pub fn view_handle(&self, handle_id: u64) -> Option<HostViewHandle> {
+        self.view_handle_index.read().get(&handle_id).cloned()
+    }
+
+    pub fn update_view_handle(
+        &self,
+        handle_id: u64,
+        view: ExtensionView,
+    ) -> ExtensionApiResult<()> {
+        let Some(handle) = self.view_handle(handle_id) else {
+            return Err(ExtensionApiError::message("view handle not found")).into();
+        };
+        handle.update(view);
+        Ok(()).into()
+    }
+
+    pub fn update_items_handle(
+        &self,
+        handle_id: u64,
+        items: RVec<photoncast_extension_api::ListItem>,
+    ) -> ExtensionApiResult<()> {
+        let Some(handle) = self.view_handle(handle_id) else {
+            return Err(ExtensionApiError::message("view handle not found")).into();
+        };
+        handle.update_items(items);
+        Ok(()).into()
+    }
+
+    pub fn set_loading_handle(&self, handle_id: u64, loading: bool) -> ExtensionApiResult<()> {
+        let Some(handle) = self.view_handle(handle_id) else {
+            return Err(ExtensionApiError::message("view handle not found")).into();
+        };
+        handle.set_loading(loading);
+        Ok(()).into()
+    }
+
+    pub fn set_error_handle(
+        &self,
+        handle_id: u64,
+        error: Option<String>,
+    ) -> ExtensionApiResult<()> {
+        let Some(handle) = self.view_handle(handle_id) else {
+            return Err(ExtensionApiError::message("view handle not found")).into();
+        };
+        handle.set_error(error);
+        Ok(()).into()
+    }
+
+    pub fn take_pending_view(&self) -> Option<ExtensionView> {
+        let mut handles = self.view_handles.write();
+        handles.pop().and_then(|handle| handle.view())
+    }
+
+    pub fn clear_view_handles(&self) {
+        self.view_handles.write().clear();
+        self.view_handle_index.write().clear();
+    }
+
     /// Checks if a path is allowed by the declared filesystem permissions.
     /// Returns true if no services are configured (permissive mode) or if the path
     /// is under one of the allowed paths.
@@ -107,9 +180,7 @@ impl ExtensionHostImpl {
 
 impl ExtensionHostProtocol for ExtensionHostImpl {
     fn render_view(&self, view: ExtensionView) -> ExtensionApiResult<ViewHandle> {
-        let handle = HostViewHandle::new();
-        handle.update(view);
-        self.view_handles.write().push(handle.clone());
+        let handle = self.render_view_handle(view);
         Ok(HostViewHandleApi::new(handle).into_view_handle()).into()
     }
 

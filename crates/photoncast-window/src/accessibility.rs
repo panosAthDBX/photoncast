@@ -974,6 +974,7 @@ impl AccessibilityManager {
 }
 
 /// Gets the frontmost window using CGWindowList API.
+///
 /// This does NOT require accessibility permissions and works even when another app is active.
 /// Returns (owner_name, title, pid) of the first normal window (layer 0) on screen.
 #[cfg(target_os = "macos")]

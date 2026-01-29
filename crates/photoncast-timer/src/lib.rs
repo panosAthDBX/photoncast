@@ -32,7 +32,6 @@
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::arc_with_non_send_sync)] // Timer uses Arc<RwLock<Connection>> for async access
 
-
 pub mod config;
 pub mod error;
 pub mod parser;

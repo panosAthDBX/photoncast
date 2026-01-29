@@ -6,8 +6,8 @@
 //!
 //! Quicklinks are cached in memory and only reloaded when explicitly invalidated.
 
-use std::path::PathBuf;
 use parking_lot::RwLock;
+use std::path::PathBuf;
 
 use crate::search::providers::SearchProvider;
 use crate::search::{
@@ -150,7 +150,7 @@ impl QuickLinksProvider {
             score,
             match_indices: indices,
             requires_permissions: false,
-                    action: SearchAction::ExecuteQuickLink {
+            action: SearchAction::ExecuteQuickLink {
                 id: link.id.to_string(),
                 url_template: link.link.clone(),
                 arguments: arguments.to_string(),

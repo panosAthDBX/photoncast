@@ -72,7 +72,7 @@ pub fn make_extension_context(
                             })
                         })
                         .api_handle()
-                    }
+                    },
                 }
             }),
         host: ExtensionHost::new(host.clone()),

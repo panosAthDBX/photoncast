@@ -112,8 +112,8 @@ pub const DOCUMENT_EXTENSIONS: &[&str] = &[
 
 /// Image file extensions.
 pub const IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "svg", "ico", "heic", "heif",
-    "raw", "cr2", "nef", "arw", "dng", "psd",
+    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "svg", "ico", "heic", "heif", "raw",
+    "cr2", "nef", "arw", "dng", "psd",
 ];
 
 /// Video file extensions.
@@ -122,14 +122,11 @@ pub const VIDEO_EXTENSIONS: &[&str] = &[
 ];
 
 /// Audio file extensions.
-pub const AUDIO_EXTENSIONS: &[&str] = &[
-    "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "aiff",
-];
+pub const AUDIO_EXTENSIONS: &[&str] = &["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "aiff"];
 
 /// Archive file extensions.
-pub const ARCHIVE_EXTENSIONS: &[&str] = &[
-    "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "dmg", "iso",
-];
+pub const ARCHIVE_EXTENSIONS: &[&str] =
+    &["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "dmg", "iso"];
 
 /// E-book file extensions.
 pub const EBOOK_EXTENSIONS: &[&str] = &["epub", "mobi"];
