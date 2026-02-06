@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT"
@@ -84,6 +84,7 @@ objc2-app-kit = { version = "0.3", features = [
     "NSEvent",
     "NSButton",
     "NSControl",
+    "block2",
 ] }
 objc2-event-kit = { version = "0.3", features = [
     "EKEventStore",

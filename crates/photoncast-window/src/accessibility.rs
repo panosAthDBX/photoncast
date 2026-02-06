@@ -30,8 +30,9 @@ use std::collections::HashMap;
 #[cfg(target_os = "macos")]
 use accessibility_sys::{
     kAXErrorSuccess, kAXValueTypeCGPoint, kAXValueTypeCGSize, AXIsProcessTrusted,
-    AXIsProcessTrustedWithOptions, AXUIElementCopyAttributeValue, AXUIElementCreateSystemWide,
-    AXUIElementRef, AXUIElementSetAttributeValue, AXValueCreate, AXValueGetValue, AXValueRef,
+    AXIsProcessTrustedWithOptions, AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
+    AXUIElementCreateSystemWide, AXUIElementRef, AXUIElementSetAttributeValue, AXValueCreate,
+    AXValueGetValue, AXValueRef,
 };
 #[cfg(target_os = "macos")]
 use core_foundation::base::TCFType;
@@ -77,6 +78,8 @@ const AX_WINDOWS: &str = "AXWindows";
 const AX_MINIMIZED: &str = "AXMinimized";
 #[cfg(target_os = "macos")]
 const AX_FULLSCREEN: &str = "AXFullScreen";
+#[cfg(target_os = "macos")]
+const AX_ENHANCED_USER_INTERFACE: &str = "AXEnhancedUserInterface";
 
 // CGWindowList FFI bindings (not exposed by core-graphics crate)
 #[cfg(target_os = "macos")]
@@ -375,7 +378,12 @@ impl AccessibilityManager {
     /// Gets the frontmost window for the current application.
     #[cfg(target_os = "macos")]
     pub fn get_frontmost_window(&mut self) -> Result<WindowInfo> {
+        // Re-check permission each time (in case it was granted after startup)
+        let trusted = is_process_trusted();
+        tracing::debug!("is_process_trusted() = {}", trusted);
+        self.has_permission = trusted;
         if !self.has_permission {
+            tracing::error!("get_frontmost_window: Accessibility permission not granted");
             return Err(WindowError::PermissionDenied);
         }
 
@@ -522,27 +530,82 @@ impl AccessibilityManager {
     }
 
     /// Sets the window frame.
+    ///
+    /// Uses the Accessibility API with fallback to System Events AppleScript for
+    /// apps that don't support AX resize (like Ghostty, some Electron apps).
     #[cfg(target_os = "macos")]
     pub fn set_window_frame(&mut self, window: &WindowInfo, frame: CGRect) -> Result<()> {
+        use core_foundation_sys::number::CFBooleanGetValue;
+
         if !self.has_permission {
             return Err(WindowError::PermissionDenied);
         }
 
         let element = self.get_validated_element(window.element_ref)?;
+        let before_size = Self::get_size_from_ref(element).ok();
 
-        tracing::debug!(
-            "Setting window frame: x={}, y={}, w={}, h={}",
-            frame.origin.x,
-            frame.origin.y,
-            frame.size.width,
-            frame.size.height
-        );
+        // Get app element to check/disable AXEnhancedUserInterface
+        let pid = get_pid_for_bundle_id(&window.bundle_id);
+        let mut enhanced_ui_was_enabled = false;
+        let app_element: Option<AXUIElementRef> = pid.map(|p| {
+            unsafe { AXUIElementCreateApplication(p) }
+        });
 
-        // Set position first, then size
-        Self::set_position_on_ref(element, frame.origin)?;
-        Self::set_size_on_ref(element, frame.size)?;
+        // Temporarily disable AXEnhancedUserInterface if enabled (blocks resize in some apps)
+        if let Some(app) = app_element {
+            if let Ok(value) = unsafe { get_ax_attribute(app, AX_ENHANCED_USER_INTERFACE) } {
+                let is_enabled = unsafe { CFBooleanGetValue(value.cast()) };
+                unsafe { CFRelease(value) };
+                if is_enabled {
+                    enhanced_ui_was_enabled = true;
+                    let _ = unsafe {
+                        set_ax_attribute(
+                            app,
+                            AX_ENHANCED_USER_INTERFACE,
+                            CFBoolean::false_value().as_CFTypeRef(),
+                        )
+                    };
+                }
+            }
+        }
 
-        Ok(())
+        // Rectangle's approach: size -> position -> size
+        let size_result1 = Self::set_size_on_ref(element, frame.size);
+        let pos_result = Self::set_position_on_ref(element, frame.origin);
+        let size_result2 = Self::set_size_on_ref(element, frame.size);
+
+        // Re-enable AXEnhancedUserInterface if we disabled it
+        if let Some(app) = app_element {
+            if enhanced_ui_was_enabled {
+                let _ = unsafe {
+                    set_ax_attribute(
+                        app,
+                        AX_ENHANCED_USER_INTERFACE,
+                        CFBoolean::true_value().as_CFTypeRef(),
+                    )
+                };
+            }
+            unsafe { CFRelease(app.cast()) };
+        }
+
+        // Check if AX resize worked
+        let final_size = Self::get_size_from_ref(element).ok();
+        let size_changed = match (before_size, final_size) {
+            (Some(b), Some(a)) => {
+                (a.width - b.width).abs() > 5.0 || (a.height - b.height).abs() > 5.0
+            }
+            _ => false,
+        };
+
+        // If AX resize failed, try System Events AppleScript as fallback
+        if !size_changed && (size_result1.is_err() || size_result2.is_err()) {
+            tracing::debug!("AX resize failed for '{}', trying AppleScript", window.bundle_id);
+            if !set_window_bounds_via_applescript(&window.bundle_id, frame) {
+                tracing::warn!("Window resize not supported by '{}'", window.bundle_id);
+            }
+        }
+
+        pos_result
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -1117,6 +1180,233 @@ pub fn get_bundle_id_for_pid(pid: i32) -> Option<String> {
     app.and_then(|a| a.bundleIdentifier().map(|s| s.to_string()))
 }
 
+/// Gets the PID for a bundle ID using NSWorkspace.
+#[cfg(target_os = "macos")]
+pub fn get_pid_for_bundle_id(bundle_id: &str) -> Option<i32> {
+    use objc2_app_kit::NSWorkspace;
+
+    let workspace = NSWorkspace::sharedWorkspace();
+    let running_apps = workspace.runningApplications();
+    let count = running_apps.len();
+
+    for i in 0..count {
+        let app = running_apps.objectAtIndex(i);
+        if let Some(app_bundle_id) = app.bundleIdentifier() {
+            if app_bundle_id.to_string() == bundle_id {
+                return Some(app.processIdentifier());
+            }
+        }
+    }
+    None
+}
+
+/// Gets the window ID for a PID from CGWindowList.
+/// Returns the first normal window (layer 0) owned by the given PID.
+#[cfg(target_os = "macos")]
+#[allow(clippy::cast_sign_loss)]
+pub fn get_window_id_for_pid(pid: i32) -> Option<CGWindowID> {
+    use core_foundation::string::CFString;
+
+    let options =
+        K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
+    let window_list = unsafe { CGWindowListCopyWindowInfo(options, K_CG_NULL_WINDOW_ID) };
+
+    if window_list.is_null() {
+        return None;
+    }
+
+    let count = unsafe { CFArrayGetCount(window_list) };
+
+    for i in 0..count {
+        let dict = unsafe { CFArrayGetValueAtIndex(window_list, i) as CFDictionaryRef };
+        if dict.is_null() {
+            continue;
+        }
+
+        // Get window layer - we only want normal windows (layer 0)
+        let layer_key = CFString::new("kCGWindowLayer");
+        let mut layer_value: *const c_void = std::ptr::null();
+        let layer = if unsafe {
+            CFDictionaryGetValueIfPresent(dict, layer_key.as_CFTypeRef().cast(), &mut layer_value)
+        } != 0
+            && !layer_value.is_null()
+        {
+            let mut val: i32 = 0;
+            if unsafe {
+                CFNumberGetValue(
+                    layer_value.cast(),
+                    kCFNumberSInt32Type,
+                    std::ptr::addr_of_mut!(val).cast::<c_void>(),
+                )
+            } {
+                val
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        if layer != 0 {
+            continue;
+        }
+
+        // Get owner PID
+        let pid_key = CFString::new("kCGWindowOwnerPID");
+        let mut pid_value: *const c_void = std::ptr::null();
+        let owner_pid = if unsafe {
+            CFDictionaryGetValueIfPresent(dict, pid_key.as_CFTypeRef().cast(), &mut pid_value)
+        } != 0
+            && !pid_value.is_null()
+        {
+            let mut val: i32 = 0;
+            if unsafe {
+                CFNumberGetValue(
+                    pid_value.cast(),
+                    kCFNumberSInt32Type,
+                    std::ptr::addr_of_mut!(val).cast::<c_void>(),
+                )
+            } {
+                val
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        if owner_pid != pid {
+            continue;
+        }
+
+        // Get window ID
+        let wid_key = CFString::new("kCGWindowNumber");
+        let mut wid_value: *const c_void = std::ptr::null();
+        let window_id = if unsafe {
+            CFDictionaryGetValueIfPresent(dict, wid_key.as_CFTypeRef().cast(), &mut wid_value)
+        } != 0
+            && !wid_value.is_null()
+        {
+            let mut val: i32 = 0;
+            if unsafe {
+                CFNumberGetValue(
+                    wid_value.cast(),
+                    kCFNumberSInt32Type,
+                    std::ptr::addr_of_mut!(val).cast::<c_void>(),
+                )
+            } {
+                val as CGWindowID
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        unsafe { CFRelease(window_list.cast()) };
+        return Some(window_id);
+    }
+
+    unsafe { CFRelease(window_list.cast()) };
+    None
+}
+
+/// Sanitizes a string for safe interpolation into AppleScript.
+/// Escapes backslashes and double quotes to prevent injection attacks.
+#[cfg(target_os = "macos")]
+fn sanitize_for_applescript(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Validates that a bundle ID contains only safe characters.
+/// Bundle IDs should match the pattern [a-zA-Z0-9._-]+
+#[cfg(target_os = "macos")]
+fn is_valid_bundle_id(bundle_id: &str) -> bool {
+    !bundle_id.is_empty()
+        && bundle_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+}
+
+/// Sets window bounds using AppleScript via System Events as a fallback.
+/// This uses the accessibility scripting bridge rather than app-specific scripting.
+/// Returns true on success.
+#[cfg(target_os = "macos")]
+#[allow(clippy::cast_possible_truncation)]
+pub fn set_window_bounds_via_applescript(bundle_id: &str, frame: CGRect) -> bool {
+    use std::process::Command;
+
+    // Validate bundle ID to prevent injection
+    if !is_valid_bundle_id(bundle_id) {
+        tracing::warn!(
+            "Invalid bundle ID rejected for AppleScript: {:?}",
+            bundle_id
+        );
+        return false;
+    }
+
+    // First, get the app name from bundle ID (bundle_id is validated above)
+    let get_name_script = format!(
+        r#"tell application "System Events" to get name of first process whose bundle identifier is "{}""#,
+        bundle_id
+    );
+
+    let name_result = Command::new("osascript")
+        .args(["-e", &get_name_script])
+        .output();
+
+    let app_name = match name_result {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+        _ => {
+            tracing::warn!("Could not get app name for bundle {}", bundle_id);
+            return false;
+        }
+    };
+
+    // Sanitize app_name since it comes from external source (System Events output)
+    let safe_app_name = sanitize_for_applescript(&app_name);
+
+    // Truncation is intentional - AppleScript uses integer coordinates
+    let x = frame.origin.x as i32;
+    let y = frame.origin.y as i32;
+    let width = frame.size.width as i32;
+    let height = frame.size.height as i32;
+
+    // Use System Events to set position and size via accessibility
+    let script = format!(
+        r#"tell application "System Events"
+    tell process "{}"
+        set position of window 1 to {{{}, {}}}
+        set size of window 1 to {{{}, {}}}
+    end tell
+end tell"#,
+        safe_app_name, x, y, width, height
+    );
+
+    let result = Command::new("osascript")
+        .args(["-e", &script])
+        .output();
+
+    match result {
+        Ok(output) => {
+            if output.status.success() {
+                tracing::debug!("System Events resize succeeded for {}", app_name);
+                true
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::debug!("System Events resize failed: {}", stderr.trim());
+                false
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to run osascript: {}", e);
+            false
+        }
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
     None
@@ -1124,6 +1414,11 @@ pub fn get_frontmost_window_via_cgwindowlist() -> Option<CGWindowInfo> {
 
 #[cfg(not(target_os = "macos"))]
 pub fn get_bundle_id_for_pid(_pid: i32) -> Option<String> {
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_pid_for_bundle_id(_bundle_id: &str) -> Option<i32> {
     None
 }
 

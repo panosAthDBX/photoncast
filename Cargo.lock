@@ -4236,7 +4236,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -4281,7 +4281,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-apps"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4303,7 +4303,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-calculator"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4336,7 +4336,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-calendar"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "anyhow",
  "block2",
@@ -4359,7 +4359,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-clipboard"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4400,7 +4400,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-core"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -4482,7 +4482,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-extension-api"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -4494,7 +4494,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-extension-ipc"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "photoncast-extension-api",
  "serde",
@@ -4504,7 +4504,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-extension-runner"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "abi_stable",
  "photoncast-core",
@@ -4517,7 +4517,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-quicklinks"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4548,14 +4548,14 @@ dependencies = [
 
 [[package]]
 name = "photoncast-theme"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "gpui",
 ]
 
 [[package]]
 name = "photoncast-timer"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4577,7 +4577,7 @@ dependencies = [
 
 [[package]]
 name = "photoncast-window"
-version = "0.1.0-alpha"
+version = "0.1.0-beta"
 dependencies = [
  "accessibility",
  "accessibility-sys",

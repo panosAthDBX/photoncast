@@ -33,3 +33,4 @@
 
 # Build artifacts
 *.dSYM/
+/build/

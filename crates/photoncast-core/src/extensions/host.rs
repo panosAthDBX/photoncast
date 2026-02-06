@@ -128,7 +128,11 @@ impl ExtensionHostImpl {
 
     pub fn take_pending_view(&self) -> Option<ExtensionView> {
         let mut handles = self.view_handles.write();
-        handles.pop().and_then(|handle| handle.view())
+        let handle = handles.pop()?;
+        let handle_id = handle.id().value();
+        // Also remove from index to prevent memory leak
+        self.view_handle_index.write().remove(&handle_id);
+        handle.view()
     }
 
     pub fn clear_view_handles(&self) {
@@ -354,5 +358,128 @@ impl ExtensionHostProtocol for ExtensionHostImpl {
             }
         }
         Ok(ROption::RNone).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use abi_stable::std_types::{ROption, RString, RVec};
+    use photoncast_extension_api::{ExtensionView, ListView};
+
+    fn create_test_view() -> ExtensionView {
+        ExtensionView::List(ListView {
+            title: RString::from("Test"),
+            search_bar: ROption::RNone,
+            sections: RVec::new(),
+            empty_state: ROption::RNone,
+            show_preview: false,
+        })
+    }
+
+    #[test]
+    fn test_render_view_handle_adds_to_both_collections() {
+        let host = ExtensionHostImpl::new();
+        let view = create_test_view();
+
+        let handle = host.render_view_handle(view);
+        let handle_id = handle.id().value();
+
+        // Verify both collections contain the handle
+        assert_eq!(host.view_handles.read().len(), 1);
+        assert!(host.view_handle_index.read().contains_key(&handle_id));
+    }
+
+    #[test]
+    fn test_take_pending_view_removes_from_both_collections() {
+        let host = ExtensionHostImpl::new();
+        let view = create_test_view();
+
+        let handle = host.render_view_handle(view);
+        let handle_id = handle.id().value();
+
+        // Take the pending view
+        let result = host.take_pending_view();
+        assert!(result.is_some());
+
+        // Verify both collections are now empty
+        assert!(host.view_handles.read().is_empty());
+        assert!(!host.view_handle_index.read().contains_key(&handle_id));
+    }
+
+    #[test]
+    fn test_take_pending_view_returns_none_when_empty() {
+        let host = ExtensionHostImpl::new();
+
+        let result = host.take_pending_view();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_view_handle_returns_none_after_take() {
+        let host = ExtensionHostImpl::new();
+        let view = create_test_view();
+
+        let handle = host.render_view_handle(view);
+        let handle_id = handle.id().value();
+
+        // Can find handle before take
+        assert!(host.view_handle(handle_id).is_some());
+
+        // Take the pending view
+        let _ = host.take_pending_view();
+
+        // Cannot find handle after take
+        assert!(host.view_handle(handle_id).is_none());
+    }
+
+    #[test]
+    fn test_clear_view_handles_empties_both_collections() {
+        let host = ExtensionHostImpl::new();
+
+        // Add multiple view handles
+        for _ in 0..5 {
+            host.render_view_handle(create_test_view());
+        }
+
+        assert_eq!(host.view_handles.read().len(), 5);
+        assert_eq!(host.view_handle_index.read().len(), 5);
+
+        // Clear all handles
+        host.clear_view_handles();
+
+        // Both collections should be empty
+        assert!(host.view_handles.read().is_empty());
+        assert!(host.view_handle_index.read().is_empty());
+    }
+
+    #[test]
+    fn test_multiple_render_and_take_operations() {
+        let host = ExtensionHostImpl::new();
+
+        // Render 3 views
+        let handles: Vec<_> = (0..3)
+            .map(|_| host.render_view_handle(create_test_view()))
+            .collect();
+
+        assert_eq!(host.view_handles.read().len(), 3);
+        assert_eq!(host.view_handle_index.read().len(), 3);
+
+        // Take views one by one (LIFO order)
+        for i in (0..3).rev() {
+            let result = host.take_pending_view();
+            assert!(result.is_some());
+
+            // The taken handle should no longer be in the index
+            assert!(host.view_handle(handles[i].id().value()).is_none());
+
+            // Remaining counts
+            assert_eq!(host.view_handles.read().len(), i);
+            assert_eq!(host.view_handle_index.read().len(), i);
+        }
+
+        // Final state: both empty
+        assert!(host.view_handles.read().is_empty());
+        assert!(host.view_handle_index.read().is_empty());
     }
 }

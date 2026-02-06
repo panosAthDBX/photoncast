@@ -1389,9 +1389,16 @@ impl ExtensionManager {
         extension_id: &str,
     ) -> Option<photoncast_extension_api::ExtensionView> {
         let loaded = self.loaded.get(extension_id)?;
-        let mut handles = loaded.host.view_handles.write();
-        // Take the last (most recent) view
-        handles.pop().and_then(|h| h.view())
+        // Use host's method which properly cleans up both view_handles and view_handle_index
+        loaded.host.take_pending_view()
+    }
+
+    /// Clears all pending view handles for an extension.
+    /// Call this when an extension command completes to prevent memory leaks.
+    pub fn clear_extension_view_handles(&mut self, extension_id: &str) {
+        if let Some(loaded) = self.loaded.get(extension_id) {
+            loaded.host.clear_view_handles();
+        }
     }
 }
 

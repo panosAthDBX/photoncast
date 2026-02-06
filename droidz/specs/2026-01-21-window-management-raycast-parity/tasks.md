@@ -90,12 +90,14 @@ Implement macOS Accessibility API wrappers for window manipulation.
 
 ### Task 2.4: Implement Set Window Frame
 
-- **Description**: Implement function to set window position and size using `AXUIElementSetAttributeValue`.
+- **Description**: Implement function to set window position and size using `AXUIElementSetAttributeValue` with AppleScript fallback for apps that reject AX resize.
 - **Dependencies**: Task 2.3
 - **Acceptance Criteria**:
   - `set_window_frame(window: &AXWindow, frame: CGRect) -> Result<()>`
-  - Sets both position and size atomically
-  - Returns error if window refuses resize (e.g., Terminal.app minimum size)
+  - Uses Rectangle-style approach: size → position → size (some apps need this order)
+  - Temporarily disables `AXEnhancedUserInterface` if enabled (blocks resize in some apps)
+  - Falls back to System Events AppleScript for apps that reject AX resize (e.g., Ghostty, some Electron apps)
+  - Returns error only if position setting fails (resize failures are tolerated with fallback)
 - **Complexity**: Medium
 
 ### Task 2.5: Implement Toggle Fullscreen

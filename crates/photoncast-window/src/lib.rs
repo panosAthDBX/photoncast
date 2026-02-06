@@ -222,6 +222,9 @@ impl WindowManager {
             });
         }
 
+        // Refresh display list to ensure we have current display bounds
+        self.display_manager.refresh_displays();
+
         // Get frontmost window
         let window = self.accessibility_manager.get_frontmost_window()?;
         tracing::info!(
@@ -254,12 +257,27 @@ impl WindowManager {
 
         // Get current display
         let current_frame = self.accessibility_manager.get_window_frame(&window)?;
-        let display = self
+        tracing::debug!(
+            "Current window frame: ({}, {}) size {}x{}",
+            current_frame.origin.x,
+            current_frame.origin.y,
+            current_frame.size.width,
+            current_frame.size.height
+        );
+        let current_display = self
             .display_manager
             .display_containing_frame(&current_frame)
             .ok_or_else(|| WindowError::Message {
                 message: "No display found for window".to_string(),
             })?;
+        tracing::debug!(
+            "Display frame: ({}, {}) size {}x{}, is_main={}",
+            current_display.frame.origin.x,
+            current_display.frame.origin.y,
+            current_display.frame.size.width,
+            current_display.frame.size.height,
+            current_display.is_main
+        );
 
         // Save frame for restore
         if layout != WindowLayout::Restore {
@@ -273,11 +291,11 @@ impl WindowManager {
         } else if layout == WindowLayout::MakeSmaller {
             // Shrink window by 10% from center
             self.layout_calculator
-                .resize_frame(current_frame, display.frame, 0.1, false)
+                .resize_frame(current_frame, current_display.frame, 0.1, false)
         } else if layout == WindowLayout::MakeLarger {
             // Grow window by 10% from center
             self.layout_calculator
-                .resize_frame(current_frame, display.frame, 0.1, true)
+                .resize_frame(current_frame, current_display.frame, 0.1, true)
         } else {
             // Get cycle state
             let cycle_state = if self.config.cycling_enabled {
@@ -289,8 +307,16 @@ impl WindowManager {
 
             // Calculate frame for layout
             self.layout_calculator
-                .calculate_frame(layout, display.frame, cycle_state)
+                .calculate_frame(layout, current_display.frame, cycle_state)
         };
+
+        tracing::info!(
+            "Target frame: ({}, {}) size {}x{}",
+            target_frame.origin.x,
+            target_frame.origin.y,
+            target_frame.size.width,
+            target_frame.size.height
+        );
 
         // Show visual feedback overlay if enabled
         if self.config.show_visual_feedback {

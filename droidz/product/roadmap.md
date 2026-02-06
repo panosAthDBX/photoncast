@@ -171,17 +171,24 @@
 - History is searchable
 - Currency rates updated every 6 hours
 
-### Sprint 5: Window Management (Weeks 17-20)
+### Sprint 5: Window Management (Weeks 17-20) ✅ COMPLETE
 
 #### 5.1 Window Commands
-- [ ] Implement window positioning commands:
+- [x] Implement window positioning commands:
   - `left half` / `right half`
   - `top half` / `bottom half`
   - `maximize` / `center`
   - `quarters` (top-left, top-right, etc.)
-- [ ] Use Accessibility APIs for window control
-- [ ] Smooth animation during resize
-- [ ] Multi-monitor support
+  - `thirds` (first third, center third, last third, first two thirds, last two thirds)
+  - `almost maximize` / `toggle fullscreen`
+  - `restore` / `reasonable size`
+  - `make smaller` / `make larger`
+- [x] Use Accessibility APIs for window control
+  - Primary: Rectangle-style AX API with AXEnhancedUserInterface handling
+  - Fallback: System Events AppleScript for apps rejecting AX resize
+- [x] Smooth animation during resize (optional, respects reduce motion)
+- [x] Multi-monitor support with display movement commands
+- [x] Layout cycling (half → third → two-thirds)
 
 #### 5.2 Quick Links
 - [ ] User-defined URL bookmarks
@@ -480,7 +487,7 @@
 | Version | Milestone | Target Date | Status |
 |---------|-----------|-------------|--------|
 | v0.1.0-alpha | MVP complete | Month 3 | ✅ Complete |
-| v0.1.0-beta | Public beta | Month 3.5 | 🔄 In Progress |
+| v0.1.0-beta | Public beta + Window Management | Month 3.5 | ✅ Complete |
 | v0.2.0 | Stability fixes | Month 4 | ⏳ Planned |
 | v1.0.0 | Full release | Month 6 | ⏳ Planned |
 | v1.1.0 | Raycast extension runtime | Month 7 | ⏳ Planned |
@@ -538,5 +545,5 @@
 
 ---
 
-*Roadmap last updated: January 2026*  
-*Next review: March 2026*
+*Roadmap last updated: February 2026*  
+*Next review: April 2026*

@@ -1,9 +1,9 @@
 # Window Management - Raycast Parity Specification
 
-> **Version:** 1.0.0  
-> **Date:** 2026-01-21  
-> **Status:** Complete  
-> **Priority:** Phase 3
+> **Version:** 1.1.0  
+> **Date:** 2026-01-21 (Updated: 2026-02-02)  
+> **Status:** Implemented  
+> **Priority:** Phase 2 (Sprint 5)
 
 ---
 
@@ -30,42 +30,42 @@ Implement window management features with **100% Raycast parity**, allowing user
 | Raycast Feature | PhotonCast Status | Priority |
 |-----------------|-------------------|----------|
 | **Halves** | | |
-| Left Half | 🆕 New | P0 |
-| Right Half | 🆕 New | P0 |
-| Top Half | 🆕 New | P0 |
-| Bottom Half | 🆕 New | P0 |
+| Left Half | ✅ Implemented | P0 |
+| Right Half | ✅ Implemented | P0 |
+| Top Half | ✅ Implemented | P0 |
+| Bottom Half | ✅ Implemented | P0 |
 | **Quarters** | | |
-| Top Left Quarter | 🆕 New | P0 |
-| Top Right Quarter | 🆕 New | P0 |
-| Bottom Left Quarter | 🆕 New | P0 |
-| Bottom Right Quarter | 🆕 New | P0 |
+| Top Left Quarter | ✅ Implemented | P0 |
+| Top Right Quarter | ✅ Implemented | P0 |
+| Bottom Left Quarter | ✅ Implemented | P0 |
+| Bottom Right Quarter | ✅ Implemented | P0 |
 | **Thirds** | | |
-| First Third | 🆕 New | P1 |
-| Center Third | 🆕 New | P1 |
-| Last Third | 🆕 New | P1 |
-| First Two Thirds | 🆕 New | P1 |
-| Last Two Thirds | 🆕 New | P1 |
+| First Third | ✅ Implemented | P1 |
+| Center Third | ✅ Implemented | P1 |
+| Last Third | ✅ Implemented | P1 |
+| First Two Thirds | ✅ Implemented | P1 |
+| Last Two Thirds | ✅ Implemented | P1 |
 | **Centering** | | |
-| Center | 🆕 New | P0 |
-| Center Half | 🆕 New | P1 |
-| Center Two Thirds | 🆕 New | P1 |
+| Center | ✅ Implemented | P0 |
+| Center Half | ✅ Implemented | P1 |
+| Center Two Thirds | ✅ Implemented | P1 |
 | **Maximize** | | |
-| Maximize | 🆕 New | P0 |
-| Almost Maximize | 🆕 New | P1 |
-| Toggle Fullscreen | 🆕 New | P0 |
+| Maximize | ✅ Implemented | P0 |
+| Almost Maximize | ✅ Implemented | P1 |
+| Toggle Fullscreen | ✅ Implemented | P0 |
 | **Restore** | | |
-| Restore | 🆕 New | P0 |
-| Reasonable Size | 🆕 New | P2 |
+| Restore | ✅ Implemented | P0 |
+| Reasonable Size | ✅ Implemented | P2 |
 | **Cycling** | | |
-| Cycle Sizes | 🆕 New | P1 |
+| Cycle Sizes | ✅ Implemented | P1 |
 | **Multi-Display** | | |
-| Move to Next Display | 🆕 New | P0 |
-| Move to Previous Display | 🆕 New | P0 |
+| Move to Next Display | ✅ Implemented | P0 |
+| Move to Previous Display | ✅ Implemented | P0 |
 | **Advanced** | | |
-| Custom Hotkeys | 🆕 New | P1 |
-| Window Gaps | 🆕 New | P2 |
-| Make Smaller | 🆕 New | P2 |
-| Make Larger | 🆕 New | P2 |
+| Custom Hotkeys | ✅ Implemented | P1 |
+| Window Gaps | ✅ Implemented | P2 |
+| Make Smaller | ✅ Implemented | P2 |
+| Make Larger | ✅ Implemented | P2 |
 
 ---
 
@@ -442,6 +442,36 @@ crates/photoncast-window/
 | Get visible area | `NSScreen.visibleFrame` (excludes menu bar and dock) |
 | Toggle fullscreen | `AXUIElementSetAttributeValue(kAXFullscreenAttribute)` |
 | Accessibility check | `AXIsProcessTrusted` |
+
+### 5.2.1 Window Frame Setting Implementation
+
+Some applications (Ghostty, certain Electron apps, apps with `AXEnhancedUserInterface` enabled) reject window resize operations via the standard Accessibility API with error `-25200` (`kAXErrorCannotComplete`). To handle these cases, the implementation uses a multi-strategy approach:
+
+**Primary Approach - Rectangle-style AX API:**
+1. Get the app element via `AXUIElementCreateApplication(pid)`
+2. Check if `AXEnhancedUserInterface` is enabled (blocks resize in some apps)
+3. Temporarily disable `AXEnhancedUserInterface` if enabled
+4. Apply frame using size → position → size order (some apps need this sequence)
+5. Re-enable `AXEnhancedUserInterface` if it was disabled
+
+**Fallback Approach - System Events AppleScript:**
+If the AX API resize fails (window size unchanged after operation), fall back to System Events AppleScript:
+
+```applescript
+tell application "System Events"
+    tell process "<app_name>"
+        set position of window 1 to {x, y}
+        set size of window 1 to {width, height}
+    end tell
+end tell
+```
+
+This uses the accessibility scripting bridge rather than app-specific AppleScript support, making it work with most applications.
+
+**Error Handling:**
+- Position setting failures are returned as errors (critical operation)
+- Resize failures are tolerated and logged as warnings (fallback attempted)
+- The function succeeds if at least the position was set correctly
 
 ### 5.3 Accessibility Permissions
 

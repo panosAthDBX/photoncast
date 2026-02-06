@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Bundle Info -->
+    <key>CFBundleName</key>
+    <string>PhotonCast</string>
+    <key>CFBundleDisplayName</key>
+    <string>PhotonCast</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.photoncast.app</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0-alpha</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0-alpha</string>
+    <key>CFBundleExecutable</key>
+    <string>photoncast</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+
+    <!-- Dock Visibility (default: hidden) -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- App Category -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+
+    <!-- High Resolution Support -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
+
+    <!-- Security -->
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+
+    <!-- Privacy Usage Descriptions -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>PhotonCast needs calendar access to show your upcoming meetings in the launcher.</string>
+
+    <!-- Localization -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+    </array>
+
+    <!-- Document Types (none) -->
+    <key>CFBundleDocumentTypes</key>
+    <array/>
+
+    <!-- Exported Types (none) -->
+    <key>UTExportedTypeDeclarations</key>
+    <array/>
+
+    <!-- Imported Types -->
+    <key>UTImportedTypeDeclarations</key>
+    <array/>
+
+    <!-- Sparkle Update Configuration -->
+    <key>SUFeedURL</key>
+    <string>https://api.photoncast.app/updates/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string></string>
+</dict>
+</plist>

@@ -18,7 +18,11 @@ type IconCacheMap = HashMap<PathBuf, (Option<PathBuf>, Instant)>;
 static ICON_MEMORY_CACHE: std::sync::LazyLock<Mutex<IconCacheMap>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// TTL for positive cache entries (icon exists)
 const ICON_MEMORY_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(120);
+/// Short TTL for negative cache entries (icon missing) to avoid per-frame filesystem stat
+/// while still allowing discovery of newly-extracted icons within a few seconds
+const ICON_NEGATIVE_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(3);
 const ICON_MEMORY_CACHE_MAX: usize = 500;
 
 /// Returns the icon cache directory path.
@@ -48,12 +52,23 @@ fn cached_icon_filename(app_path: &Path) -> PathBuf {
 ///
 /// First checks the in-memory cache to avoid repeated filesystem `stat` calls
 /// (hot path during rendering). Falls back to filesystem on cache miss.
+///
+/// Caching strategy:
+/// - Positive results (icon exists): cached with long TTL (120s)
+/// - Negative results (icon missing): cached with short TTL (3s) to avoid
+///   per-frame filesystem stat while allowing discovery of newly-extracted icons
 pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
     // Fast path: in-memory lookup.
     {
         let cache = ICON_MEMORY_CACHE.lock();
         if let Some((result, ts)) = cache.get(app_path) {
-            if ts.elapsed() < ICON_MEMORY_CACHE_TTL {
+            // Use different TTL based on whether result is positive or negative
+            let ttl = if result.is_some() {
+                ICON_MEMORY_CACHE_TTL
+            } else {
+                ICON_NEGATIVE_CACHE_TTL
+            };
+            if ts.elapsed() < ttl {
                 return result.clone();
             }
         }
@@ -67,12 +82,12 @@ pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
         None
     };
 
-    // Store in memory cache, evicting oldest entries if over capacity.
+    // Cache both positive and negative results (with different TTLs checked on lookup)
     {
         let mut cache = ICON_MEMORY_CACHE.lock();
         cache.insert(app_path.to_path_buf(), (result.clone(), Instant::now()));
         if cache.len() > ICON_MEMORY_CACHE_MAX {
-            // Evict expired entries first, then oldest if still over cap
+            // Evict expired entries first (using longer TTL as conservative bound)
             cache.retain(|_, (_, ts)| ts.elapsed() < ICON_MEMORY_CACHE_TTL);
             if cache.len() > ICON_MEMORY_CACHE_MAX {
                 if let Some(oldest_key) = cache
@@ -87,6 +102,12 @@ pub fn get_cached_icon_path(app_path: &Path) -> Option<PathBuf> {
     }
 
     result
+}
+
+/// Invalidates the in-memory cache entry for an app without deleting the disk file.
+/// Use this when re-extracting an icon to force the next lookup to see the new file.
+pub fn invalidate_memory_cache(app_path: &Path) {
+    ICON_MEMORY_CACHE.lock().remove(app_path);
 }
 
 /// Clears the cached icon for an app (both in-memory and on-disk).

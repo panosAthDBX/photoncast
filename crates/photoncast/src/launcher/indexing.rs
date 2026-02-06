@@ -253,20 +253,30 @@ impl LauncherWindow {
                     let app_path = app.path.clone();
                     let bundle_id = app.bundle_id.to_string();
                     let photoncast_app_for_icon = Arc::clone(photoncast_app);
+                    let this_for_icon = this.clone();
 
                     // Add app to index
                     photoncast_app.write().update_or_add_app(app);
 
-                    // Extract icon in background
-                    cx.background_executor()
-                        .spawn(async move {
-                            if let Some(icon_path) = Self::get_app_icon_path_static(&app_path) {
-                                photoncast_app_for_icon
-                                    .write()
-                                    .update_app_icon(&bundle_id, icon_path);
-                            }
-                        })
-                        .detach();
+                    // Extract icon in background and notify UI when done
+                    cx.spawn(|mut cx| async move {
+                        let icon_result = cx
+                            .background_executor()
+                            .spawn(async move { Self::get_app_icon_path_static(&app_path) })
+                            .await;
+
+                        if let Some(icon_path) = icon_result {
+                            photoncast_app_for_icon
+                                .write()
+                                .update_app_icon(&bundle_id, icon_path);
+
+                            // Notify UI that icon is now available
+                            let _ = this_for_icon.update(&mut cx, |_this, cx| {
+                                cx.notify();
+                            });
+                        }
+                    })
+                    .detach();
 
                     // Notify UI to refresh if query matches
                     let _ = this.update(cx, |this, cx| {
@@ -289,21 +299,40 @@ impl LauncherWindow {
                     let app_path = app.path.clone();
                     let bundle_id = app.bundle_id.to_string();
                     let photoncast_app_for_icon = Arc::clone(photoncast_app);
+                    let this_for_icon = this.clone();
 
                     photoncast_app.write().update_or_add_app(app);
 
-                    // Re-extract icon (might have changed)
-                    cx.background_executor()
-                        .spawn(async move {
-                            // Clear cached icon first (force re-extraction)
-                            Self::clear_cached_icon(&app_path);
-                            if let Some(icon_path) = Self::get_app_icon_path_static(&app_path) {
-                                photoncast_app_for_icon
-                                    .write()
-                                    .update_app_icon(&bundle_id, icon_path);
-                            }
-                        })
-                        .detach();
+                    // Re-extract icon (might have changed) and notify UI when done
+                    // Only clear the old icon AFTER successfully extracting the new one
+                    cx.spawn(|mut cx| async move {
+                        let icon_result = cx
+                            .background_executor()
+                            .spawn(async move {
+                                // First try to extract new icon WITHOUT clearing the old one
+                                // This ensures we don't lose the icon if extraction fails
+                                let new_icon = Self::get_app_icon_path_static(&app_path);
+                                if new_icon.is_some() {
+                                    // Successfully extracted, now safe to clear old cached data
+                                    // (the memory cache entry, not the disk file since we just wrote it)
+                                    crate::icon_cache::invalidate_memory_cache(&app_path);
+                                }
+                                new_icon
+                            })
+                            .await;
+
+                        if let Some(icon_path) = icon_result {
+                            photoncast_app_for_icon
+                                .write()
+                                .update_app_icon(&bundle_id, icon_path);
+
+                            // Notify UI that icon has been updated
+                            let _ = this_for_icon.update(&mut cx, |_this, cx| {
+                                cx.notify();
+                            });
+                        }
+                    })
+                    .detach();
 
                     // Notify UI to refresh
                     let _ = this.update(cx, |this, cx| {

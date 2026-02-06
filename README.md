@@ -11,7 +11,7 @@ A lightning-fast macOS launcher built in pure Rust using [GPUI](https://github.c
 - **Global hotkey** activation (CGEventTap)
 - **Clipboard history** with AES-256-GCM encryption and full-text search
 - **Calculator & unit converter** with currency conversion and datetime math
-- **Window management** — tiling, cycling, layout presets, and overlay
+- **Window management** — halves, quarters, thirds, centering, maximize, restore, multi-display support, layout cycling, and visual overlay feedback
 - **Calendar integration** — next meeting display, conference link detection (EventKit)
 - **Native extension system** — ABI-stable dynamic library extensions with code signing
 - **Quick links** — bookmarks with placeholder-based URL expansion
@@ -55,7 +55,7 @@ photoncast/
 │   ├── photoncast-quicklinks/             # Quick links management
 │   ├── photoncast-theme/                  # Catppuccin theming
 │   ├── photoncast-timer/                  # Sleep timer
-│   └── photoncast-window/                 # Window management (tiling, cycling, animations)
+│   └── photoncast-window/                 # Window management (layouts, multi-display, Accessibility API)
 ├── tests/                                 # Integration tests
 └── droidz/                                # Product specs and standards
 ```

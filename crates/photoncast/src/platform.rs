@@ -7,11 +7,7 @@ mod macos {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
-    use core_foundation::runloop::{kCFRunLoopCommonModes, kCFRunLoopDefaultMode, CFRunLoop};
-    use core_graphics::event::{
-        CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions,
-        CGEventTapPlacement, CGEventType,
-    };
+
 
     use objc2::rc::Retained;
     use objc2::sel;
@@ -25,7 +21,7 @@ mod macos {
         MainThreadMarker, NSDictionary, NSObject, NSObjectProtocol, NSRect, NSSize, NSString,
     };
 
-    use tracing::{debug, error, info, warn};
+    use tracing::{debug, info, warn};
 
     /// Resize the key window to the specified size, keeping top-center position fixed.
     /// Uses dispatch_async to defer the resize outside of GPUI's event loop.
@@ -152,60 +148,257 @@ mod macos {
     }
 
     // =========================================================================
-    // Global Hotkey Registration via CGEventTap
+    // Global Hotkey Registration via Carbon RegisterEventHotKey
     // =========================================================================
 
-    /// Virtual key code for Space
-    const KEY_SPACE: i64 = 49;
-    /// Virtual key code for V
-    const KEY_V: i64 = 9;
+    mod carbon_hotkey {
+        use std::ffi::c_void;
+
+        #[repr(C)]
+        pub struct EventTypeSpec {
+            pub event_class: u32,
+            pub event_kind: u32,
+        }
+
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        pub struct EventHotKeyID {
+            pub signature: u32,
+            pub id: u32,
+        }
+
+        pub const EVENT_CLASS_KEYBOARD: u32 = u32::from_be_bytes(*b"keyb");
+        pub const EVENT_HOT_KEY_PRESSED: u32 = 5;
+        pub const EVENT_PARAM_DIRECT_OBJECT: u32 = u32::from_be_bytes(*b"----");
+        pub const TYPE_EVENT_HOT_KEY_ID: u32 = u32::from_be_bytes(*b"hkid");
+        pub const CMD_KEY_MASK: u32 = 1 << 8;
+        pub const SHIFT_KEY_MASK: u32 = 1 << 9;
+        pub const NO_ERR: i32 = 0;
+
+        pub type EventHandlerCallRef = *mut c_void;
+        pub type EventRef = *mut c_void;
+
+        #[link(name = "Carbon", kind = "framework")]
+        extern "C" {
+            pub fn GetApplicationEventTarget() -> *mut c_void;
+            pub fn InstallEventHandler(
+                target: *mut c_void,
+                handler: unsafe extern "C" fn(
+                    EventHandlerCallRef,
+                    EventRef,
+                    *mut c_void,
+                ) -> i32,
+                num_types: u32,
+                list: *const EventTypeSpec,
+                user_data: *mut c_void,
+                out_ref: *mut *mut c_void,
+            ) -> i32;
+            pub fn RegisterEventHotKey(
+                hot_key_code: u32,
+                hot_key_modifiers: u32,
+                hot_key_id: EventHotKeyID,
+                target: *mut c_void,
+                options: u32,
+                out_ref: *mut *mut c_void,
+            ) -> i32;
+            pub fn UnregisterEventHotKey(hot_key_ref: *mut c_void) -> i32;
+            pub fn GetEventParameter(
+                event: *mut c_void,
+                name: u32,
+                desired_type: u32,
+                actual_type: *mut u32,
+                buffer_size: u32,
+                actual_size: *mut u32,
+                data: *mut c_void,
+            ) -> i32;
+        }
+    }
+
+    // Carbon virtual key codes (from HIToolbox/Events.h)
+    const KEY_SPACE: u32 = 49;
+    const KEY_V: u32 = 9;
+
+    // Hotkey identifiers for our registered hotkeys
+    const HOTKEY_ID_LAUNCHER: u32 = 1;
+    const HOTKEY_ID_CLIPBOARD: u32 = 2;
+    const HOTKEY_SIGNATURE: u32 = u32::from_be_bytes(*b"PC01");
 
     /// Callback type for hotkey activation
     pub type HotkeyCallback = Box<dyn Fn() + Send + Sync>;
+
+    /// Wrapper for EventHotKeyRef to allow storage in Mutex across threads.
+    /// SAFETY: The pointer is only accessed on the main thread for registration/unregistration.
+    struct HotKeyRefWrapper(*mut std::ffi::c_void);
+    unsafe impl Send for HotKeyRefWrapper {}
 
     /// Global state for the hotkey system
     static HOTKEY_ACTIVE: AtomicBool = AtomicBool::new(false);
     static HOTKEY_CALLBACK: Mutex<Option<Arc<HotkeyCallback>>> = Mutex::new(None);
     /// Callback for clipboard hotkey (Cmd+Shift+V)
     static CLIPBOARD_HOTKEY_CALLBACK: Mutex<Option<Arc<HotkeyCallback>>> = Mutex::new(None);
+    /// Stored hotkey refs for proper unregistration
+    static LAUNCHER_HOTKEY_REF: Mutex<Option<HotKeyRefWrapper>> = Mutex::new(None);
+    static CLIPBOARD_HOTKEY_REF: Mutex<Option<HotKeyRefWrapper>> = Mutex::new(None);
 
-    /// Registers a global hotkey (Cmd+Space by default).
+    /// Carbon event handler callback — dispatches hotkey events to registered callbacks.
+    /// Uses dispatch queue instead of spawning threads to avoid unbounded thread creation.
+    unsafe extern "C" fn hotkey_event_handler(
+        _call_ref: carbon_hotkey::EventHandlerCallRef,
+        event: carbon_hotkey::EventRef,
+        _user_data: *mut std::ffi::c_void,
+    ) -> i32 {
+        use carbon_hotkey::*;
+        use dispatch::Queue;
+
+        let mut hotkey_id = EventHotKeyID {
+            signature: 0,
+            id: 0,
+        };
+
+        let status = GetEventParameter(
+            event,
+            EVENT_PARAM_DIRECT_OBJECT,
+            TYPE_EVENT_HOT_KEY_ID,
+            std::ptr::null_mut(),
+            std::mem::size_of::<EventHotKeyID>() as u32,
+            std::ptr::null_mut(),
+            &mut hotkey_id as *mut _ as *mut std::ffi::c_void,
+        );
+
+        if status != NO_ERR {
+            return status;
+        }
+
+        match hotkey_id.id {
+            HOTKEY_ID_LAUNCHER => {
+                debug!("Carbon hotkey: Cmd+Space");
+                if let Ok(cb) = HOTKEY_CALLBACK.lock() {
+                    if let Some(callback) = cb.as_ref() {
+                        let callback = Arc::clone(callback);
+                        Queue::main().exec_async(move || callback());
+                    }
+                }
+            }
+            HOTKEY_ID_CLIPBOARD => {
+                debug!("Carbon hotkey: Cmd+Shift+V");
+                if let Ok(cb) = CLIPBOARD_HOTKEY_CALLBACK.lock() {
+                    if let Some(callback) = cb.as_ref() {
+                        let callback = Arc::clone(callback);
+                        Queue::main().exec_async(move || callback());
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        NO_ERR
+    }
+
+    /// Registers a global hotkey (Cmd+Space) via Carbon RegisterEventHotKey.
     ///
-    /// Returns `Ok(())` if registration succeeded, or an error message.
-    /// The callback will be invoked on a background thread when the hotkey is pressed.
+    /// This API does not require accessibility permissions and works reliably
+    /// across macOS versions. The callback will be invoked on a background thread.
     pub fn register_global_hotkey<F>(callback: F) -> Result<(), String>
     where
         F: Fn() + Send + Sync + 'static,
     {
-        // Check if already registered
         if HOTKEY_ACTIVE.load(Ordering::SeqCst) {
             warn!("Global hotkey already registered");
             return Ok(());
         }
 
-        info!("Registering global hotkey (Cmd+Space)");
+        info!("Registering global hotkey (Cmd+Space) via Carbon");
 
-        // Store the callback
         {
             let mut cb = HOTKEY_CALLBACK.lock().map_err(|e| e.to_string())?;
             *cb = Some(Arc::new(Box::new(callback)));
         }
 
-        // Spawn a thread to run the event tap
-        std::thread::spawn(|| {
-            if let Err(e) = run_event_tap() {
-                error!("Event tap failed: {}", e);
-                HOTKEY_ACTIVE.store(false, Ordering::SeqCst);
+        unsafe {
+            use carbon_hotkey::*;
+
+            let target = GetApplicationEventTarget();
+
+            let event_spec = EventTypeSpec {
+                event_class: EVENT_CLASS_KEYBOARD,
+                event_kind: EVENT_HOT_KEY_PRESSED,
+            };
+
+            let status = InstallEventHandler(
+                target,
+                hotkey_event_handler,
+                1,
+                &event_spec,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+
+            if status != NO_ERR {
+                return Err(format!("InstallEventHandler failed with status {status}"));
             }
-        });
+
+            let hotkey_id = EventHotKeyID {
+                signature: HOTKEY_SIGNATURE,
+                id: HOTKEY_ID_LAUNCHER,
+            };
+
+            let mut hotkey_ref: *mut std::ffi::c_void = std::ptr::null_mut();
+            let status = RegisterEventHotKey(
+                KEY_SPACE,
+                CMD_KEY_MASK,
+                hotkey_id,
+                target,
+                0,
+                &mut hotkey_ref,
+            );
+
+            if status != NO_ERR {
+                return Err(format!(
+                    "RegisterEventHotKey failed for Cmd+Space (status {status}). \
+                     Cmd+Space may be in use by Spotlight. \
+                     Go to System Settings > Keyboard > Keyboard Shortcuts > Spotlight \
+                     and disable or change the Spotlight shortcut."
+                ));
+            }
+
+            // Store the ref for later unregistration
+            if let Ok(mut ref_guard) = LAUNCHER_HOTKEY_REF.lock() {
+                *ref_guard = Some(HotKeyRefWrapper(hotkey_ref));
+            }
+
+            info!("Cmd+Space hotkey registered successfully via Carbon");
+        }
 
         HOTKEY_ACTIVE.store(true, Ordering::SeqCst);
         Ok(())
     }
 
-    /// Unregisters the global hotkey.
+    /// Unregisters all global hotkeys and clears callbacks.
     pub fn unregister_global_hotkey() {
-        info!("Unregistering global hotkey");
+        info!("Unregistering global hotkeys");
+
+        // Unregister launcher hotkey
+        if let Ok(mut ref_guard) = LAUNCHER_HOTKEY_REF.lock() {
+            if let Some(HotKeyRefWrapper(hotkey_ref)) = ref_guard.take() {
+                if !hotkey_ref.is_null() {
+                    unsafe {
+                        carbon_hotkey::UnregisterEventHotKey(hotkey_ref);
+                    }
+                }
+            }
+        }
+
+        // Unregister clipboard hotkey
+        if let Ok(mut ref_guard) = CLIPBOARD_HOTKEY_REF.lock() {
+            if let Some(HotKeyRefWrapper(hotkey_ref)) = ref_guard.take() {
+                if !hotkey_ref.is_null() {
+                    unsafe {
+                        carbon_hotkey::UnregisterEventHotKey(hotkey_ref);
+                    }
+                }
+            }
+        }
+
         HOTKEY_ACTIVE.store(false, Ordering::SeqCst);
         if let Ok(mut cb) = HOTKEY_CALLBACK.lock() {
             *cb = None;
@@ -215,17 +408,62 @@ mod macos {
         }
     }
 
-    /// Registers the clipboard hotkey (Cmd+Shift+V).
-    /// Must be called after `register_global_hotkey` as it uses the same event tap.
+    /// Registers the clipboard hotkey (Cmd+Shift+V) via Carbon RegisterEventHotKey.
+    /// Must be called after `register_global_hotkey` (which installs the event handler).
     pub fn register_clipboard_hotkey<F>(callback: F) -> Result<(), String>
     where
         F: Fn() + Send + Sync + 'static,
     {
-        info!("Registering clipboard hotkey (Cmd+Shift+V)");
-        let mut cb = CLIPBOARD_HOTKEY_CALLBACK
-            .lock()
-            .map_err(|e| e.to_string())?;
-        *cb = Some(Arc::new(Box::new(callback)));
+        // Check that the event handler has been installed
+        if !HOTKEY_ACTIVE.load(Ordering::SeqCst) {
+            return Err(
+                "register_clipboard_hotkey must be called after register_global_hotkey".to_string(),
+            );
+        }
+
+        info!("Registering clipboard hotkey (Cmd+Shift+V) via Carbon");
+
+        {
+            let mut cb = CLIPBOARD_HOTKEY_CALLBACK
+                .lock()
+                .map_err(|e| e.to_string())?;
+            *cb = Some(Arc::new(Box::new(callback)));
+        }
+
+        unsafe {
+            use carbon_hotkey::*;
+
+            let target = GetApplicationEventTarget();
+
+            let hotkey_id = EventHotKeyID {
+                signature: HOTKEY_SIGNATURE,
+                id: HOTKEY_ID_CLIPBOARD,
+            };
+
+            let mut hotkey_ref: *mut std::ffi::c_void = std::ptr::null_mut();
+            let status = RegisterEventHotKey(
+                KEY_V,
+                CMD_KEY_MASK | SHIFT_KEY_MASK,
+                hotkey_id,
+                target,
+                0,
+                &mut hotkey_ref,
+            );
+
+            if status != NO_ERR {
+                return Err(format!(
+                    "RegisterEventHotKey failed for Cmd+Shift+V (status {status})"
+                ));
+            }
+
+            // Store the ref for later unregistration
+            if let Ok(mut ref_guard) = CLIPBOARD_HOTKEY_REF.lock() {
+                *ref_guard = Some(HotKeyRefWrapper(hotkey_ref));
+            }
+
+            info!("Cmd+Shift+V hotkey registered successfully via Carbon");
+        }
+
         Ok(())
     }
 
@@ -233,118 +471,6 @@ mod macos {
     #[allow(dead_code)]
     pub fn is_hotkey_registered() -> bool {
         HOTKEY_ACTIVE.load(Ordering::SeqCst)
-    }
-
-    /// Event tap callback that checks for Cmd+Space
-    fn event_tap_callback(
-        _proxy: core_graphics::event::CGEventTapProxy,
-        event_type: CGEventType,
-        event: &CGEvent,
-    ) -> Option<CGEvent> {
-        // Only handle key down events
-        if !matches!(event_type, CGEventType::KeyDown) {
-            return Some(event.clone());
-        }
-
-        // Get key code and modifiers
-        let keycode =
-            event.get_integer_value_field(core_graphics::event::EventField::KEYBOARD_EVENT_KEYCODE);
-        let flags = event.get_flags();
-
-        // Check for Cmd+Space (keycode 49 = Space, command flag set)
-        let is_cmd_space = keycode == KEY_SPACE
-            && flags.contains(CGEventFlags::CGEventFlagCommand)
-            && !flags.contains(CGEventFlags::CGEventFlagShift)
-            && !flags.contains(CGEventFlags::CGEventFlagControl)
-            && !flags.contains(CGEventFlags::CGEventFlagAlternate);
-
-        // Check for Cmd+Shift+V (keycode 9 = V, command + shift flags set)
-        let is_cmd_shift_v = keycode == KEY_V
-            && flags.contains(CGEventFlags::CGEventFlagCommand)
-            && flags.contains(CGEventFlags::CGEventFlagShift)
-            && !flags.contains(CGEventFlags::CGEventFlagControl)
-            && !flags.contains(CGEventFlags::CGEventFlagAlternate);
-
-        if is_cmd_space {
-            debug!("Hotkey detected: Cmd+Space");
-
-            // Invoke the callback
-            if let Ok(cb_guard) = HOTKEY_CALLBACK.lock() {
-                if let Some(callback) = cb_guard.as_ref() {
-                    let callback = Arc::clone(callback);
-                    // Invoke callback (don't block the event tap)
-                    std::thread::spawn(move || {
-                        callback();
-                    });
-                }
-            }
-
-            // Consume the event (don't pass to other apps)
-            return None;
-        }
-
-        if is_cmd_shift_v {
-            debug!("Hotkey detected: Cmd+Shift+V");
-
-            // Invoke the clipboard callback
-            if let Ok(cb_guard) = CLIPBOARD_HOTKEY_CALLBACK.lock() {
-                if let Some(callback) = cb_guard.as_ref() {
-                    let callback = Arc::clone(callback);
-                    // Invoke callback (don't block the event tap)
-                    std::thread::spawn(move || {
-                        callback();
-                    });
-                }
-            }
-
-            // Consume the event (don't pass to other apps)
-            return None;
-        }
-
-        // Pass through other events
-        Some(event.clone())
-    }
-
-    /// Runs the `CGEventTap` on the current thread.
-    fn run_event_tap() -> Result<(), String> {
-        // Create event tap
-        let event_tap = CGEventTap::new(
-            CGEventTapLocation::Session,
-            CGEventTapPlacement::HeadInsertEventTap,
-            CGEventTapOptions::Default,
-            vec![CGEventType::KeyDown],
-            event_tap_callback,
-        )
-        .map_err(|()| "Failed to create event tap. Is accessibility permission granted?")?;
-
-        // Enable the tap
-        event_tap.enable();
-
-        // Add to run loop
-        let source = event_tap
-            .mach_port
-            .create_runloop_source(0)
-            .map_err(|()| "Failed to create run loop source")?;
-
-        let run_loop = CFRunLoop::get_current();
-        run_loop.add_source(&source, unsafe { kCFRunLoopCommonModes });
-
-        info!("Event tap started, listening for Cmd+Space");
-
-        // Run the loop until hotkey is unregistered
-        while HOTKEY_ACTIVE.load(Ordering::SeqCst) {
-            // Run for a short interval then check if we should stop
-            // Note: Must use kCFRunLoopDefaultMode, not kCFRunLoopCommonModes
-            // kCFRunLoopCommonModes is only valid for adding sources, not running
-            CFRunLoop::run_in_mode(
-                unsafe { kCFRunLoopDefaultMode },
-                std::time::Duration::from_millis(100),
-                false,
-            );
-        }
-
-        info!("Event tap stopped");
-        Ok(())
     }
 
     // =========================================================================
@@ -444,10 +570,10 @@ mod macos {
     /// Returns true if the icon was loaded successfully.
     fn load_menu_bar_icon(button: &NSButton) -> bool {
         use objc2_foundation::NSData;
-        
+
         // Try to find the icon in the app bundle
         let exe_path = std::env::current_exe();
-        
+
         let icon_paths = [
             // When running from app bundle
             exe_path
@@ -457,38 +583,38 @@ mod macos {
             // Development fallback
             Some(std::path::PathBuf::from("resources/AppIcon.icns")),
         ];
-        
+
         for maybe_path in icon_paths.iter().flatten() {
             if maybe_path.exists() {
                 debug!("Loading menu bar icon from: {}", maybe_path.display());
-                
+
                 // Read the icon file
                 if let Ok(icon_data) = std::fs::read(maybe_path) {
                     // Create NSData from the bytes
                     let ns_data = NSData::with_bytes(&icon_data);
-                    
+
                     // Create NSImage from the data
                     let image = NSImage::initWithData(NSImage::alloc(), &ns_data);
-                    
+
                     if let Some(image) = image {
                         // Set size appropriate for menu bar (18x18 is standard)
                         let size = NSSize::new(18.0, 18.0);
                         image.setSize(size);
-                        
+
                         // Don't use template mode - our icon has colors
                         // Template mode converts to grayscale based on alpha
                         image.setTemplate(false);
-                        
+
                         // Set the image on the button
                         button.setImage(Some(&image));
-                        
+
                         info!("Menu bar icon loaded successfully");
                         return true;
                     }
                 }
             }
         }
-        
+
         warn!("Could not load menu bar icon from any known path");
         false
     }
@@ -538,7 +664,7 @@ mod macos {
         if let Some(button) = button {
             // Try to load the menu bar icon from the app bundle
             let icon_loaded = load_menu_bar_icon(&button);
-            
+
             if !icon_loaded {
                 // Fallback to text if icon loading fails
                 let title = NSString::from_str("PC");
