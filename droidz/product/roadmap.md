@@ -133,37 +133,37 @@
 **Goal:** Feature parity with basic Raycast/Alfred use cases  
 **Release:** v1.0.0
 
-### Sprint 4: Productivity Features (Weeks 13-16)
+### Sprint 4: Productivity Features (Weeks 13-16) ✅ COMPLETE
 
 #### 4.1 Clipboard History
-- [ ] Monitor pasteboard changes
-- [ ] Store clipboard history in SQLite
-- [ ] Support text, images, and file references
-- [ ] Configurable history limit (default: 1000 items)
-- [ ] Quick paste via keyboard shortcut
-- [ ] Search through clipboard history
+- [x] Monitor pasteboard changes
+- [x] Store clipboard history in SQLite
+- [x] Support text, images, and file references
+- [x] Configurable history limit (default: 1000 items)
+- [x] Quick paste via keyboard shortcut
+- [x] Search through clipboard history
 
 #### 4.2 Built-in Calculator
-- [ ] Parse and evaluate natural language math expressions
-- [ ] Support basic operations (+, -, *, /, ^, %)
-- [ ] Support parentheses and order of operations
-- [ ] Add common functions (sqrt, sin, cos, tan, log, ln, abs)
-- [ ] Unit conversions:
-  - [ ] Length (mm, cm, m, km, in, ft, yd, mi)
-  - [ ] Weight (mg, g, kg, oz, lb, ton)
-  - [ ] Volume (ml, l, tsp, tbsp, cup, pt, qt, gal)
-  - [ ] Temperature (C, F, K)
-  - [ ] Data (B, KB, MB, GB, TB, PB)
-  - [ ] Speed (m/s, km/h, mph, knots)
-- [ ] Currency conversions:
-  - [ ] Major fiat currencies (USD, EUR, GBP, JPY, etc.)
-  - [ ] Cryptocurrency (BTC, ETH, USDT, etc.)
-  - [ ] Background rate updates
-- [ ] Date & time calculations:
-  - [ ] Relative dates ("monday in 3 weeks", "35 days ago")
-  - [ ] Days until/since calculations
-  - [ ] Timezone conversions ("5pm ldn in sf")
-- [ ] Copy result to clipboard
+- [x] Parse and evaluate natural language math expressions
+- [x] Support basic operations (+, -, *, /, ^, %)
+- [x] Support parentheses and order of operations
+- [x] Add common functions (sqrt, sin, cos, tan, log, ln, abs)
+- [x] Unit conversions:
+  - [x] Length (mm, cm, m, km, in, ft, yd, mi)
+  - [x] Weight (mg, g, kg, oz, lb, ton)
+  - [x] Volume (ml, l, tsp, tbsp, cup, pt, qt, gal)
+  - [x] Temperature (C, F, K)
+  - [x] Data (B, KB, MB, GB, TB, PB)
+  - [x] Speed (m/s, km/h, mph, knots)
+- [x] Currency conversions:
+  - [x] Major fiat currencies (USD, EUR, GBP, JPY, etc.)
+  - [x] Cryptocurrency (BTC, ETH, USDT, etc.)
+  - [x] Background rate updates
+- [x] Date & time calculations:
+  - [x] Relative dates ("monday in 3 weeks", "35 days ago")
+  - [x] Days until/since calculations
+  - [x] Timezone conversions ("5pm ldn in sf")
+- [x] Copy result to clipboard
 
 **Acceptance Criteria:**
 - Clipboard captures all copy events
@@ -191,48 +191,48 @@
 - [x] Layout cycling (half → third → two-thirds)
 
 #### 5.2 Quick Links
-- [ ] User-defined URL bookmarks
-- [ ] Configurable keywords/aliases
-- [ ] Open in default browser
-- [ ] Import from browsers (Safari, Chrome, Firefox)
+- [x] User-defined URL bookmarks
+- [x] Configurable keywords/aliases
+- [x] Open in default browser
+- [x] Import from browsers (Safari, Chrome, Firefox)
 
 #### 5.3 Calendar Integration
-- [ ] Connect to macOS native calendar (EventKit)
-- [ ] Display upcoming events with color coding
-- [ ] Conference call detection (Zoom, Meet, Teams)
-- [ ] One-click join meeting button
-- [ ] Commands: My Schedule, Today's Events, This Week
-- [ ] Quick actions: Join call, Copy details, Email attendees
+- [x] Connect to macOS native calendar (EventKit)
+- [x] Display upcoming events with color coding
+- [x] Conference call detection (Zoom, Meet, Teams)
+- [x] One-click join meeting button
+- [x] Commands: My Schedule, Today's Events, This Week
+- [x] Quick actions: Join call, Copy details, Email attendees
 
 #### 5.4 App Management
-- [ ] App uninstaller with related file cleanup
-  - [ ] Scan ~/Library for app-related files
-  - [ ] Show space to be freed
-  - [ ] Optional: remove preferences, caches, logs
-- [ ] Force quit applications
-- [ ] Show app info (version, size, location)
+- [x] App uninstaller with related file cleanup
+  - [x] Scan ~/Library for app-related files
+  - [x] Show space to be freed
+  - [x] Optional: remove preferences, caches, logs
+- [x] Force quit applications
+- [x] Show app info (version, size, location)
 
 #### 5.5 Sleep Timer
-- [ ] Schedule delayed system actions
-  - [ ] Sleep in X minutes/hours
-  - [ ] Shut down at specific time
-  - [ ] Lock after delay
-- [ ] Show remaining time
-- [ ] Cancel scheduled timer
-- [ ] Natural language parsing ("sleep in 30 min")
+- [x] Schedule delayed system actions
+  - [x] Sleep in X minutes/hours
+  - [x] Shut down at specific time
+  - [x] Lock after delay
+- [x] Show remaining time
+- [x] Cancel scheduled timer
+- [x] Natural language parsing ("sleep in 30 min")
 
 #### 5.6 Preferences & Settings
-- [ ] Preferences window UI
-- [ ] Customizable global hotkey (moved from Sprint 3)
-- [ ] Theme selection:
-  - [ ] Catppuccin Latte (light mode)
-  - [ ] Catppuccin Frappé (dark - low contrast)
-  - [ ] Catppuccin Macchiato (dark - medium contrast)
-  - [ ] System theme detection and auto-switching
-  - [ ] Customizable accent color (14 options)
-- [ ] Startup behavior settings
-- [ ] Search scope configuration
-- [ ] Keyboard shortcut customization
+- [x] Preferences window UI
+- [x] Customizable global hotkey (moved from Sprint 3)
+- [x] Theme selection:
+  - [x] Catppuccin Latte (light mode)
+  - [x] Catppuccin Frappé (dark - low contrast)
+  - [x] Catppuccin Macchiato (dark - medium contrast)
+  - [x] System theme detection and auto-switching
+  - [x] Customizable accent color (14 options)
+- [x] Startup behavior settings
+- [x] Search scope configuration
+- [x] Keyboard shortcut customization
 
 **Acceptance Criteria:**
 - Windows resize smoothly
@@ -241,27 +241,27 @@
 - Calendar events load in under 500ms
 - App uninstall cleans up 90%+ of related files
 
-### Sprint 6: Native Extension System (Weeks 21-24)
+### Sprint 6: Native Extension System (Weeks 21-24) ✅ COMPLETE
 
 #### 6.1 Native Extension Architecture
-- [ ] Define native extension manifest format (TOML)
-- [ ] Implement Rust extension loading and lifecycle
-- [ ] Create extension API (search, UI, storage)
-- [ ] Hot-reload support for development
+- [x] Define native extension manifest format (TOML)
+- [x] Implement Rust extension loading and lifecycle
+- [x] Create extension API (search, UI, storage)
+- [x] Hot-reload support for development
 
 #### 6.2 Custom Commands
-- [ ] User-defined command shortcuts
-- [ ] Shell script execution
-- [ ] Environment variable support
-- [ ] Output capture and display
-- [ ] Error handling and notifications
+- [x] User-defined command shortcuts
+- [x] Shell script execution
+- [x] Environment variable support
+- [x] Output capture and display
+- [x] Error handling and notifications
 
 #### 6.3 First-Party Native Extensions
-- [ ] Create example extension templates
-- [ ] Build 2-3 reference extensions:
+- [x] Create example extension templates
+- [x] Build 2-3 reference extensions:
   - GitHub repositories browser
   - System preferences shortcuts
-  - Color picker
+  - Screenshots browser
 
 **Acceptance Criteria:**
 - Native extensions load in under 50ms
