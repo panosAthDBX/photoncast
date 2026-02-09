@@ -67,20 +67,6 @@ impl FileTypeFilter {
         ]
     }
 
-    /// Returns the mdfind query string for this filter type
-    pub fn mdfind_query(&self) -> &'static str {
-        match self {
-            Self::All => "kMDItemFSContentChangeDate >= $time.today(-7)",
-            Self::Documents => "kMDItemContentTypeTree == 'public.content' && (kMDItemContentType == 'com.adobe.pdf' || kMDItemContentType == 'public.plain-text' || kMDItemContentType == 'org.openxmlformats.wordprocessingml.document' || kMDItemContentType == 'com.microsoft.word.doc' || kMDItemContentType == 'public.rtf' || kMDItemContentType == 'net.daringfireball.markdown')",
-            Self::Images => "kMDItemContentTypeTree == 'public.image'",
-            Self::Videos => "kMDItemContentTypeTree == 'public.movie'",
-            Self::Audio => "kMDItemContentTypeTree == 'public.audio'",
-            Self::Archives => "kMDItemContentType == 'public.archive' || kMDItemContentType == 'com.apple.disk-image' || kMDItemContentType == 'public.zip-archive' || kMDItemContentType == 'org.gnu.gnu-tar-archive'",
-            Self::Code => "kMDItemContentType == 'public.source-code' || kMDItemContentType == 'public.script'",
-            Self::Folders => "kMDItemContentType == 'public.folder'",
-        }
-    }
-
     /// Checks if a file matches this filter
     pub fn matches(&self, kind: FileKind, path: &std::path::Path) -> bool {
         match self {

@@ -141,30 +141,9 @@ impl LauncherWindow {
         } else {
             match self.search.mode {
                 SearchMode::Normal => {
-                    // Normal mode: search apps and commands using PhotonCastApp
-                    let outcome = self.photoncast_app.read().search(&self.search.query);
-
-                    // Collect all results from the search outcome
-                    self.search.base_results = outcome.results.iter().cloned().collect();
-                    self.calculator.result = None;
-                    self.rebuild_results(cx);
+                    // Normal mode: debounced async search + synchronous calculator path
+                    self.schedule_normal_search(cx);
                     self.schedule_calculator_evaluation(cx);
-
-                    // Check if this is a "show timer" query - fetch active timer async
-                    let query_lower = self.search.query.to_lowercase();
-                    if query_lower.contains("show")
-                        || query_lower.contains("status")
-                        || query_lower.contains("active timer")
-                    {
-                        self.fetch_active_timer_result(cx);
-                    }
-
-                    // Log timeout warning if applicable
-                    if outcome.timed_out {
-                        if let Some(msg) = outcome.message {
-                            tracing::warn!("Search warning: {}", msg);
-                        }
-                    }
                 },
                 SearchMode::FileSearch => {
                     // File Search Mode: debounced async Spotlight search
@@ -177,6 +156,132 @@ impl LauncherWindow {
         }
 
         cx.notify();
+    }
+
+    /// Schedules a debounced normal-mode search off the UI thread.
+    pub(super) fn schedule_normal_search(&mut self, cx: &mut ViewContext<Self>) {
+        let query = self.search.query.to_string();
+
+        // Cancel previous scheduled/in-flight normal search
+        if let Some(flag) = self.search.normal_search_cancel.take() {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        self.search.normal_search_generation =
+            self.search.normal_search_generation.saturating_add(1);
+        let generation = self.search.normal_search_generation;
+
+        let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.search.normal_search_cancel = Some(Arc::clone(&cancel_flag));
+
+        // Configure debounce from search config
+        let debounce_ms = self
+            .photoncast_app
+            .read()
+            .search_engine()
+            .config()
+            .debounce_ms;
+
+        tracing::trace!(
+            component = "search",
+            operation = "debounce_schedule",
+            debounce_ms,
+            cancelled = false,
+            "scheduled normal-mode search debounce"
+        );
+
+        cx.spawn(|this, mut cx| async move {
+            cx.background_executor()
+                .timer(Duration::from_millis(debounce_ms))
+                .await;
+
+            let should_search = this
+                .update(&mut cx, |view, _| {
+                    view.search.normal_search_generation == generation
+                        && !cancel_flag.load(std::sync::atomic::Ordering::Relaxed)
+                        && matches!(view.search.mode, SearchMode::Normal)
+                })
+                .unwrap_or(false);
+
+            if !should_search {
+                tracing::trace!(
+                    component = "search",
+                    operation = "debounce_skip",
+                    cancelled = cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
+                    "skipped stale or cancelled debounced search"
+                );
+                return;
+            }
+
+            let query_for_search = query.clone();
+            let cancel_for_search = Arc::clone(&cancel_flag);
+
+            let outcome = {
+                let app = this
+                    .update(&mut cx, |view, _| Arc::clone(&view.photoncast_app))
+                    .ok();
+
+                if let Some(app) = app {
+                    cx.background_executor()
+                        .spawn(async move {
+                            if cancel_for_search.load(std::sync::atomic::Ordering::Relaxed) {
+                                return None;
+                            }
+
+                            let outcome = app.read().search(&query_for_search);
+
+                            if cancel_for_search.load(std::sync::atomic::Ordering::Relaxed) {
+                                None
+                            } else {
+                                Some(outcome)
+                            }
+                        })
+                        .await
+                } else {
+                    return;
+                }
+            };
+
+            let _ = this.update(&mut cx, |view, cx| {
+                if view.search.normal_search_generation != generation
+                    || cancel_flag.load(std::sync::atomic::Ordering::Relaxed)
+                    || !matches!(view.search.mode, SearchMode::Normal)
+                    || view.search.query.as_ref() != query
+                {
+                    tracing::trace!(
+                        component = "search",
+                        operation = "result_drop",
+                        cancelled = cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
+                        "discarded stale normal-mode search result"
+                    );
+                    return;
+                }
+
+                if let Some(outcome) = outcome {
+                    view.search.base_results = outcome.results.iter().cloned().collect();
+                    view.calculator.result = None;
+                    view.rebuild_results(cx);
+
+                    if outcome.timed_out {
+                        if let Some(msg) = outcome.message {
+                            tracing::warn!("Search warning: {}", msg);
+                        }
+                    }
+                }
+
+                // Check if this is a "show timer" query - fetch active timer async
+                let query_lower = view.search.query.to_lowercase();
+                if query_lower.contains("show")
+                    || query_lower.contains("status")
+                    || query_lower.contains("active timer")
+                {
+                    view.fetch_active_timer_result(cx);
+                }
+
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// Schedules a debounced file search.

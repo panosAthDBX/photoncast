@@ -11,6 +11,7 @@ repository.workspace = true
 [features]
 default = []
 ui = ["dep:gpui", "photoncast-theme"]
+perf = ["dep:tracing-subscriber", "dep:tracing-flame"]
 
 [lib]
 name = "photoncast_core"
@@ -33,6 +34,8 @@ anyhow.workspace = true
 
 # Logging
 tracing.workspace = true
+tracing-subscriber = { workspace = true, optional = true }
+tracing-flame = { version = "0.2", optional = true }
 
 # Serialization & Configuration
 serde.workspace = true

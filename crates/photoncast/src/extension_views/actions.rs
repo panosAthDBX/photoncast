@@ -15,19 +15,19 @@ use super::ActionCallback;
 #[cfg(target_os = "macos")]
 fn copy_image_to_clipboard(path: &str) -> Result<(), String> {
     use std::process::Command;
-    
+
     // Use osascript to copy image to clipboard via AppleScript
     // This is more reliable than raw NSPasteboard bindings and handles various image formats
     let script = format!(
         r#"set the clipboard to (read (POSIX file "{}") as «class PNGf»)"#,
         path.replace('\\', "\\\\").replace('"', "\\\"")
     );
-    
+
     let output = Command::new("osascript")
         .args(["-e", &script])
         .output()
         .map_err(|e| format!("Failed to run osascript: {e}"))?;
-    
+
     if output.status.success() {
         Ok(())
     } else {
@@ -36,12 +36,12 @@ fn copy_image_to_clipboard(path: &str) -> Result<(), String> {
             r#"set the clipboard to (read (POSIX file "{}") as TIFF picture)"#,
             path.replace('\\', "\\\\").replace('"', "\\\"")
         );
-        
+
         let output_tiff = Command::new("osascript")
             .args(["-e", &script_tiff])
             .output()
             .map_err(|e| format!("Failed to run osascript: {e}"))?;
-        
+
         if output_tiff.status.success() {
             Ok(())
         } else {

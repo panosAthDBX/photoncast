@@ -37,6 +37,7 @@
 pub mod engine;
 pub mod file_index;
 pub mod file_query;
+pub mod file_search_backend;
 pub mod fuzzy;
 pub mod ignore_patterns;
 pub mod index;
@@ -51,6 +52,7 @@ use std::time::Duration;
 
 pub use engine::{SearchConfig, SearchEngine};
 pub use file_query::{FileCategory, FileQuery, FileTypeFilter};
+pub use file_search_backend::{FileSearchBackend, FileSearchBackendOptions, FileSearchStrategy};
 pub use fuzzy::{FuzzyMatcher, MatcherConfig};
 pub use ignore_patterns::{
     add_to_photonignore, pattern_for_file, IgnoreError, IgnoreMatcher, IgnorePattern,

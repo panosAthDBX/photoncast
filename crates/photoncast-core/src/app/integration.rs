@@ -173,6 +173,7 @@ impl PhotonCastApp {
             max_results_per_provider: config.max_results_per_provider,
             max_total_results: config.max_total_results,
             timeout: Duration::from_millis(config.search_timeout_ms),
+            debounce_ms: if cfg!(test) { 0 } else { 50 },
         };
         let mut search_engine = SearchEngine::with_config(search_config);
 

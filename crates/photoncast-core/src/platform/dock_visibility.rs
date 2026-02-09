@@ -72,7 +72,8 @@ fn get_info_plist_path() -> Result<PathBuf, DockVisibilityError> {
         // Navigate from Contents/MacOS/executable to Contents/Info.plist
         if let Some(contents_dir) = exe_path
             .parent() // MacOS
-            .and_then(|p| p.parent()) // Contents
+            .and_then(|p| p.parent())
+        // Contents
         {
             let plist_path = contents_dir.join("Info.plist");
             if plist_path.exists() {
@@ -125,9 +126,8 @@ fn read_lsui_element(plist_path: &Path) -> Result<bool, DockVisibilityError> {
     })?;
 
     // Parse the plist using the plist crate
-    let value: plist::Value = plist::from_bytes(plist_data.as_bytes()).map_err(|e| {
-        DockVisibilityError::PlistReadError(format!("Failed to parse plist: {e}"))
-    })?;
+    let value: plist::Value = plist::from_bytes(plist_data.as_bytes())
+        .map_err(|e| DockVisibilityError::PlistReadError(format!("Failed to parse plist: {e}")))?;
 
     // Extract the dict and look for LSUIElement
     if let Some(dict) = value.as_dictionary() {
@@ -136,16 +136,16 @@ fn read_lsui_element(plist_path: &Path) -> Result<bool, DockVisibilityError> {
                 debug!(lsui_element = *hidden, "Read LSUIElement value");
                 // LSUIElement = true means hidden from Dock, so invert for "visible"
                 Ok(!hidden)
-            }
+            },
             Some(_) => {
                 warn!("LSUIElement has unexpected type in plist");
                 Err(DockVisibilityError::InvalidValueType)
-            }
+            },
             None => {
                 // Default to visible if LSUIElement is not present
                 debug!("LSUIElement not found in plist, defaulting to visible");
                 Ok(true)
-            }
+            },
         }
     } else {
         Err(DockVisibilityError::PlistReadError(
@@ -163,9 +163,7 @@ fn read_lsui_element(plist_path: &Path) -> Result<bool, DockVisibilityError> {
 fn write_lsui_element(plist_path: &Path, show_in_dock: bool) -> Result<(), DockVisibilityError> {
     // Read existing plist
     let plist_data = std::fs::read_to_string(plist_path).map_err(|e| {
-        DockVisibilityError::PlistWriteError(format!(
-            "Failed to read plist for modification: {e}"
-        ))
+        DockVisibilityError::PlistWriteError(format!("Failed to read plist for modification: {e}"))
     })?;
 
     let mut value: plist::Value = plist::from_bytes(plist_data.as_bytes()).map_err(|e| {
@@ -454,7 +452,10 @@ mod tests {
 
         // Missing LSUIElement defaults to visible
         let result = read_lsui_element(&plist_path).unwrap();
-        assert!(result, "Missing LSUIElement should default to visible in Dock");
+        assert!(
+            result,
+            "Missing LSUIElement should default to visible in Dock"
+        );
     }
 
     #[test]

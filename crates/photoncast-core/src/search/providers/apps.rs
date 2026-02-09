@@ -110,12 +110,14 @@ impl SearchProvider for AppProvider {
             .take(max_results)
             .map(|(idx, score, match_indices)| {
                 let app = &apps[idx];
+                // Pre-allocate the bundle_id string once and reuse across fields
+                let bundle_id_str = app.bundle_id.as_str().to_string();
                 SearchResult {
-                    id: SearchResultId::new(format!("app:{}", app.bundle_id)),
+                    id: SearchResultId::new(format!("app:{bundle_id_str}")),
                     title: app.name.clone(),
                     subtitle: app.path.display().to_string(),
                     icon: IconSource::AppIcon {
-                        bundle_id: app.bundle_id.as_str().to_string(),
+                        bundle_id: bundle_id_str.clone(),
                         icon_path: app.icon_path.clone(),
                     },
                     result_type: ResultType::Application,
@@ -123,7 +125,7 @@ impl SearchProvider for AppProvider {
                     match_indices,
                     requires_permissions: false,
                     action: SearchAction::LaunchApp {
-                        bundle_id: app.bundle_id.as_str().to_string(),
+                        bundle_id: bundle_id_str,
                         path: app.path.clone(),
                     },
                 }

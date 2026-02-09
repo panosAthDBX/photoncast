@@ -8,6 +8,7 @@
 
 use parking_lot::RwLock;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::search::providers::SearchProvider;
 use crate::search::{
@@ -22,8 +23,9 @@ use photoncast_quicklinks::{placeholder, QuickLink, QuickLinkIcon, QuickLinksSto
 /// Call `invalidate_cache()` after modifying quicklinks.
 pub struct QuickLinksProvider {
     storage: QuickLinksStorage,
-    /// Cached quicklinks (loaded once and reused)
-    cache: RwLock<Option<Vec<QuickLink>>>,
+    /// Cached quicklinks (loaded once and reused).
+    /// Wrapped in `Arc` to avoid deep-cloning the entire vector on every search.
+    cache: RwLock<Option<Arc<Vec<QuickLink>>>>,
 }
 
 impl std::fmt::Debug for QuickLinksProvider {
@@ -81,12 +83,14 @@ impl QuickLinksProvider {
     }
 
     /// Gets quicklinks from cache, loading from storage if needed.
-    fn get_cached_links(&self) -> Vec<QuickLink> {
+    ///
+    /// Returns an `Arc`-wrapped vector to avoid deep-cloning on every search call.
+    fn get_cached_links(&self) -> Arc<Vec<QuickLink>> {
         // Try to read from cache first
         {
             let cache = self.cache.read();
             if let Some(ref links) = *cache {
-                return links.clone();
+                return Arc::clone(links);
             }
         }
 
@@ -101,12 +105,13 @@ impl QuickLinksProvider {
             },
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to load quicklinks");
-                return Vec::new();
+                return Arc::new(Vec::new());
             },
         };
 
-        // Store in cache
-        *self.cache.write() = Some(links.clone());
+        // Store in cache and return a cheap Arc clone
+        let links = Arc::new(links);
+        *self.cache.write() = Some(Arc::clone(&links));
 
         links
     }
@@ -187,7 +192,7 @@ impl SearchProvider for QuickLinksProvider {
         // 1. Check for exact alias match at start of query
         // e.g., "g test" -> alias "g", arguments "test"
         // Also match by name if the quicklink has argument placeholders but no alias
-        for link in &all_links {
+        for link in all_links.iter() {
             let requires_input = placeholder::requires_user_input(&link.link);
 
             // Try alias first, then fall back to name if quicklink requires arguments
@@ -224,7 +229,7 @@ impl SearchProvider for QuickLinksProvider {
         // 2. Fuzzy search on name, alias, and keywords
         let mut matcher = FuzzyMatcher::default();
 
-        for link in &all_links {
+        for link in all_links.iter() {
             let mut best_score: Option<(u32, Vec<usize>)> = None;
 
             // Check name

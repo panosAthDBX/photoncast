@@ -123,10 +123,7 @@ impl AvailableUpdate {
     /// Returns a formatted description of the update.
     #[must_use]
     pub fn description(&self) -> String {
-        format!(
-            "Version {} ({})",
-            self.short_version, self.version
-        )
+        format!("Version {} ({})", self.short_version, self.version)
     }
 }
 
@@ -311,7 +308,10 @@ impl UpdateManager {
     pub fn with_config(config: UpdateConfig) -> Self {
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent(format!("PhotonCast/{} UpdateManager", env!("CARGO_PKG_VERSION")))
+            .user_agent(format!(
+                "PhotonCast/{} UpdateManager",
+                env!("CARGO_PKG_VERSION")
+            ))
             .build()
             .unwrap_or_default();
 
@@ -386,7 +386,7 @@ impl UpdateManager {
                         .duration_since(last)
                         .unwrap_or(Duration::MAX);
                     elapsed >= config.check_interval
-                }
+                },
             }
         };
 
@@ -443,13 +443,13 @@ impl UpdateManager {
                     state.available_update = None;
                     Ok(None)
                 }
-            }
+            },
             Err(e) => {
                 let mut state = self.state.write().await;
                 state.status = UpdateStatus::Error;
                 error!(error = %e, "Failed to fetch appcast");
                 Err(e)
-            }
+            },
         }
     }
 
@@ -639,7 +639,7 @@ impl UpdateManager {
         if update.ed_signature.is_none() {
             error!(version = %update.version, "Update has no EdDSA signature - refusing to install unsigned update");
             return Err(UpdateError::SignatureVerificationFailed(
-                "Update package is not signed - cannot verify authenticity".to_string()
+                "Update package is not signed - cannot verify authenticity".to_string(),
             ));
         }
 
@@ -668,7 +668,10 @@ impl UpdateManager {
         config.auto_check_enabled = enabled;
 
         if old_value != enabled {
-            info!(auto_check = enabled, "Automatic update check setting changed");
+            info!(
+                auto_check = enabled,
+                "Automatic update check setting changed"
+            );
         }
     }
 
@@ -903,7 +906,10 @@ mod tests {
         let update = update.unwrap();
         assert_eq!(update.version, "1.1.0");
         assert_eq!(update.short_version, "1.1.0");
-        assert_eq!(update.download_url, "https://api.photoncast.app/releases/1.1.0/PhotonCast.dmg");
+        assert_eq!(
+            update.download_url,
+            "https://api.photoncast.app/releases/1.1.0/PhotonCast.dmg"
+        );
         assert_eq!(update.content_length, 15_240_000);
         assert_eq!(update.ed_signature, Some("testsignature123".to_string()));
         assert!(update.release_notes.is_some());

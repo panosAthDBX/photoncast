@@ -128,12 +128,6 @@ pub const AUDIO_EXTENSIONS: &[&str] = &["mp3", "wav", "flac", "aac", "ogg", "m4a
 pub const ARCHIVE_EXTENSIONS: &[&str] =
     &["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "dmg", "iso"];
 
-/// E-book file extensions.
-pub const EBOOK_EXTENSIONS: &[&str] = &["epub", "mobi"];
-
-/// macOS app extensions.
-pub const APP_EXTENSIONS: &[&str] = &["app"];
-
 // =============================================================================
 // Theme Colors
 // =============================================================================

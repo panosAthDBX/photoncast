@@ -7,8 +7,6 @@ mod macos {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
-
-
     use objc2::rc::Retained;
     use objc2::sel;
     #[allow(deprecated)]
@@ -183,11 +181,7 @@ mod macos {
             pub fn GetApplicationEventTarget() -> *mut c_void;
             pub fn InstallEventHandler(
                 target: *mut c_void,
-                handler: unsafe extern "C" fn(
-                    EventHandlerCallRef,
-                    EventRef,
-                    *mut c_void,
-                ) -> i32,
+                handler: unsafe extern "C" fn(EventHandlerCallRef, EventRef, *mut c_void) -> i32,
                 num_types: u32,
                 list: *const EventTypeSpec,
                 user_data: *mut c_void,
@@ -278,7 +272,7 @@ mod macos {
                         Queue::main().exec_async(move || callback());
                     }
                 }
-            }
+            },
             HOTKEY_ID_CLIPBOARD => {
                 debug!("Carbon hotkey: Cmd+Shift+V");
                 if let Ok(cb) = CLIPBOARD_HOTKEY_CALLBACK.lock() {
@@ -287,8 +281,8 @@ mod macos {
                         Queue::main().exec_async(move || callback());
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         NO_ERR

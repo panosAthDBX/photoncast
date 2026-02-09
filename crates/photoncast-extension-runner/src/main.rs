@@ -12,10 +12,10 @@ use photoncast_core::extensions::storage::{ExtensionStorageImpl, PreferenceStore
 use photoncast_core::utils::paths;
 use photoncast_extension_api::{
     Action, ActionHandler, ApplicationInfo, CommandArguments as ApiCommandArguments,
-    CommandInvocationResult, ExtensionApiError, ExtensionApiResult, ExtensionBox,
-    ExtensionContext, ExtensionHost, ExtensionHostProtocol, ExtensionRuntime,
-    ExtensionRuntimeTrait, ExtensionStorage, ExtensionView, PreferenceValues, Toast, ToastStyle,
-    ViewHandle, ViewHandleTrait,
+    CommandInvocationResult, ExtensionApiError, ExtensionApiResult, ExtensionBox, ExtensionContext,
+    ExtensionHost, ExtensionHostProtocol, ExtensionRuntime, ExtensionRuntimeTrait,
+    ExtensionStorage, ExtensionView, PreferenceValues, Toast, ToastStyle, ViewHandle,
+    ViewHandleTrait,
 };
 use photoncast_extension_ipc::messages::{
     ClipboardCopyRequest, CommandArguments as IpcCommandArguments, CommandRequest, CommandResponse,
@@ -461,10 +461,7 @@ impl ExtensionHostProtocol for IpcExtensionHost {
         let payload = ToastRequest {
             toast: toast_to_payload(toast),
         };
-        if let Err(err) = self
-            .send_request(HOST_SHOW_TOAST, payload)
-            .into_result()
-        {
+        if let Err(err) = self.send_request(HOST_SHOW_TOAST, payload).into_result() {
             return Err(err).into();
         }
         Ok(()).into()

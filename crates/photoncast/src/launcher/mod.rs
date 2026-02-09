@@ -114,6 +114,10 @@ pub struct SearchState {
     pub mode: SearchMode,
     /// Suggestions (recent/frequent apps shown when query is empty)
     pub suggestions: Vec<SearchResult>,
+    /// Generation counter for debounced normal-mode search.
+    pub normal_search_generation: u64,
+    /// Cancellation flag for the currently scheduled normal-mode search.
+    pub normal_search_cancel: Option<Arc<AtomicBool>>,
 }
 
 /// Window animation state
@@ -452,6 +456,8 @@ impl LauncherWindow {
                 core_results: vec![],
                 mode: SearchMode::Normal,
                 suggestions: vec![],
+                normal_search_generation: 0,
+                normal_search_cancel: None,
             },
             animation: AnimationState {
                 window_state: WindowAnimationState::Hidden,
