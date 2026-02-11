@@ -3,10 +3,18 @@
 //! This module provides a wrapper around the nucleo fuzzy matcher with
 //! PhotonCast-specific configuration for Unicode normalization and smart case.
 
+use std::collections::HashSet;
+
 use nucleo::{
     pattern::{Atom, AtomKind, CaseMatching, Normalization},
     Matcher, Utf32Str,
 };
+
+/// Bonus score per query character that matches a word boundary position.
+///
+/// A value of 20 means a 2-char acronym like "ss" → System Settings gets +40,
+/// and a 3-char acronym like "vsc" → Visual Studio Code gets +60.
+const WORD_BOUNDARY_BONUS: u32 = 20;
 
 /// Configuration for the fuzzy matcher.
 #[derive(Debug, Clone)]
@@ -23,6 +31,9 @@ pub struct MatcherConfig {
     /// A spread of 3.0 means matches span 3x the query length.
     /// Higher values allow more scattered matches.
     pub max_spread_factor: f32,
+    /// Bonus score per character that matches a word boundary position.
+    /// Set to 0 to disable word-boundary scoring.
+    pub word_boundary_bonus: u32,
 }
 
 impl Default for MatcherConfig {
@@ -35,8 +46,74 @@ impl Default for MatcherConfig {
             // This filters out scattered matches like "test" -> "System Settings" (spread 1.75)
             // while still allowing reasonable fuzzy matches like "calc" -> "Calculator" (spread ~1.25).
             max_spread_factor: 1.5,
+            word_boundary_bonus: WORD_BOUNDARY_BONUS,
         }
     }
+}
+
+/// Detects word boundary positions in a string.
+///
+/// Word boundaries are:
+/// - Start of string (index 0)
+/// - After space, hyphen, underscore, dot, slash
+/// - CamelCase transitions (lowercase → uppercase)
+fn find_word_boundaries(text: &str) -> Vec<usize> {
+    let chars: Vec<char> = text.chars().collect();
+
+    if chars.is_empty() {
+        return Vec::new();
+    }
+
+    let mut boundaries = Vec::with_capacity(chars.len() / 2 + 1);
+
+    // First character is always a boundary
+    boundaries.push(0);
+
+    for i in 1..chars.len() {
+        let prev = chars[i - 1];
+        let curr = chars[i];
+
+        // After separator characters or CamelCase transition (lowercase → uppercase)
+        if matches!(prev, ' ' | '-' | '_' | '.' | '/')
+            || (prev.is_lowercase() && curr.is_uppercase())
+        {
+            boundaries.push(i);
+        }
+    }
+
+    boundaries
+}
+
+/// Calculates the word-boundary bonus for a match.
+///
+/// Counts how many of the matched character positions fall on word boundaries
+/// of the lowercased target. The bonus is `boundary_matches * bonus_per_char`.
+///
+/// # Examples
+///
+/// - `"ss"` → `"System Settings"` at indices `[0, 7]` → 2 boundaries × 20 = 40
+/// - `"vsc"` → `"Visual Studio Code"` at indices `[0, 7, 14]` → 3 × 20 = 60
+fn calculate_word_boundary_bonus(
+    target: &str,
+    match_indices: &[usize],
+    bonus_per_char: u32,
+) -> u32 {
+    if match_indices.is_empty() || bonus_per_char == 0 {
+        return 0;
+    }
+
+    let target_lower = target.to_lowercase();
+    let boundaries: HashSet<usize> = find_word_boundaries(&target_lower).into_iter().collect();
+
+    let boundary_matches = match_indices
+        .iter()
+        .filter(|idx| boundaries.contains(idx))
+        .count();
+
+    #[allow(clippy::cast_possible_truncation)]
+    // boundary_matches ≤ match_indices.len() which fits in u32
+    let count = boundary_matches as u32;
+    count * bonus_per_char
 }
 
 /// Wrapper around nucleo matcher with PhotonCast configuration.
@@ -163,7 +240,12 @@ impl FuzzyMatcher {
             }
         }
 
-        Some((u32::from(final_score), match_indices))
+        // Apply word boundary/acronym bonus (additive on top of nucleo's score)
+        let boundary_bonus =
+            calculate_word_boundary_bonus(target, &match_indices, self.config.word_boundary_bonus);
+        let final_score_with_bonus = u32::from(final_score) + boundary_bonus;
+
+        Some((final_score_with_bonus, match_indices))
     }
 
     /// Checks if the query is a prefix of the target.
@@ -373,6 +455,258 @@ mod tests {
         assert!(
             result.is_some(),
             "High spread factor should allow scattered matches"
+        );
+    }
+
+    // ── Phase 3: Word boundary / acronym bonus tests ──
+
+    // Task 3.1 tests: find_word_boundaries
+
+    #[test]
+    fn test_word_boundaries_simple() {
+        // "System Settings" → boundaries at [0, 7]
+        let boundaries = find_word_boundaries("system settings");
+        assert_eq!(boundaries, vec![0, 7]);
+    }
+
+    #[test]
+    fn test_word_boundaries_camelcase() {
+        // "macOS" → lowercase is "macos", but we test original casing for camelCase
+        // In "macOS": m(0), a(1), c(2)=lower, O(3)=upper → boundary at [0, 3]
+        let boundaries = find_word_boundaries("macOS");
+        assert_eq!(boundaries, vec![0, 3]);
+    }
+
+    #[test]
+    fn test_word_boundaries_hyphen() {
+        // "Wi-Fi" → boundaries at [0, 3]
+        let boundaries = find_word_boundaries("Wi-Fi");
+        assert_eq!(boundaries, vec![0, 3]);
+    }
+
+    #[test]
+    fn test_word_boundaries_underscore() {
+        // "my_app_name" → boundaries at [0, 3, 7]
+        let boundaries = find_word_boundaries("my_app_name");
+        assert_eq!(boundaries, vec![0, 3, 7]);
+    }
+
+    #[test]
+    fn test_word_boundaries_empty() {
+        let boundaries = find_word_boundaries("");
+        assert!(boundaries.is_empty());
+    }
+
+    #[test]
+    fn test_word_boundaries_single_char() {
+        let boundaries = find_word_boundaries("A");
+        assert_eq!(boundaries, vec![0]);
+    }
+
+    #[test]
+    fn test_word_boundaries_dot_separator() {
+        // "com.apple.Safari" → boundaries at [0, 4, 10]
+        let boundaries = find_word_boundaries("com.apple.Safari");
+        assert_eq!(boundaries, vec![0, 4, 10]);
+    }
+
+    #[test]
+    fn test_word_boundaries_slash_separator() {
+        // "/usr/local/bin" → boundaries at [0, 1, 5, 11]
+        // '/' at 0 means next char (1) is boundary; but index 0 is always boundary too
+        let boundaries = find_word_boundaries("/usr/local/bin");
+        assert_eq!(boundaries, vec![0, 1, 5, 11]);
+    }
+
+    // Task 3.2 tests: calculate_word_boundary_bonus
+
+    #[test]
+    fn test_acronym_bonus_ss() {
+        // "ss" matching "System Settings" at positions [0, 7] → both are boundaries
+        let bonus = calculate_word_boundary_bonus("System Settings", &[0, 7], WORD_BOUNDARY_BONUS);
+        assert_eq!(bonus, 40);
+    }
+
+    #[test]
+    fn test_acronym_bonus_vsc() {
+        // "vsc" matching "Visual Studio Code" at positions [0, 7, 14] → all boundaries
+        let bonus =
+            calculate_word_boundary_bonus("Visual Studio Code", &[0, 7, 14], WORD_BOUNDARY_BONUS);
+        assert_eq!(bonus, 60);
+    }
+
+    #[test]
+    fn test_acronym_bonus_gc() {
+        // "gc" matching "Google Chrome" at positions [0, 7] → both boundaries
+        let bonus = calculate_word_boundary_bonus("Google Chrome", &[0, 7], WORD_BOUNDARY_BONUS);
+        assert_eq!(bonus, 40);
+    }
+
+    #[test]
+    fn test_no_bonus_non_boundary() {
+        // Match indices at non-boundary positions get 0 bonus
+        // "System Settings" has boundaries at [0, 7] (lowercased)
+        let bonus = calculate_word_boundary_bonus("System Settings", &[2, 4], WORD_BOUNDARY_BONUS);
+        assert_eq!(bonus, 0);
+    }
+
+    #[test]
+    fn test_bonus_empty_match() {
+        let bonus = calculate_word_boundary_bonus("System Settings", &[], WORD_BOUNDARY_BONUS);
+        assert_eq!(bonus, 0);
+    }
+
+    #[test]
+    fn test_bonus_partial_boundary_match() {
+        // One match at boundary (0), one not (3)
+        // "System Settings" boundaries at [0, 7]
+        let bonus = calculate_word_boundary_bonus("System Settings", &[0, 3], WORD_BOUNDARY_BONUS);
+        assert_eq!(bonus, 20); // Only 1 boundary match
+    }
+
+    // Task 3.3 tests: MatcherConfig word_boundary_bonus
+
+    #[test]
+    fn test_matcher_config_default_bonus() {
+        let config = MatcherConfig::default();
+        assert_eq!(config.word_boundary_bonus, 20);
+    }
+
+    #[test]
+    fn test_boundary_bonus_disabled() {
+        // Setting word_boundary_bonus = 0 effectively disables it
+        let bonus = calculate_word_boundary_bonus("System Settings", &[0, 7], 0);
+        assert_eq!(bonus, 0);
+    }
+
+    #[test]
+    fn test_boundary_bonus_disabled_in_scorer() {
+        // Verify that setting word_boundary_bonus to 0 in config disables it in score()
+        // Need relaxed spread factor since "gc" → "Google Chrome" spans across words
+        let config_with = MatcherConfig {
+            max_spread_factor: 10.0,
+            ..Default::default()
+        };
+        let config_without = MatcherConfig {
+            word_boundary_bonus: 0,
+            max_spread_factor: 10.0,
+            ..Default::default()
+        };
+
+        let mut matcher_with = FuzzyMatcher::new(config_with);
+        let mut matcher_without = FuzzyMatcher::new(config_without);
+
+        // Use a query that would hit word boundaries: "gc" → "Google Chrome"
+        let result_with = matcher_with.score("gc", "Google Chrome");
+        let result_without = matcher_without.score("gc", "Google Chrome");
+
+        assert!(result_with.is_some());
+        assert!(result_without.is_some());
+
+        let (score_with, _) = result_with.unwrap();
+        let (score_without, _) = result_without.unwrap();
+
+        // The score with boundary bonus should be higher
+        assert!(
+            score_with > score_without,
+            "score with bonus ({score_with}) should be greater than without ({score_without})"
+        );
+    }
+
+    // Task 3.4 tests: Integration into FuzzyMatcher::score()
+
+    #[test]
+    fn test_score_includes_boundary_bonus() {
+        // "ss" vs "System Settings" — should score higher with boundary bonus
+        // Need relaxed spread factor since acronym-style matches span across words
+        let config_with = MatcherConfig {
+            max_spread_factor: 10.0,
+            ..Default::default()
+        };
+        let config_without = MatcherConfig {
+            word_boundary_bonus: 0,
+            max_spread_factor: 10.0,
+            ..Default::default()
+        };
+
+        let mut matcher_with = FuzzyMatcher::new(config_with);
+        let mut matcher_without = FuzzyMatcher::new(config_without);
+
+        let result_with = matcher_with.score("ss", "System Settings");
+        let result_without = matcher_without.score("ss", "System Settings");
+
+        assert!(result_with.is_some(), "ss should match System Settings");
+        assert!(result_without.is_some());
+
+        let (score_with, _) = result_with.unwrap();
+        let (score_without, _) = result_without.unwrap();
+
+        assert!(
+            score_with > score_without,
+            "boundary bonus should increase score: with={score_with}, without={score_without}"
+        );
+    }
+
+    #[test]
+    fn test_score_no_regression_exact_match() {
+        // Exact matches should still rank highest
+        let mut matcher = FuzzyMatcher::default();
+        let exact = matcher.score("Safari", "Safari");
+        let partial = matcher.score("Saf", "Safari");
+
+        assert!(exact.is_some());
+        assert!(partial.is_some());
+
+        let (exact_score, _) = exact.unwrap();
+        let (partial_score, _) = partial.unwrap();
+
+        assert!(
+            exact_score >= partial_score,
+            "exact match should rank at least as high as partial"
+        );
+    }
+
+    #[test]
+    fn test_score_no_regression_prefix_match() {
+        // Prefix bonus should still work alongside word boundary bonus
+        let mut matcher = FuzzyMatcher::default();
+        let prefix_result = matcher.score("ter", "Terminal");
+        let non_prefix_result = matcher.score("nal", "Terminal");
+
+        assert!(prefix_result.is_some());
+        assert!(non_prefix_result.is_some());
+
+        let (prefix_score, _) = prefix_result.unwrap();
+        let (non_prefix_score, _) = non_prefix_result.unwrap();
+
+        assert!(
+            prefix_score >= non_prefix_score,
+            "prefix match should still rank higher: prefix={prefix_score}, non-prefix={non_prefix_score}"
+        );
+    }
+
+    #[test]
+    fn test_score_acronym_vsc_matches_visual_studio_code() {
+        // "vsc" should match "Visual Studio Code" via the fuzzy matcher
+        // We need high spread factor since the chars are spread across 3 words
+        let config = MatcherConfig {
+            max_spread_factor: 10.0,
+            ..Default::default()
+        };
+        let mut matcher = FuzzyMatcher::new(config);
+
+        let result = matcher.score("vsc", "Visual Studio Code");
+        assert!(
+            result.is_some(),
+            "vsc should match Visual Studio Code with relaxed spread"
+        );
+
+        let (score, indices) = result.unwrap();
+        assert!(score > 0);
+        // Verify the match hits word boundaries
+        assert!(
+            !indices.is_empty(),
+            "should have match indices for vsc → Visual Studio Code"
         );
     }
 }

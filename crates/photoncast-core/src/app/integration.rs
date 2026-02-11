@@ -75,6 +75,8 @@ impl std::fmt::Display for ExtensionLaunchError {
     }
 }
 
+impl std::error::Error for ExtensionLaunchError {}
+
 /// Result of a search operation, including timeout status.
 #[derive(Debug, Clone)]
 pub struct SearchOutcome {
@@ -123,6 +125,8 @@ pub struct PhotonCastApp {
     extension_manager: Arc<RwLock<ExtensionManager>>,
     /// Configuration.
     config: IntegrationConfig,
+    /// Optional usage tracker for frecency-boosted search ranking.
+    usage_tracker: Option<Arc<crate::storage::usage::UsageTracker>>,
 }
 
 impl PhotonCastApp {
@@ -191,6 +195,37 @@ impl PhotonCastApp {
             quicklinks_provider,
             extension_manager,
             config,
+            usage_tracker: None,
+        }
+    }
+
+    /// Attaches a usage tracker for frecency-boosted search.
+    ///
+    /// Must be called before any searches are performed.  This rebuilds the
+    /// search engine so that the `AppProvider` can use the tracker.
+    pub fn set_usage_tracker(&mut self, tracker: Arc<crate::storage::usage::UsageTracker>) {
+        self.usage_tracker = Some(Arc::clone(&tracker));
+
+        // Rebuild search engine with the tracker wired into AppProvider
+        let search_config = crate::search::engine::SearchConfig {
+            max_results_per_provider: self.config.max_results_per_provider,
+            max_total_results: self.config.max_total_results,
+            timeout: Duration::from_millis(self.config.search_timeout_ms),
+            debounce_ms: if cfg!(test) { 0 } else { 50 },
+        };
+        let mut search_engine = SearchEngine::with_config(search_config);
+
+        let quicklinks_provider = Self::register_providers_with_tracker(
+            &mut search_engine,
+            Arc::clone(&self.app_index),
+            Arc::clone(&self.extension_manager),
+            &self.config,
+            Some(tracker),
+        );
+
+        self.search_engine = search_engine;
+        if quicklinks_provider.is_some() {
+            self.quicklinks_provider = quicklinks_provider;
         }
     }
 
@@ -202,10 +237,23 @@ impl PhotonCastApp {
         extension_manager: Arc<RwLock<ExtensionManager>>,
         config: &IntegrationConfig,
     ) -> Option<Arc<QuickLinksProvider>> {
+        Self::register_providers_with_tracker(engine, app_index, extension_manager, config, None)
+    }
+
+    fn register_providers_with_tracker(
+        engine: &mut SearchEngine,
+        app_index: Arc<RwLock<Vec<IndexedApp>>>,
+        extension_manager: Arc<RwLock<ExtensionManager>>,
+        config: &IntegrationConfig,
+        tracker: Option<Arc<crate::storage::usage::UsageTracker>>,
+    ) -> Option<Arc<QuickLinksProvider>> {
         info!("Registering search providers...");
 
         // 1. App Provider (highest priority)
-        let app_provider = AppProvider::with_apps(app_index);
+        let mut app_provider = AppProvider::with_apps(app_index);
+        if let Some(t) = tracker {
+            app_provider.set_usage_tracker(t);
+        }
         engine.add_provider(app_provider);
         debug!("Registered AppProvider");
 
@@ -798,6 +846,14 @@ mod tests {
         let config = IntegrationConfig::default();
         assert_eq!(config.search_timeout_ms, DEFAULT_SEARCH_TIMEOUT_MS);
         assert!(config.include_files);
+    }
+
+    #[test]
+    fn test_extension_launch_error_is_std_error() {
+        let err = ExtensionLaunchError::Other("test error".to_string());
+        // Verify it implements std::error::Error by using it as a trait object
+        let _: &dyn std::error::Error = &err;
+        assert_eq!(err.to_string(), "test error");
     }
 
     #[tokio::test]

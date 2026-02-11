@@ -304,6 +304,12 @@ pub struct SearchConfig {
     /// List of excluded apps by bundle ID.
     #[serde(default)]
     pub excluded_apps: Vec<String>,
+
+    /// Custom directories to scan for applications.
+    /// If empty, defaults are used (`SCAN_PATHS` from scanner).
+    /// Changes trigger a re-index.
+    #[serde(default)]
+    pub app_search_scope: Vec<PathBuf>,
 }
 
 impl Default for SearchConfig {
@@ -312,6 +318,7 @@ impl Default for SearchConfig {
             include_system_apps: true,
             file_result_limit: default_file_limit(),
             excluded_apps: Vec::new(),
+            app_search_scope: Vec::new(),
         }
     }
 }
@@ -737,5 +744,101 @@ mod tests {
             AccentColor::Lavender,
         ];
         assert_eq!(colors.len(), 14);
+    }
+
+    // ========================================================================
+    // Phase 1: SearchConfig.app_search_scope tests
+    // ========================================================================
+
+    #[test]
+    fn test_search_config_default_has_empty_scope() {
+        let config = SearchConfig::default();
+        assert!(
+            config.app_search_scope.is_empty(),
+            "default search config should have empty app_search_scope"
+        );
+    }
+
+    #[test]
+    fn test_search_config_deserialize_with_scope() {
+        let toml_str = r#"
+include_system_apps = true
+file_result_limit = 5
+app_search_scope = ["/my/apps", "/other/apps"]
+"#;
+        let config: SearchConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.app_search_scope.len(), 2);
+        assert_eq!(config.app_search_scope[0], PathBuf::from("/my/apps"));
+        assert_eq!(config.app_search_scope[1], PathBuf::from("/other/apps"));
+    }
+
+    #[test]
+    fn test_search_config_deserialize_without_scope() {
+        let toml_str = r#"
+include_system_apps = true
+file_result_limit = 5
+"#;
+        let config: SearchConfig = toml::from_str(toml_str).unwrap();
+        assert!(
+            config.app_search_scope.is_empty(),
+            "missing field should default to empty vec"
+        );
+    }
+
+    #[test]
+    fn test_config_deserialize_empty_toml() {
+        let config: Config = toml::from_str("").unwrap();
+        assert_eq!(config.general.max_results, 10);
+        assert!(config.search.include_system_apps);
+        assert_eq!(config.search.file_result_limit, 5);
+    }
+
+    #[test]
+    fn test_config_deserialize_partial_toml() {
+        let toml_str = r#"
+[general]
+max_results = 25
+launch_at_login = true
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.general.max_results, 25);
+        assert!(config.general.launch_at_login);
+        // Unspecified fields get defaults
+        assert_eq!(config.appearance.theme, ThemeSetting::Mocha);
+        assert_eq!(config.appearance.animation_duration_ms, 200);
+    }
+
+    #[test]
+    fn test_default_search_scopes_returns_paths() {
+        let scopes = default_search_scopes();
+        // Should return Desktop, Documents, Downloads if home dir is available
+        if dirs::home_dir().is_some() {
+            assert_eq!(scopes.len(), 3);
+            assert!(scopes[0].ends_with("Desktop"));
+            assert!(scopes[1].ends_with("Documents"));
+            assert!(scopes[2].ends_with("Downloads"));
+        }
+    }
+
+    #[test]
+    fn test_config_roundtrip_with_all_fields() {
+        let config = Config {
+            search: SearchConfig {
+                include_system_apps: false,
+                file_result_limit: 20,
+                excluded_apps: vec!["com.example.app".to_string()],
+                app_search_scope: vec![PathBuf::from("/custom/path")],
+            },
+            ..Config::default()
+        };
+        let toml_str = toml::to_string(&config).unwrap();
+        let parsed: Config = toml::from_str(&toml_str).unwrap();
+        assert!(!parsed.search.include_system_apps);
+        assert_eq!(parsed.search.file_result_limit, 20);
+        assert_eq!(parsed.search.excluded_apps, vec!["com.example.app"]);
+        assert_eq!(
+            parsed.search.app_search_scope,
+            vec![PathBuf::from("/custom/path")]
+        );
     }
 }

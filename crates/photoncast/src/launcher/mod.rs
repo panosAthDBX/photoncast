@@ -297,8 +297,11 @@ impl LauncherSharedState {
             ..Default::default()
         };
 
-        let photoncast_app = Arc::new(RwLock::new(PhotonCastApp::with_config(config)));
-        let app_launcher = Arc::new(AppLauncher::new(usage_tracker));
+        let usage_tracker = Arc::new(usage_tracker);
+        let mut app = PhotonCastApp::with_config(config);
+        app.set_usage_tracker(Arc::clone(&usage_tracker));
+        let photoncast_app = Arc::new(RwLock::new(app));
+        let app_launcher = Arc::new(AppLauncher::with_shared_tracker(usage_tracker));
         let command_executor = Arc::new(CommandExecutor::new());
         let calculator_command = Arc::new(RwLock::new(CalculatorCommand::new()));
         let calculator_runtime = Arc::clone(&shared_runtime);

@@ -764,6 +764,23 @@ impl LauncherWindow {
                             tracing::error!("Failed to launch {}: {}", title, e.user_message());
                         },
                     }
+
+                    // Record per-query frecency (fire-and-forget on a background thread)
+                    let query = self.search.query.to_string();
+                    if !query.is_empty() {
+                        if let SearchAction::LaunchApp { bundle_id, .. } = &core_result.action {
+                            let item_id = bundle_id.clone();
+                            let tracker = Arc::clone(launcher.usage_tracker());
+                            std::thread::spawn(move || {
+                                if let Err(e) =
+                                    tracker.record_query_selection(&query, &item_id)
+                                {
+                                    tracing::warn!("Failed to record query selection: {}", e);
+                                }
+                            });
+                        }
+                    }
+
                     self.hide(cx);
                 },
                 SearchAction::ExecuteCommand { command_id } => {

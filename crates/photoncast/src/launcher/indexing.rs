@@ -17,7 +17,8 @@ impl LauncherWindow {
             tracing::info!("Starting application indexing...");
 
             let result = shared_runtime.block_on(async {
-                let scanner = AppScanner::new();
+                let config = photoncast_core::app::config_file::load_config().unwrap_or_default();
+                let scanner = AppScanner::from_config(&config.search.app_search_scope);
                 scanner.scan_all().await
             });
 
