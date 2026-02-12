@@ -179,6 +179,26 @@ mod tests {
     }
 
     #[test]
+    fn test_load_non_dylib_file_fails() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let non_dylib = dir.path().join("not_a_library.txt");
+        std::fs::write(&non_dylib, b"plain text file").unwrap();
+
+        let result = ExtensionLoader::load(&non_dylib);
+        assert!(result.is_err());
+
+        match result {
+            Err(ExtensionLoadError::RawLibrary(msg)) => {
+                assert!(!msg.is_empty());
+            },
+            Ok(_) => panic!("Expected RawLibrary error for non-dylib file, got success"),
+            Err(_) => panic!("Expected RawLibrary error for non-dylib file"),
+        }
+    }
+
+    #[test]
     fn test_extension_library_path_accessor() {
         // When we create an ExtensionLibrary (if we could), path() should return the right path
         // This test verifies the accessor works correctly

@@ -372,6 +372,7 @@ impl Database {
             SELECT bundle_id, name, path, icon_path, keywords, category, last_modified
             FROM app_cache
             ORDER BY name ASC
+            LIMIT 10000
             ",
         )?;
 
@@ -884,6 +885,47 @@ mod tests {
     }
 
     #[test]
+    fn test_migrations_idempotent_on_file_backed_database() {
+        let dir = tempfile::tempdir().expect("should create temp dir");
+        let db_path = dir.path().join("photoncast.db");
+
+        let db = Database::open(&db_path).expect("should open file-backed database");
+        db.run_migrations()
+            .expect("first migration rerun should be a no-op");
+        db.run_migrations()
+            .expect("second migration rerun should be a no-op");
+
+        let version = db.schema_version().expect("should get schema version");
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_open_corrupt_database_file_returns_error() {
+        let dir = tempfile::tempdir().expect("should create temp dir");
+        let db_path = dir.path().join("corrupt.db");
+
+        std::fs::write(&db_path, b"this is not a sqlite database")
+            .expect("should write corrupt file");
+
+        let result = Database::open(&db_path);
+        assert!(result.is_err(), "opening corrupt database should fail");
+    }
+
+    #[test]
+    fn test_open_missing_database_file_creates_database() {
+        let dir = tempfile::tempdir().expect("should create temp dir");
+        let db_path = dir.path().join("nested").join("photoncast.db");
+
+        assert!(!db_path.exists(), "precondition: db should not exist yet");
+
+        let db = Database::open(&db_path).expect("opening missing database should create it");
+
+        assert!(db_path.exists(), "database file should be created");
+        let version = db.schema_version().expect("should get schema version");
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
     fn test_insert_and_get_app() {
         let db = Database::open_in_memory().expect("should open database");
         let app = create_test_app("Safari", "com.apple.Safari");
@@ -987,6 +1029,23 @@ mod tests {
 
         let all_apps = db.get_all_apps().expect("should get all apps");
         assert_eq!(all_apps.len(), 3);
+    }
+
+    #[test]
+    fn test_high_volume_insert_does_not_panic() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        let apps: Vec<IndexedApp> = (0..150)
+            .map(|i| create_test_app(&format!("App{i}"), &format!("com.example.App{i}")))
+            .collect();
+
+        let inserted = db
+            .insert_apps_batch(&apps)
+            .expect("high volume batch insert should succeed");
+        assert_eq!(inserted, apps.len());
+
+        let count = db.app_cache_count().expect("should get app cache count");
+        assert_eq!(count, apps.len());
     }
 
     #[test]

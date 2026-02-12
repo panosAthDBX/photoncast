@@ -46,6 +46,7 @@ use objc2_foundation::{
 };
 use thiserror::Error;
 
+use super::predicate::escape_predicate_string;
 use super::result::{MetadataExtractor, SpotlightResult};
 
 // =============================================================================
@@ -79,6 +80,9 @@ pub enum SpotlightError {
 /// Result type for Spotlight operations.
 pub type Result<T> = std::result::Result<T, SpotlightError>;
 
+/// Maximum allowed raw query length at the Spotlight FFI boundary.
+const MAX_QUERY_INPUT_LEN: usize = 500;
+
 // =============================================================================
 // MetadataQueryWrapper
 // =============================================================================
@@ -105,6 +109,26 @@ impl MetadataQueryWrapper {
     /// Use [`PredicateBuilder`](super::PredicateBuilder) to create predicates.
     pub fn set_predicate(&mut self, predicate: &NSPredicate) -> &mut Self {
         self.query.setPredicate(Some(predicate));
+        self
+    }
+
+    /// Sets a name-contains predicate from raw user input.
+    ///
+    /// This method is the Spotlight query FFI boundary for raw query strings.
+    /// It trims, truncates, and escapes user text before building predicate syntax.
+    pub fn set_name_contains_query(&mut self, raw_query: &str) -> &mut Self {
+        let normalized = sanitize_query_for_predicate(raw_query);
+        if normalized.is_empty() {
+            self.query.setPredicate(None);
+            return self;
+        }
+
+        let escaped = escape_predicate_string(&normalized);
+        let clause = format!(r#"kMDItemFSName CONTAINS[cd] "{escaped}""#);
+        let predicate = super::predicate::PredicateBuilder::new()
+            .raw_clause(&clause)
+            .build();
+        self.query.setPredicate(Some(&predicate));
         self
     }
 
@@ -405,6 +429,18 @@ impl Drop for MetadataQueryWrapper {
 // Helper Functions
 // =============================================================================
 
+/// Sanitizes raw query text before it crosses into predicate syntax.
+#[must_use]
+fn sanitize_query_for_predicate(raw_query: &str) -> String {
+    let truncated: String = raw_query.chars().take(MAX_QUERY_INPUT_LEN).collect();
+    truncated
+        .chars()
+        .filter(|c| !matches!(c, '\0'..='\u{1F}' | '\u{7F}'))
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
 /// Returns common search scopes for file searches.
 #[must_use]
 pub fn default_search_scopes() -> Vec<PathBuf> {
@@ -493,5 +529,31 @@ mod tests {
                 let _ = e;
             },
         }
+    }
+
+    #[test]
+    fn test_sanitize_query_normal_input_passthrough() {
+        let input = "report 2026";
+        assert_eq!(sanitize_query_for_predicate(input), "report 2026");
+    }
+
+    #[test]
+    fn test_sanitize_query_strips_control_characters() {
+        let input = "hello\nworld\t\u{0000}ok\u{007F}";
+        assert_eq!(sanitize_query_for_predicate(input), "helloworldok");
+    }
+
+    #[test]
+    fn test_sanitize_query_truncates_to_max_length() {
+        let input = "a".repeat(600);
+        let output = sanitize_query_for_predicate(&input);
+        assert_eq!(output.len(), 500);
+        assert!(output.chars().all(|c| c == 'a'));
+    }
+
+    #[test]
+    fn test_sanitize_query_empty_input_returns_empty() {
+        assert_eq!(sanitize_query_for_predicate(""), "");
+        assert_eq!(sanitize_query_for_predicate("   \n\t  "), "");
     }
 }

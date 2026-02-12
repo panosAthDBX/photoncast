@@ -37,3 +37,35 @@ impl SearchProvider for ExtensionProvider {
         Some(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use parking_lot::RwLock;
+
+    use super::*;
+    use crate::extensions::ExtensionManager;
+    use crate::search::providers::SearchProvider;
+
+    #[test]
+    fn test_extension_provider_construction_and_metadata() {
+        let manager = Arc::new(RwLock::new(ExtensionManager::new()));
+        let provider = ExtensionProvider::new(manager);
+
+        assert_eq!(provider.name(), "Extensions");
+        assert_eq!(provider.result_type(), ResultType::SystemCommand);
+    }
+
+    #[test]
+    fn test_extension_provider_empty_search_returns_no_results() {
+        let manager = Arc::new(RwLock::new(ExtensionManager::new()));
+        let provider = ExtensionProvider::new(manager);
+
+        let empty_query_results = provider.search("", 10);
+        assert!(empty_query_results.is_empty());
+
+        let no_loaded_extensions_results = provider.search("anything", 10);
+        assert!(no_loaded_extensions_results.is_empty());
+    }
+}

@@ -405,6 +405,7 @@ impl ClipboardStorage {
             FROM clipboard_items
             WHERE is_pinned = 1
             ORDER BY created_at DESC
+            LIMIT 1000
             ",
             )?;
 

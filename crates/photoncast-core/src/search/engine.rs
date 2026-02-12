@@ -332,6 +332,9 @@ impl SearchEngine {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::time::Duration;
 
     use super::*;
     use crate::search::{IconSource, SearchAction, SearchResultId};
@@ -546,5 +549,100 @@ mod tests {
 
         let results = engine.search("test").await;
         assert_eq!(results.total_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_with_cancellation_returns_empty_when_cancelled() {
+        let mut engine = SearchEngine::new();
+        engine.add_provider(MockProvider::new(
+            "test",
+            ResultType::Application,
+            vec![create_test_result(
+                "1",
+                "Test App",
+                100.0,
+                ResultType::Application,
+            )],
+        ));
+
+        let cancellation = Arc::new(AtomicBool::new(true));
+        let results = engine
+            .search_with_cancellation("test", Some(Arc::clone(&cancellation)))
+            .await;
+
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_with_empty_query_returns_empty_results() {
+        let mut engine = SearchEngine::new();
+        engine.add_provider(MockProvider::new(
+            "test",
+            ResultType::Application,
+            vec![create_test_result(
+                "1",
+                "Ignored",
+                1.0,
+                ResultType::Application,
+            )],
+        ));
+
+        let results = engine.search("").await;
+        assert!(results.is_empty());
+        assert_eq!(results.total_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_search_with_very_long_query_does_not_panic() {
+        let mut engine = SearchEngine::new();
+        engine.add_provider(MockProvider::new(
+            "test",
+            ResultType::Application,
+            vec![create_test_result(
+                "1",
+                "Long Query Result",
+                42.0,
+                ResultType::Application,
+            )],
+        ));
+
+        let long_query = "a".repeat(100_000);
+        let results = engine.search(&long_query).await;
+
+        assert_eq!(results.total_count, 1);
+    }
+
+    #[test]
+    fn test_provider_count_after_multiple_registrations() {
+        let mut engine = SearchEngine::new();
+
+        engine.add_provider(MockProvider::new(
+            "apps",
+            ResultType::Application,
+            Vec::new(),
+        ));
+        engine.add_provider(MockProvider::new(
+            "commands",
+            ResultType::SystemCommand,
+            Vec::new(),
+        ));
+        engine.add_provider(MockProvider::new(
+            "files",
+            ResultType::File,
+            Vec::new(),
+        ));
+
+        assert_eq!(engine.provider_count(), 3);
+    }
+
+    #[test]
+    fn test_search_config_custom_timeout_is_applied() {
+        let timeout = Duration::from_millis(321);
+        let engine = SearchEngine::with_config(SearchConfig {
+            timeout,
+            ..Default::default()
+        });
+
+        assert_eq!(engine.config().timeout, timeout);
     }
 }

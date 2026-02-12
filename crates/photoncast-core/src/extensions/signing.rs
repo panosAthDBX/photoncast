@@ -231,4 +231,54 @@ mod tests {
             "Error should mention no allowed team IDs, got: {err_msg}"
         );
     }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_verify_with_config_rejects_when_identity_required_but_trusted_refs_empty() {
+        let signed_path = ["/bin/ls", "/usr/bin/ls", "/bin/sh"]
+            .into_iter()
+            .map(std::path::Path::new)
+            .find(|candidate| candidate.exists())
+            .expect("expected at least one signed system binary to exist");
+
+        verify_code_signature(signed_path)
+            .expect("precondition failed: expected system binary to pass code signature check");
+
+        let config = ExtensionSigningConfig {
+            allowed_team_ids: Vec::new(),
+            require_identity: true,
+        };
+
+        let error = verify_code_signature_with_config(signed_path, &config)
+            .expect_err("expected identity verification to fail with empty trusted refs");
+
+        match error {
+            CodeSignatureError::IdentityVerificationFailed(message) => {
+                assert!(message.contains("no allowed team IDs"));
+            },
+            other => panic!("expected IdentityVerificationFailed, got: {other}"),
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_verify_with_config_identity_check_bypassed_when_not_required() {
+        let signed_path = ["/bin/ls", "/usr/bin/ls", "/bin/sh"]
+            .into_iter()
+            .map(std::path::Path::new)
+            .find(|candidate| candidate.exists())
+            .expect("expected at least one signed system binary to exist");
+
+        verify_code_signature(signed_path)
+            .expect("precondition failed: expected system binary to pass code signature check");
+
+        let config = ExtensionSigningConfig {
+            allowed_team_ids: Vec::new(),
+            require_identity: false,
+        };
+
+        verify_code_signature_with_config(signed_path, &config).expect(
+            "expected identity verification to be skipped when require_identity is false",
+        );
+    }
 }

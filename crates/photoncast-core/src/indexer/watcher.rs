@@ -494,6 +494,11 @@ mod tests {
         let config = WatcherConfig::default();
         assert_eq!(config.debounce_ms, DEFAULT_DEBOUNCE_MS);
         assert!(!config.watch_paths.is_empty());
+        assert_eq!(config.raw_channel_capacity, WATCHER_RAW_CHANNEL_CAPACITY);
+        assert_eq!(
+            config.event_channel_capacity,
+            WATCHER_EVENT_CHANNEL_CAPACITY
+        );
     }
 
     #[test]

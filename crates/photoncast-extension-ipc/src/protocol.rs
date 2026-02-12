@@ -106,3 +106,51 @@ impl RpcMessage {
         Ok(message)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_serialization_roundtrip() {
+        let message = RpcMessage::Request(RpcRequest::new(
+            42,
+            "ping",
+            serde_json::json!({"value": 1}),
+        ));
+
+        let json = serde_json::to_string(&message).expect("should serialize rpc message");
+        let parsed = RpcMessage::parse_line(&json).expect("should parse serialized message");
+
+        match parsed {
+            RpcMessage::Request(request) => {
+                assert_eq!(request.jsonrpc, RPC_VERSION);
+                assert_eq!(request.id, 42);
+                assert_eq!(request.method, "ping");
+                assert_eq!(request.params, serde_json::json!({"value": 1}));
+            },
+            _ => panic!("expected request message after roundtrip"),
+        }
+    }
+
+    #[test]
+    fn test_parse_invalid_json_returns_error() {
+        let error = RpcMessage::parse_line("{ this is not valid json }")
+            .expect_err("expected invalid json parse to fail");
+
+        assert!(matches!(error, IpcError::Json(_)));
+    }
+
+    #[test]
+    fn test_parse_empty_message_returns_error() {
+        let error = RpcMessage::parse_line("   ")
+            .expect_err("expected empty message parse to fail");
+
+        match error {
+            IpcError::InvalidMessage(message) => {
+                assert!(message.contains("empty message"));
+            },
+            other => panic!("expected InvalidMessage error, got: {other}"),
+        }
+    }
+}

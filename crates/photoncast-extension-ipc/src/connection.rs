@@ -5,6 +5,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use serde_json::Value;
+use tracing::{error, warn};
 
 use crate::{IpcError, RpcMessage, RpcNotification, RpcRequest, RpcResponse};
 
@@ -95,31 +96,53 @@ impl RpcConnection {
             for line in reader.lines() {
                 let line = match line {
                     Ok(line) => line,
-                    Err(_) => break,
+                    Err(err) => {
+                        error!(error = %err, "RPC reader loop failed to read line");
+                        break;
+                    },
                 };
 
                 let message = match RpcMessage::parse_line(&line) {
                     Ok(message) => message,
-                    Err(_) => continue,
+                    Err(err) => {
+                        warn!(
+                            error = %err,
+                            line_len = line.len(),
+                            "Failed to parse RPC message line"
+                        );
+                        continue;
+                    },
                 };
 
                 match message {
                     RpcMessage::Response(response) => {
-                        let sender = inner
-                            .pending
-                            .lock()
-                            .ok()
-                            .and_then(|mut pending| pending.remove(&response.id));
+                        let sender = match inner.pending.lock() {
+                            Ok(mut pending) => pending.remove(&response.id),
+                            Err(_) => {
+                                error!("RPC pending response map lock poisoned");
+                                break;
+                            },
+                        };
+
                         if let Some(sender) = sender {
-                            if let Some(error) = response.error {
-                                let _ = sender.send(Err(IpcError::RpcError {
-                                    code: error.code,
-                                    message: error.message,
-                                }));
+                            if let Some(error_data) = response.error {
+                                if sender
+                                    .send(Err(IpcError::RpcError {
+                                        code: error_data.code,
+                                        message: error_data.message,
+                                    }))
+                                    .is_err()
+                                {
+                                    warn!(id = response.id, "Failed to deliver RPC error response");
+                                }
                             } else {
                                 let value = response.result.unwrap_or(Value::Null);
-                                let _ = sender.send(Ok(value));
+                                if sender.send(Ok(value)).is_err() {
+                                    warn!(id = response.id, "Failed to deliver RPC success response");
+                                }
                             }
+                        } else {
+                            warn!(id = response.id, "Received RPC response with no pending request");
                         }
                     },
                     RpcMessage::Request(request) => {
@@ -135,24 +158,81 @@ impl RpcConnection {
                                     err.rpc_message(),
                                 ),
                             };
-                            let _ = connection.send_response(response);
+                            if let Err(err) = connection.send_response(response) {
+                                error!(error = %err, id = request.id, "Failed to send RPC response");
+                            }
                         });
                     },
                     RpcMessage::Notification(notification) => {
                         let handler = Arc::clone(&handler);
                         thread::spawn(move || {
-                            let _ = handler
-                                .handle_notification(&notification.method, notification.params);
+                            if let Err(err) =
+                                handler.handle_notification(&notification.method, notification.params)
+                            {
+                                warn!(
+                                    error = %err,
+                                    method = %notification.method,
+                                    "Failed to handle RPC notification"
+                                );
+                            }
                         });
                     },
                 }
             }
 
-            if let Ok(mut pending) = inner.pending.lock() {
-                for (_, sender) in pending.drain() {
-                    let _ = sender.send(Err(IpcError::Disconnected));
-                }
+            match inner.pending.lock() {
+                Ok(mut pending) => {
+                    for (id, sender) in pending.drain() {
+                        if sender.send(Err(IpcError::Disconnected)).is_err() {
+                            warn!(id = id, "Failed to notify pending RPC request of disconnect");
+                        }
+                    }
+                },
+                Err(_) => {
+                    error!("RPC pending response map lock poisoned during disconnect cleanup");
+                },
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufReader, Cursor};
+
+    struct NoopHandler;
+
+    impl RpcHandler for NoopHandler {
+        fn handle_request(&self, _method: &str, _params: Value) -> Result<Value, IpcError> {
+            Ok(Value::Null)
+        }
+    }
+
+    #[test]
+    fn test_rpc_connection_creation() {
+        let reader = BufReader::new(Cursor::new(Vec::<u8>::new()));
+        let writer = Cursor::new(Vec::<u8>::new());
+        let handler: Arc<dyn RpcHandler> = Arc::new(NoopHandler);
+
+        let connection = RpcConnection::new(reader, writer, handler);
+
+        connection
+            .send_notification("test.notification", serde_json::json!({"ok": true}))
+            .expect("connection should be usable after creation");
+    }
+
+    #[test]
+    fn test_rpc_connection_is_cloneable() {
+        let reader = BufReader::new(Cursor::new(Vec::<u8>::new()));
+        let writer = Cursor::new(Vec::<u8>::new());
+        let handler: Arc<dyn RpcHandler> = Arc::new(NoopHandler);
+
+        let connection = RpcConnection::new(reader, writer, handler);
+        let cloned = connection.clone();
+
+        cloned
+            .send_notification("test.clone", Value::Null)
+            .expect("cloned connection should be constructable and usable");
     }
 }
