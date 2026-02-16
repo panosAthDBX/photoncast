@@ -2,6 +2,12 @@
 
 Homebrew Cask formula for [PhotonCast](https://github.com/photoncast/photoncast) - a fast, extensible macOS launcher built with Rust and GPUI.
 
+## Latest Build Downloads
+
+- **Latest DMG**: [PhotonCast.dmg](https://github.com/panosAthDBX/photoncast/releases/latest/download/PhotonCast.dmg)
+- **Latest checksum**: [PhotonCast.dmg.sha256](https://github.com/panosAthDBX/photoncast/releases/latest/download/PhotonCast.dmg.sha256)
+- **Latest release notes**: [GitHub Releases](https://github.com/panosAthDBX/photoncast/releases/latest)
+
 ## Quick Install
 
 ### Option 1: Official Homebrew Cask (Recommended - once available)

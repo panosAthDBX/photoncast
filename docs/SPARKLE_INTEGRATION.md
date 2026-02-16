@@ -37,6 +37,12 @@ The appcast is an RSS 2.0 feed with Sparkle namespace extensions that contains u
 - **Production**: `https://api.photoncast.app/updates/appcast.xml`
 - **GitHub Alternative**: `https://github.com/photoncast/photoncast/releases.atom`
 
+### Latest Build Download Endpoints
+
+- **Latest DMG**: `https://github.com/panosAthDBX/photoncast/releases/latest/download/PhotonCast.dmg`
+- **Latest checksum**: `https://github.com/panosAthDBX/photoncast/releases/latest/download/PhotonCast.dmg.sha256`
+- **Latest release page**: `https://github.com/panosAthDBX/photoncast/releases/latest`
+
 ### Appcast Format
 
 ```xml

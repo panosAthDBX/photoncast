@@ -19,6 +19,13 @@ A lightning-fast macOS launcher built in pure Rust using [GPUI](https://github.c
 - **App management** — auto-quit, force quit, uninstaller with leftover detection
 - **Sleep timer** — configurable timer with system actions (sleep, shutdown, etc.)
 
+## Download Latest Build
+
+- **Latest DMG**: [PhotonCast.dmg](https://github.com/panosAthDBX/photoncast/releases/latest/download/PhotonCast.dmg)
+- **Latest checksum**: [PhotonCast.dmg.sha256](https://github.com/panosAthDBX/photoncast/releases/latest/download/PhotonCast.dmg.sha256)
+- **Latest release notes**: [GitHub Releases](https://github.com/panosAthDBX/photoncast/releases/latest)
+- **Latest main-branch CI artifacts**: [CI workflow runs](https://github.com/panosAthDBX/photoncast/actions/workflows/ci.yml?query=branch%3Amain) (download `photoncast-dmg` from the latest successful push run)
+
 ## Requirements
 
 - macOS 12.0+
