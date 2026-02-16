@@ -4,8 +4,12 @@
 //! across multiple providers and merges results.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+use futures::future::join_all;
+use tracing::{debug_span, trace, warn};
 
 use crate::search::providers::SearchProvider;
 use crate::search::{ResultGroup, ResultType, SearchResult, SearchResults};
@@ -25,6 +29,8 @@ pub struct SearchConfig {
     pub max_total_results: usize,
     /// Search timeout.
     pub timeout: Duration,
+    /// Debounce for launcher normal-mode query dispatch.
+    pub debounce_ms: u64,
 }
 
 impl Default for SearchConfig {
@@ -33,6 +39,7 @@ impl Default for SearchConfig {
             max_results_per_provider: DEFAULT_MAX_RESULTS_PER_PROVIDER,
             max_total_results: DEFAULT_MAX_TOTAL_RESULTS,
             timeout: Duration::from_millis(100),
+            debounce_ms: 50,
         }
     }
 }
@@ -115,13 +122,41 @@ impl SearchEngine {
             return SearchResults::empty();
         }
 
+        let _span = debug_span!(
+            "search.engine.search",
+            component = "search",
+            operation = "search_sync",
+            query_len = query.len(),
+            provider_count = self.providers.len()
+        )
+        .entered();
+
         let start = std::time::Instant::now();
 
         // Collect results from all providers
         let mut all_results: Vec<SearchResult> = Vec::new();
 
         for provider in &self.providers {
+            let provider_name = provider.name();
+            let provider_span = debug_span!(
+                "search.provider.search",
+                component = "search",
+                operation = "provider_sync",
+                provider_id = provider_name
+            )
+            .entered();
+            let provider_start = std::time::Instant::now();
             let provider_results = provider.search(query, self.config.max_results_per_provider);
+            let elapsed_ms = provider_start.elapsed().as_secs_f64() * 1000.0;
+            trace!(
+                component = "search",
+                operation = "provider_sync",
+                provider_id = provider_name,
+                elapsed_ms,
+                result_count = provider_results.len(),
+                "provider search completed"
+            );
+            drop(provider_span);
             all_results.extend(provider_results);
         }
 
@@ -142,9 +177,29 @@ impl SearchEngine {
     ///
     /// Grouped search results sorted by relevance.
     pub async fn search(&self, query: &str) -> SearchResults {
+        self.search_with_cancellation(query, None).await
+    }
+
+    /// Performs an async search with optional cancellation.
+    ///
+    /// Cancellation is best-effort: provider tasks are not forcibly terminated,
+    /// but their results are dropped if cancellation is observed.
+    pub async fn search_with_cancellation(
+        &self,
+        query: &str,
+        cancellation: Option<Arc<AtomicBool>>,
+    ) -> SearchResults {
         if query.is_empty() {
             return SearchResults::empty();
         }
+
+        trace!(
+            component = "search",
+            operation = "search",
+            query_len = query.len(),
+            provider_count = self.providers.len(),
+            "search engine async start"
+        );
 
         let start = std::time::Instant::now();
         let max_results = self.config.max_results_per_provider;
@@ -152,22 +207,66 @@ impl SearchEngine {
         let mut handles = Vec::with_capacity(self.providers.len());
         let query_string = query.to_string();
         for provider in &self.providers {
+            let provider_name = provider.name().to_string();
             let provider = Arc::clone(provider);
             let query = query_string.clone();
-            handles.push(tokio::task::spawn_blocking(move || {
-                provider.search(&query, max_results)
-            }));
+            let handle = tokio::task::spawn_blocking(move || provider.search(&query, max_results));
+            handles.push((provider_name, handle));
         }
 
         let mut all_results = Vec::new();
-        for handle in handles {
-            match handle.await {
-                Ok(results) => all_results.extend(results),
+        let provider_outcomes = join_all(handles.into_iter().map(
+            |(provider_name, handle)| async move {
+                let provider_start = std::time::Instant::now();
+                let outcome = handle.await;
+                (provider_name, provider_start.elapsed(), outcome)
+            },
+        ))
+        .await;
+
+        if cancellation
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            trace!(
+                component = "search",
+                operation = "search",
+                cancelled = true,
+                "search cancelled before collecting all provider results"
+            );
+            return SearchResults::empty();
+        }
+
+        for (provider_name, elapsed, outcome) in provider_outcomes {
+            match outcome {
+                Ok(results) => {
+                    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+                    trace!(
+                        component = "search",
+                        operation = "provider_async",
+                        provider_id = provider_name,
+                        elapsed_ms,
+                        result_count = results.len(),
+                        "async provider search completed"
+                    );
+                    all_results.extend(results);
+                },
                 Err(err) => {
-                    tracing::warn!("Search provider task failed: {}", err);
+                    warn!("Search provider task failed: {}", err);
                 },
             }
         }
+
+        let result_count = all_results.len();
+        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+        trace!(
+            component = "search",
+            operation = "search",
+            elapsed_ms,
+            result_count,
+            cancelled = false,
+            "search engine completed"
+        );
 
         self.build_results(&query_string, all_results, start.elapsed())
     }
@@ -242,6 +341,9 @@ impl SearchEngine {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use std::time::Duration;
 
     use super::*;
     use crate::search::{IconSource, SearchAction, SearchResultId};
@@ -273,6 +375,28 @@ mod tests {
         }
 
         fn search(&self, _query: &str, max_results: usize) -> Vec<SearchResult> {
+            self.results.iter().take(max_results).cloned().collect()
+        }
+    }
+
+    struct SlowMockProvider {
+        name: &'static str,
+        result_type: ResultType,
+        delay: Duration,
+        results: Vec<SearchResult>,
+    }
+
+    impl SearchProvider for SlowMockProvider {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn result_type(&self) -> ResultType {
+            self.result_type
+        }
+
+        fn search(&self, _query: &str, max_results: usize) -> Vec<SearchResult> {
+            std::thread::sleep(self.delay);
             self.results.iter().take(max_results).cloned().collect()
         }
     }
@@ -456,5 +580,136 @@ mod tests {
 
         let results = engine.search("test").await;
         assert_eq!(results.total_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_async_search_collects_provider_results_in_parallel() {
+        let mut engine = SearchEngine::new();
+        let delay = Duration::from_millis(80);
+
+        engine.add_provider(SlowMockProvider {
+            name: "slow-1",
+            result_type: ResultType::Application,
+            delay,
+            results: vec![create_test_result(
+                "1",
+                "Slow App 1",
+                100.0,
+                ResultType::Application,
+            )],
+        });
+
+        engine.add_provider(SlowMockProvider {
+            name: "slow-2",
+            result_type: ResultType::SystemCommand,
+            delay,
+            results: vec![create_test_result(
+                "2",
+                "Slow Command 2",
+                90.0,
+                ResultType::SystemCommand,
+            )],
+        });
+
+        let started = std::time::Instant::now();
+        let results = engine.search("slow").await;
+        let elapsed = started.elapsed();
+
+        assert_eq!(results.total_count, 2);
+        assert!(
+            elapsed < Duration::from_millis(260),
+            "search should complete near single-provider latency when joins are batched; elapsed={elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_with_cancellation_returns_empty_when_cancelled() {
+        let mut engine = SearchEngine::new();
+        engine.add_provider(MockProvider::new(
+            "test",
+            ResultType::Application,
+            vec![create_test_result(
+                "1",
+                "Test App",
+                100.0,
+                ResultType::Application,
+            )],
+        ));
+
+        let cancellation = Arc::new(AtomicBool::new(true));
+        let results = engine
+            .search_with_cancellation("test", Some(Arc::clone(&cancellation)))
+            .await;
+
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_with_empty_query_returns_empty_results() {
+        let mut engine = SearchEngine::new();
+        engine.add_provider(MockProvider::new(
+            "test",
+            ResultType::Application,
+            vec![create_test_result(
+                "1",
+                "Ignored",
+                1.0,
+                ResultType::Application,
+            )],
+        ));
+
+        let results = engine.search("").await;
+        assert!(results.is_empty());
+        assert_eq!(results.total_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_search_with_very_long_query_does_not_panic() {
+        let mut engine = SearchEngine::new();
+        engine.add_provider(MockProvider::new(
+            "test",
+            ResultType::Application,
+            vec![create_test_result(
+                "1",
+                "Long Query Result",
+                42.0,
+                ResultType::Application,
+            )],
+        ));
+
+        let long_query = "a".repeat(100_000);
+        let results = engine.search(&long_query).await;
+
+        assert_eq!(results.total_count, 1);
+    }
+
+    #[test]
+    fn test_provider_count_after_multiple_registrations() {
+        let mut engine = SearchEngine::new();
+
+        engine.add_provider(MockProvider::new(
+            "apps",
+            ResultType::Application,
+            Vec::new(),
+        ));
+        engine.add_provider(MockProvider::new(
+            "commands",
+            ResultType::SystemCommand,
+            Vec::new(),
+        ));
+        engine.add_provider(MockProvider::new("files", ResultType::File, Vec::new()));
+
+        assert_eq!(engine.provider_count(), 3);
+    }
+
+    #[test]
+    fn test_search_config_custom_timeout_is_applied() {
+        let timeout = Duration::from_millis(321);
+        let engine = SearchEngine::with_config(SearchConfig {
+            timeout,
+            ..Default::default()
+        });
+
+        assert_eq!(engine.config().timeout, timeout);
     }
 }

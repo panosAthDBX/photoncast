@@ -547,9 +547,8 @@ impl AccessibilityManager {
         // Get app element to check/disable AXEnhancedUserInterface
         let pid = get_pid_for_bundle_id(&window.bundle_id);
         let mut enhanced_ui_was_enabled = false;
-        let app_element: Option<AXUIElementRef> = pid.map(|p| {
-            unsafe { AXUIElementCreateApplication(p) }
-        });
+        let app_element: Option<AXUIElementRef> =
+            pid.map(|p| unsafe { AXUIElementCreateApplication(p) });
 
         // Temporarily disable AXEnhancedUserInterface if enabled (blocks resize in some apps)
         if let Some(app) = app_element {
@@ -593,13 +592,16 @@ impl AccessibilityManager {
         let size_changed = match (before_size, final_size) {
             (Some(b), Some(a)) => {
                 (a.width - b.width).abs() > 5.0 || (a.height - b.height).abs() > 5.0
-            }
+            },
             _ => false,
         };
 
         // If AX resize failed, try System Events AppleScript as fallback
         if !size_changed && (size_result1.is_err() || size_result2.is_err()) {
-            tracing::debug!("AX resize failed for '{}', trying AppleScript", window.bundle_id);
+            tracing::debug!(
+                "AX resize failed for '{}', trying AppleScript",
+                window.bundle_id
+            );
             if !set_window_bounds_via_applescript(&window.bundle_id, frame) {
                 tracing::warn!("Window resize not supported by '{}'", window.bundle_id);
             }
@@ -1358,11 +1360,11 @@ pub fn set_window_bounds_via_applescript(bundle_id: &str, frame: CGRect) -> bool
     let app_name = match name_result {
         Ok(output) if output.status.success() => {
             String::from_utf8_lossy(&output.stdout).trim().to_string()
-        }
+        },
         _ => {
             tracing::warn!("Could not get app name for bundle {}", bundle_id);
             return false;
-        }
+        },
     };
 
     // Sanitize app_name since it comes from external source (System Events output)
@@ -1385,9 +1387,7 @@ end tell"#,
         safe_app_name, x, y, width, height
     );
 
-    let result = Command::new("osascript")
-        .args(["-e", &script])
-        .output();
+    let result = Command::new("osascript").args(["-e", &script]).output();
 
     match result {
         Ok(output) => {
@@ -1399,11 +1399,11 @@ end tell"#,
                 tracing::debug!("System Events resize failed: {}", stderr.trim());
                 false
             }
-        }
+        },
         Err(e) => {
             tracing::warn!("Failed to run osascript: {}", e);
             false
-        }
+        },
     }
 }
 

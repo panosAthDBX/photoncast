@@ -12,6 +12,8 @@ pub enum IpcError {
     InvalidMessage(String),
     #[error("response channel closed")]
     ResponseChannelClosed,
+    #[error("request timed out after {timeout_ms}ms")]
+    Timeout { timeout_ms: u64 },
     #[error("connection closed")]
     Disconnected,
 }

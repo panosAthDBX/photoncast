@@ -399,6 +399,7 @@ impl CustomCommandStore {
                    run_count, last_run_at, created_at, updated_at
             FROM custom_commands
             ORDER BY name ASC
+            LIMIT 1000
             ",
         )?;
 
@@ -428,6 +429,7 @@ impl CustomCommandStore {
             FROM custom_commands
             WHERE enabled = 1
             ORDER BY name ASC
+            LIMIT 1000
             ",
         )?;
 
@@ -526,7 +528,7 @@ impl CustomCommandStore {
             FROM command_outputs
             WHERE command_id = ?1
             ORDER BY executed_at DESC
-            LIMIT ?2
+            LIMIT MIN(?2, 100)
             ",
         )?;
 
@@ -685,6 +687,16 @@ mod tests {
     }
 
     #[test]
+    fn test_store_creation_with_temp_db() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let db_path = temp_dir.path().join("custom_commands.db");
+
+        let store = CustomCommandStore::open(&db_path).expect("store should open");
+        assert_eq!(store.count().expect("count should work"), 0);
+        assert!(db_path.exists());
+    }
+
+    #[test]
     fn test_create_and_get() {
         let store = create_test_store();
         let cmd = CustomCommand::new("Test", "echo hello");
@@ -729,6 +741,14 @@ mod tests {
 
         let retrieved = store.get(&cmd.id).expect("should query");
         assert!(retrieved.is_none());
+    }
+
+    #[test]
+    fn test_delete_nonexistent_command_returns_not_found_error() {
+        let store = create_test_store();
+        let result = store.delete("missing-command-id");
+
+        assert!(matches!(result, Err(StoreError::NotFound { .. })));
     }
 
     #[test]

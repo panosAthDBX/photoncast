@@ -197,7 +197,7 @@ impl UsageData {
 /// Ranks search results by combining match quality with usage data.
 ///
 /// The ranking formula is:
-/// 1. `base_score = match_score + (frecency * 10.0)`
+/// 1. `base_score = match_score + (frecency * FRECENCY_MULTIPLIER)`
 /// 2. Apply path boosts (system apps, user apps)
 /// 3. Apply match type boosts (exact, prefix)
 ///
@@ -219,7 +219,11 @@ impl Default for ResultRanker {
 
 impl ResultRanker {
     /// Frecency multiplier in the combined score formula.
-    pub const FRECENCY_MULTIPLIER: f64 = 10.0;
+    ///
+    /// Bumped from 10.0 to 35.0 to ensure heavily-used apps dominate match
+    /// quality.  A typical nucleo match-score gap is ~20-80 pts; a frecency of
+    /// 5.0 (5 launches, recent) × 35.0 = 175 pts — enough to overcome that gap.
+    pub const FRECENCY_MULTIPLIER: f64 = 35.0;
 
     /// Creates a new result ranker with default configuration.
     #[must_use]
@@ -340,7 +344,7 @@ impl ResultRanker {
 
     /// Calculates the combined score for a result.
     ///
-    /// Formula: `final_score = (match_score + (frecency * 10.0)) * boosts`
+    /// Formula: `final_score = (match_score + (frecency * FRECENCY_MULTIPLIER)) * boosts`
     ///
     /// # Arguments
     ///
@@ -358,12 +362,30 @@ impl ResultRanker {
         title: &str,
         path: Option<&Path>,
     ) -> f64 {
-        // Base formula: match_score + (frecency * 10.0)
+        // Base formula: match_score + (frecency * FRECENCY_MULTIPLIER)
         let base_score = frecency
             .score()
             .mul_add(Self::FRECENCY_MULTIPLIER, match_score);
 
         // Apply boosts
+        self.apply_boosts(base_score, query, title, path)
+    }
+
+    /// Calculates the combined score with per-query frecency support.
+    ///
+    /// Formula: `final_score = (match_score + (global_frecency + query_frecency) * MULTIPLIER) * boosts`
+    #[must_use]
+    pub fn calculate_combined_score_with_query(
+        &self,
+        match_score: f64,
+        global_frecency: &FrecencyScore,
+        query_frecency: &FrecencyScore,
+        query: &str,
+        title: &str,
+        path: Option<&Path>,
+    ) -> f64 {
+        let combined_frecency = global_frecency.score() + query_frecency.score();
+        let base_score = combined_frecency.mul_add(Self::FRECENCY_MULTIPLIER, match_score);
         self.apply_boosts(base_score, query, title, path)
     }
 
@@ -780,7 +802,7 @@ mod tests {
             }
         });
 
-        // Frequently Used: 50 + (10 * 1.0 * 10) = 150
+        // Frequently Used: 50 + (10 * 1.0 * 35) = 400
         // Rarely Used: 100 + 0 = 100
         assert_eq!(results[0].title, "Frequently Used");
         assert_eq!(results[1].title, "Rarely Used");
@@ -792,12 +814,12 @@ mod tests {
         let frecency = FrecencyScore::new(5, 1.0);
         let path = Path::new("/Applications/Test.app");
 
-        // base: 100 + (5 * 10) = 150
+        // base: 100 + (5 * 35) = 275
         // path boost: 1.1
         // prefix match boost: 1.5
-        // final: 150 * 1.1 * 1.5 = 247.5
+        // final: 275 * 1.1 * 1.5 = 453.75
         let score = ranker.calculate_combined_score(100.0, &frecency, "Te", "Test", Some(path));
-        assert!((score - 247.5).abs() < 0.01);
+        assert!((score - 453.75).abs() < 0.01);
     }
 
     #[test]
@@ -841,6 +863,73 @@ mod tests {
         assert_eq!(results[0].title, "Settings");
         assert_eq!(results[1].title, "Safari");
         assert_eq!(results[2].title, "Slack");
+    }
+
+    #[test]
+    fn test_combined_score_with_query_frecency() {
+        let ranker = ResultRanker::with_config(BoostConfig::no_boosts());
+
+        let global_frecency = FrecencyScore::new(3, 1.0); // score = 3.0
+        let query_frecency = FrecencyScore::new(2, 1.0); // score = 2.0
+
+        // combined frecency = 3.0 + 2.0 = 5.0
+        // base = 100 + (5.0 * 35) = 275
+        let score = ranker.calculate_combined_score_with_query(
+            100.0,
+            &global_frecency,
+            &query_frecency,
+            "sh",
+            "Shortwave",
+            None,
+        );
+        assert!((score - 275.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_combined_score_without_query_frecency() {
+        let ranker = ResultRanker::with_config(BoostConfig::no_boosts());
+
+        let global_frecency = FrecencyScore::new(5, 1.0); // score = 5.0
+        let query_frecency = FrecencyScore::zero(); // score = 0.0
+
+        // combined frecency = 5.0 + 0.0 = 5.0
+        // base = 100 + (5.0 * 35) = 275
+        // Same as calculate_combined_score with global alone
+        let score_with_query = ranker.calculate_combined_score_with_query(
+            100.0,
+            &global_frecency,
+            &query_frecency,
+            "sh",
+            "Shortwave",
+            None,
+        );
+        let score_global_only =
+            ranker.calculate_combined_score(100.0, &global_frecency, "sh", "Shortwave", None);
+        assert!(
+            (score_with_query - score_global_only).abs() < 0.01,
+            "zero query frecency should match global-only score"
+        );
+    }
+
+    #[test]
+    fn test_frecency_multiplier_overcomes_match_quality() {
+        let ranker = ResultRanker::with_config(BoostConfig::no_boosts());
+
+        // App with lower match score but 5 recent launches
+        let frecency_high = FrecencyScore::new(5, 1.0); // score = 5.0
+        let frecency_zero = FrecencyScore::zero(); // score = 0.0
+
+        // Lower match score (50) + frecency: 50 + (5 * 35) = 225
+        let score_frequent =
+            ranker.calculate_combined_score(50.0, &frecency_high, "sh", "Shortwave", None);
+        // Higher match score (100) + no frecency: 100 + 0 = 100
+        let score_better_match =
+            ranker.calculate_combined_score(100.0, &frecency_zero, "sh", "Shortcuts", None);
+
+        assert!(
+            score_frequent > score_better_match,
+            "Frequently used app ({score_frequent}) should beat better match ({score_better_match})"
+        );
     }
 }
 

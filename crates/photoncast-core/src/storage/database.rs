@@ -14,9 +14,9 @@ use tokio::task;
 
 use crate::indexer::{AppBundleId, AppCategory, IndexedApp};
 
-/// Current schema version (for future migration tracking).
-#[allow(dead_code)]
-const CURRENT_SCHEMA_VERSION: i32 = 1;
+/// Current schema version.
+#[cfg(test)]
+const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 /// Database wrapper for PhotonCast storage.
 ///
@@ -138,11 +138,10 @@ impl Database {
             self.record_version(1)?;
         }
 
-        // Future migrations would be added here:
-        // if current_version < 2 {
-        //     self.migrate_v2()?;
-        //     self.record_version(2)?;
-        // }
+        if current_version < 2 {
+            self.migrate_v2()?;
+            self.record_version(2)?;
+        }
 
         Ok(())
     }
@@ -202,6 +201,34 @@ impl Database {
             ",
         )
         .context("failed to run migration v1")?;
+
+        Ok(())
+    }
+
+    /// Migration v2: Per-query frecency tracking.
+    fn migrate_v2(&self) -> Result<()> {
+        let conn = self.conn.lock();
+
+        conn.execute_batch(
+            r"
+            -- Per-query frecency: tracks which items are selected for specific query prefixes
+            CREATE TABLE IF NOT EXISTS query_frecency (
+                query_prefix TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                frequency INTEGER NOT NULL DEFAULT 1,
+                last_used_at INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (query_prefix, item_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_query_frecency_item
+            ON query_frecency(item_id);
+
+            CREATE INDEX IF NOT EXISTS idx_query_frecency_last_used
+            ON query_frecency(last_used_at);
+            ",
+        )
+        .context("failed to run migration v2")?;
 
         Ok(())
     }
@@ -345,6 +372,7 @@ impl Database {
             SELECT bundle_id, name, path, icon_path, keywords, category, last_modified
             FROM app_cache
             ORDER BY name ASC
+            LIMIT 10000
             ",
         )?;
 
@@ -655,6 +683,75 @@ impl Database {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Per-Query Frecency Operations
+    // -------------------------------------------------------------------------
+
+    /// Records a query→item selection for per-query frecency.
+    ///
+    /// Stores the association between a query prefix and the selected item.
+    /// Only tracks prefixes of length 1-4 characters.
+    pub fn record_query_selection(&self, query_prefix: &str, item_id: &str) -> Result<()> {
+        if query_prefix.is_empty() || query_prefix.len() > 4 {
+            return Ok(()); // Only track prefixes 1-4 chars
+        }
+
+        let conn = self.conn.lock();
+        let now = Utc::now().timestamp();
+
+        conn.execute(
+            r"
+            INSERT INTO query_frecency (query_prefix, item_id, frequency, last_used_at, created_at)
+            VALUES (?1, ?2, 1, ?3, ?3)
+            ON CONFLICT(query_prefix, item_id) DO UPDATE SET
+                frequency = frequency + 1,
+                last_used_at = ?3
+            ",
+            rusqlite::params![query_prefix, item_id, now],
+        )
+        .context("failed to record query selection")?;
+
+        Ok(())
+    }
+
+    /// Gets the per-query frecency data for an item given a query prefix.
+    ///
+    /// Returns `(frequency, last_used_at)` if found.
+    pub fn get_query_frecency(
+        &self,
+        query_prefix: &str,
+        item_id: &str,
+    ) -> Result<Option<(u32, i64)>> {
+        let conn = self.conn.lock();
+
+        let result = conn.query_row(
+            "SELECT frequency, last_used_at FROM query_frecency WHERE query_prefix = ?1 AND item_id = ?2",
+            rusqlite::params![query_prefix, item_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+
+        match result {
+            Ok(data) => Ok(Some(data)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e).context("failed to get query frecency"),
+        }
+    }
+
+    /// Prunes old query frecency entries (older than `max_age_days`).
+    pub fn prune_query_frecency(&self, max_age_days: i64) -> Result<usize> {
+        let conn = self.conn.lock();
+        let cutoff = Utc::now().timestamp() - (max_age_days * 86400);
+
+        let deleted = conn
+            .execute(
+                "DELETE FROM query_frecency WHERE last_used_at < ?1",
+                rusqlite::params![cutoff],
+            )
+            .context("failed to prune query frecency")?;
+
+        Ok(deleted)
+    }
+
     /// Gets the top N apps by frecency score.
     ///
     /// Frecency combines frequency (launch count) and recency (time since last launch).
@@ -788,6 +885,47 @@ mod tests {
     }
 
     #[test]
+    fn test_migrations_idempotent_on_file_backed_database() {
+        let dir = tempfile::tempdir().expect("should create temp dir");
+        let db_path = dir.path().join("photoncast.db");
+
+        let db = Database::open(&db_path).expect("should open file-backed database");
+        db.run_migrations()
+            .expect("first migration rerun should be a no-op");
+        db.run_migrations()
+            .expect("second migration rerun should be a no-op");
+
+        let version = db.schema_version().expect("should get schema version");
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_open_corrupt_database_file_returns_error() {
+        let dir = tempfile::tempdir().expect("should create temp dir");
+        let db_path = dir.path().join("corrupt.db");
+
+        std::fs::write(&db_path, b"this is not a sqlite database")
+            .expect("should write corrupt file");
+
+        let result = Database::open(&db_path);
+        assert!(result.is_err(), "opening corrupt database should fail");
+    }
+
+    #[test]
+    fn test_open_missing_database_file_creates_database() {
+        let dir = tempfile::tempdir().expect("should create temp dir");
+        let db_path = dir.path().join("nested").join("photoncast.db");
+
+        assert!(!db_path.exists(), "precondition: db should not exist yet");
+
+        let db = Database::open(&db_path).expect("opening missing database should create it");
+
+        assert!(db_path.exists(), "database file should be created");
+        let version = db.schema_version().expect("should get schema version");
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
     fn test_insert_and_get_app() {
         let db = Database::open_in_memory().expect("should open database");
         let app = create_test_app("Safari", "com.apple.Safari");
@@ -891,6 +1029,23 @@ mod tests {
 
         let all_apps = db.get_all_apps().expect("should get all apps");
         assert_eq!(all_apps.len(), 3);
+    }
+
+    #[test]
+    fn test_high_volume_insert_does_not_panic() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        let apps: Vec<IndexedApp> = (0..150)
+            .map(|i| create_test_app(&format!("App{i}"), &format!("com.example.App{i}")))
+            .collect();
+
+        let inserted = db
+            .insert_apps_batch(&apps)
+            .expect("high volume batch insert should succeed");
+        assert_eq!(inserted, apps.len());
+
+        let count = db.app_cache_count().expect("should get app cache count");
+        assert_eq!(count, apps.len());
     }
 
     #[test]
@@ -1087,5 +1242,165 @@ mod tests {
             .await
             .expect("should batch insert async");
         assert_eq!(count, 3);
+    }
+
+    // -------------------------------------------------------------------------
+    // Migration v2 & Query Frecency Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_migration_v2_creates_table() {
+        let db = Database::open_in_memory().expect("should open database");
+        let version = db.schema_version().expect("should get schema version");
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+
+        // Verify the query_frecency table exists by inserting a row
+        db.record_query_selection("sh", "com.test.app")
+            .expect("should insert into query_frecency");
+    }
+
+    #[test]
+    fn test_migration_v2_additive() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        // Insert v1 data
+        let app = create_test_app("Safari", "com.apple.Safari");
+        db.insert_app(&app).expect("should insert app");
+        db.record_app_launch("com.apple.Safari")
+            .expect("should record launch");
+
+        // Verify v1 data is still intact (migrations already ran in open_in_memory)
+        let retrieved = db
+            .get_app("com.apple.Safari")
+            .expect("should get app")
+            .expect("app should exist");
+        assert_eq!(retrieved.name, "Safari");
+
+        let usage = db
+            .get_app_usage("com.apple.Safari")
+            .expect("should get usage")
+            .expect("usage should exist");
+        assert_eq!(usage.0, 1);
+    }
+
+    #[test]
+    fn test_migration_v2_idempotent() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        // Running migrations again should not error
+        db.run_migrations()
+            .expect("migrations should be idempotent");
+
+        let version = db.schema_version().expect("should get schema version");
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_record_query_selection_insert() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        db.record_query_selection("sh", "com.test.shortwave")
+            .expect("should record");
+
+        let result = db
+            .get_query_frecency("sh", "com.test.shortwave")
+            .expect("should get")
+            .expect("should exist");
+
+        assert_eq!(result.0, 1); // frequency
+        assert!(result.1 > 0); // last_used_at
+    }
+
+    #[test]
+    fn test_record_query_selection_upsert() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        db.record_query_selection("sh", "com.test.shortwave")
+            .expect("first insert");
+        db.record_query_selection("sh", "com.test.shortwave")
+            .expect("second insert");
+
+        let result = db
+            .get_query_frecency("sh", "com.test.shortwave")
+            .expect("should get")
+            .expect("should exist");
+
+        assert_eq!(result.0, 2); // frequency incremented
+    }
+
+    #[test]
+    fn test_record_query_selection_ignores_long_prefix() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        // Prefix > 4 chars should be ignored
+        db.record_query_selection("short", "com.test.shortwave")
+            .expect("should succeed (no-op)");
+
+        let result = db
+            .get_query_frecency("short", "com.test.shortwave")
+            .expect("should get");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_record_query_selection_ignores_empty_prefix() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        db.record_query_selection("", "com.test.shortwave")
+            .expect("should succeed (no-op)");
+
+        let result = db
+            .get_query_frecency("", "com.test.shortwave")
+            .expect("should get");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_query_frecency_not_found() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        let result = db
+            .get_query_frecency("zz", "com.nonexistent")
+            .expect("should get");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_prune_query_frecency() {
+        let db = Database::open_in_memory().expect("should open database");
+
+        // Insert an entry
+        db.record_query_selection("sh", "com.test.shortwave")
+            .expect("should record");
+
+        // Prune with 0-day cutoff (everything is older than "right now")
+        // Current entries should NOT be pruned because they were just inserted
+        let deleted = db.prune_query_frecency(0).expect("should prune");
+        // With max_age_days=0, cutoff = now - 0 = now, so entries at "now" survive
+        assert_eq!(deleted, 0);
+
+        // Manually set old timestamp for testing
+        {
+            let conn = db.connection();
+            let old_ts = Utc::now().timestamp() - 86400 * 31; // 31 days ago
+            conn.execute(
+                "UPDATE query_frecency SET last_used_at = ?1",
+                rusqlite::params![old_ts],
+            )
+            .expect("should update");
+        }
+
+        // Now prune entries older than 30 days
+        let deleted = db.prune_query_frecency(30).expect("should prune");
+        assert_eq!(deleted, 1);
+
+        // Verify it's gone
+        let result = db
+            .get_query_frecency("sh", "com.test.shortwave")
+            .expect("should get");
+        assert!(result.is_none());
     }
 }

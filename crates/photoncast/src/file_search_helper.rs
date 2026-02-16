@@ -1,27 +1,18 @@
-//! Optimized file search helper with parallel processing and caching.
+//! Optimized file search helper with live-index first lookups.
 //!
 //! Performance optimizations:
 //! - Live file index with Spotlight monitoring (fastest, primary scopes)
-//! - Native Spotlight integration via SpotlightSearchService (preferred fallback)
-//! - Parallel metadata fetching with rayon (legacy fallback)
+//! - Unified file backend fallback for Spotlight/date-based lookups
 //! - Adaptive debounce based on query length
 
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::path::PathBuf;
+use std::time::Duration;
 
 use once_cell::sync::Lazy;
-use rayon::prelude::*;
 
 use photoncast_core::platform::spotlight::{FileKind, FileResult};
-use photoncast_core::search::spotlight::{
-    CustomScopeConfig, LiveFileIndex, SpotlightResult, SpotlightSearchOptions,
-    SpotlightSearchService,
-};
-
-use crate::constants::{
-    APP_EXTENSIONS, ARCHIVE_EXTENSIONS, AUDIO_EXTENSIONS, DOCUMENT_EXTENSIONS, EBOOK_EXTENSIONS,
-    IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
-};
+use photoncast_core::search::spotlight::{CustomScopeConfig, LiveFileIndex, SpotlightResult};
+use photoncast_core::search::{FileSearchBackend, FileSearchBackendOptions, FileSearchStrategy};
 
 // =============================================================================
 // Global Live File Index (thread-safe, Spotlight-monitored)
@@ -103,19 +94,13 @@ pub fn get_custom_scopes() -> Vec<CustomScopeConfig> {
 }
 
 // =============================================================================
-// Global Spotlight Search Service (thread-safe with built-in caching)
+// Global Unified File Search Backend
 // =============================================================================
 
-/// Global SpotlightSearchService instance for file searches.
-/// The service has built-in LRU caching with 30s TTL.
-/// Used as fallback when live index doesn't have results.
-static SPOTLIGHT_SERVICE: Lazy<SpotlightSearchService> = Lazy::new(|| {
-    SpotlightSearchService::with_options(SpotlightSearchOptions {
-        max_results: 100,
+/// Global unified file search backend for non-live-index lookups.
+static FILE_BACKEND: Lazy<FileSearchBackend> = Lazy::new(|| {
+    FileSearchBackend::new(FileSearchStrategy::SpotlightWithFallback {
         timeout: Duration::from_millis(500),
-        use_cache: true,
-        cache_ttl: Duration::from_secs(30),
-        ..SpotlightSearchOptions::default()
     })
 });
 
@@ -156,8 +141,7 @@ fn spotlight_result_to_file_result(result: &SpotlightResult) -> FileResult {
 
 /// Searches for files using the fastest available method:
 /// 1. Live index (instant, in-memory) - for primary scopes
-/// 2. Native Spotlight service (cached) - for broader searches
-/// 3. mdfind CLI (fallback) - if all else fails
+/// 2. Unified file backend (Spotlight with strict fallback)
 ///
 /// # Arguments
 /// * `query` - The search query (file name to search for)
@@ -188,47 +172,29 @@ pub fn spotlight_search(query: &str, max_results: usize) -> Vec<FileResult> {
             .collect();
     }
 
-    // Fallback: Live index not ready yet, use Spotlight service with filtering
-    tracing::debug!("Live index not ready, using Spotlight service fallback");
-    match SPOTLIGHT_SERVICE.search(query) {
-        Ok(results) => {
-            // CRITICAL: Apply whitelist filtering to fallback results
-            results
-                .into_iter()
-                .filter(|r| is_interesting_file(&r.path))
-                .take(max_results)
-                .map(|r| spotlight_result_to_file_result(&r))
-                .collect()
-        },
-        Err(e) => {
-            tracing::warn!("Native Spotlight search failed: {e}, falling back to mdfind");
-            let scope = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-            let mdfind_query = format!("kMDItemDisplayName == '*{}*'c", query);
-            let paths = mdfind_paths_internal(&mdfind_query, &scope, max_results * 2);
-            // Filter mdfind results too
-            let filtered_paths: Vec<PathBuf> = paths
-                .into_iter()
-                .filter(|p| is_interesting_file(p))
-                .collect();
-            let files_with_time = fetch_metadata_parallel(filtered_paths, max_results);
-            to_file_results(files_with_time)
-        },
-    }
+    tracing::debug!("Live index not ready, using unified backend fallback");
+    let options = FileSearchBackendOptions {
+        root: dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+        max_results,
+        recent_days: None,
+    };
+
+    FILE_BACKEND.search_sync(query, &options)
 }
 
-/// Fetches recent files using the live index or mdfind fallback.
+/// Fetches recent files using the live index or unified backend fallback.
 ///
 /// Priority:
-/// 1. Live index (instant, in-memory) - files from Desktop, Documents, Downloads
-/// 2. mdfind CLI (fallback) - for time-based queries if live index not ready
+/// 1. Live index (instant, in-memory) - files from indexed scopes
+/// 2. Unified backend recent-query path - for date-based lookups when index is not ready
 ///
 /// # Arguments
-/// * `_days` - Number of days to look back (used by mdfind fallback)
+/// * `days` - Number of days to look back
 /// * `max_results` - Maximum number of results to return
 ///
 /// # Returns
 /// A vector of FileResult objects sorted by modification time (newest first).
-pub fn spotlight_recent_files(_days: u32, max_results: usize) -> Vec<FileResult> {
+pub fn spotlight_recent_files(days: u32, max_results: usize) -> Vec<FileResult> {
     // Try live index first (instant, already sorted by last used)
     if LIVE_INDEX.is_ready() {
         let recent = LIVE_INDEX.get_recent_files(max_results);
@@ -241,28 +207,14 @@ pub fn spotlight_recent_files(_days: u32, max_results: usize) -> Vec<FileResult>
         }
     }
 
-    // Fallback to mdfind if live index not ready
-    tracing::debug!("Live index not ready, falling back to mdfind for recent files");
-    let mdfind_query = format!("kMDItemFSContentChangeDate >= $time.today(-{})", _days);
-    let scope = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    tracing::debug!("Live index not ready, using unified backend for recent files");
+    let options = FileSearchBackendOptions {
+        root: dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+        max_results,
+        recent_days: Some(days),
+    };
 
-    // Get paths from mdfind (fast for time-based queries)
-    // Request more results since we'll filter many out
-    let paths = mdfind_paths_internal(&mdfind_query, &scope, max_results * 10);
-
-    if paths.is_empty() {
-        return Vec::new();
-    }
-
-    // Filter to only interesting files (apply same whitelist as live index)
-    let filtered_paths: Vec<PathBuf> = paths
-        .into_iter()
-        .filter(|p| is_interesting_file(p))
-        .collect();
-
-    // Use parallel metadata fetching for performance
-    let files_with_time = fetch_metadata_parallel(filtered_paths, max_results);
-    to_file_results(files_with_time)
+    FILE_BACKEND.search_recent_sync(&options, days)
 }
 
 /// Fetches recent files of a specific type using the live index.
@@ -325,23 +277,30 @@ pub fn spotlight_recent_files_filtered(
         return filtered;
     }
 
-    // Fallback: use mdfind with type-specific query
+    // Fallback: use unified backend and apply filter in-process.
     tracing::debug!(
-        "Live index not ready, using mdfind fallback for {:?}",
+        "Live index not ready, using unified backend fallback for {:?}",
         filter
     );
-    let mdfind_query = filter.mdfind_query();
-    let scope = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    let options = FileSearchBackendOptions {
+        root: dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+        max_results: max_results * 4,
+        recent_days: Some(30),
+    };
 
-    let paths = mdfind_paths_internal(mdfind_query, &scope, max_results * 2);
-    let files_with_time = fetch_metadata_parallel(paths, max_results);
-    to_file_results(files_with_time)
+    let mut results = FILE_BACKEND.search_recent_sync(&options, 30);
+    results.retain(|file| filter.matches(file.kind, &file.path));
+    if results.len() > max_results {
+        results.truncate(max_results);
+    }
+    results
 }
 
-/// Clears the Spotlight search service cache.
+/// Clears backend-managed caches.
 #[allow(dead_code)]
 pub fn clear_spotlight_cache() {
-    SPOTLIGHT_SERVICE.clear_cache();
+    // Live index cache/state remains managed by LiveFileIndex.
+    // Backend currently performs per-search fresh execution.
 }
 
 /// Returns adaptive debounce duration based on query length.
@@ -354,141 +313,6 @@ pub fn adaptive_debounce_ms(query_len: usize) -> u64 {
         0..=2 => 150,
         3..=5 => 100,
         _ => 50,
-    }
-}
-
-/// Fetches file metadata in parallel using rayon.
-/// Returns files sorted by modification time (newest first).
-///
-/// This is significantly faster than sequential metadata fetching:
-/// - Sequential: O(n) * disk_latency
-/// - Parallel: O(n/cores) * disk_latency
-pub fn fetch_metadata_parallel(
-    paths: Vec<PathBuf>,
-    max_results: usize,
-) -> Vec<(PathBuf, SystemTime)> {
-    // Use rayon to fetch metadata in parallel
-    let mut files_with_time: Vec<(PathBuf, SystemTime)> = paths
-        .into_par_iter()
-        .filter_map(|path| {
-            // Skip hidden files
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with('.') {
-                    return None;
-                }
-            }
-            // Get metadata (this is the expensive I/O operation)
-            let metadata = std::fs::metadata(&path).ok()?;
-            let mtime = metadata.modified().ok()?;
-            Some((path, mtime))
-        })
-        .collect();
-
-    // Sort by modification time (newest first)
-    files_with_time.sort_by(|a, b| b.1.cmp(&a.1));
-
-    // Take only what we need
-    files_with_time.truncate(max_results);
-    files_with_time
-}
-
-/// Converts paths with metadata to FileResult objects.
-pub fn to_file_results(files_with_time: Vec<(PathBuf, SystemTime)>) -> Vec<FileResult> {
-    files_with_time
-        .into_iter()
-        .map(|(path, mtime)| {
-            let mut result = FileResult::from_path(path);
-            result.modified = Some(mtime);
-            result
-        })
-        .collect()
-}
-
-/// Check if a file extension is an "interesting" user file type.
-/// Only actual user files - documents, images, videos, audio. NO code files.
-fn is_interesting_extension(ext: &str) -> bool {
-    DOCUMENT_EXTENSIONS.contains(&ext)
-        || IMAGE_EXTENSIONS.contains(&ext)
-        || VIDEO_EXTENSIONS.contains(&ext)
-        || AUDIO_EXTENSIONS.contains(&ext)
-        || ARCHIVE_EXTENSIONS.contains(&ext)
-        || EBOOK_EXTENSIONS.contains(&ext)
-        || APP_EXTENSIONS.contains(&ext)
-}
-
-/// Directories to exclude from results.
-const EXCLUDED_DIRS: &[&str] = &[
-    "Library",
-    "Caches",
-    "Cache",
-    ".Trash",
-    "node_modules",
-    ".git",
-    "target",
-    "__pycache__",
-    ".venv",
-    "DerivedData",
-    "Cookies",
-    "Application Support",
-    "Containers",
-    "WebKit",
-    ".npm",
-    ".cargo",
-    ".rustup",
-];
-
-/// Checks if a file path is "interesting" (human-readable, not system junk).
-fn is_interesting_file(path: &Path) -> bool {
-    let path_str = path.to_string_lossy();
-
-    // Exclude system directories
-    for dir in EXCLUDED_DIRS {
-        if path_str.contains(&format!("/{}/", dir)) {
-            return false;
-        }
-    }
-
-    // Check filename
-    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-        // Exclude hidden files
-        if name.starts_with('.') {
-            return false;
-        }
-
-        // Check extension whitelist
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            let ext_lower = ext.to_lowercase();
-            return is_interesting_extension(&ext_lower);
-        }
-    }
-
-    false
-}
-
-// =============================================================================
-// Legacy mdfind Functions (Fallback for time-based queries)
-// =============================================================================
-
-/// Internal mdfind execution - not deprecated since it's needed for time-based queries.
-/// The SpotlightSearchService doesn't yet support date predicates natively.
-fn mdfind_paths_internal(query: &str, scope: &PathBuf, limit: usize) -> Vec<PathBuf> {
-    let output = std::process::Command::new("mdfind")
-        .arg("-onlyin")
-        .arg(scope)
-        .arg(query)
-        .output();
-
-    match output {
-        Ok(output) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            stdout
-                .lines()
-                .filter(|line| !line.is_empty())
-                .take(limit)
-                .map(PathBuf::from)
-                .collect()
-        },
-        _ => vec![],
     }
 }
 

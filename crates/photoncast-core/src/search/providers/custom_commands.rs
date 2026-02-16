@@ -3,6 +3,8 @@
 //! This module provides fuzzy search capability over user-defined custom commands,
 //! matching against command names, aliases, and keywords.
 
+use std::sync::Arc;
+
 use parking_lot::RwLock;
 
 use crate::custom_commands::{CustomCommand, CustomCommandStore, StoreError};
@@ -18,7 +20,8 @@ use crate::search::{
 pub struct CustomCommandProvider {
     store: CustomCommandStore,
     /// Cached commands (loaded once and reused).
-    cache: RwLock<Option<Vec<CustomCommand>>>,
+    /// Wrapped in `Arc` to avoid deep-cloning the entire vector on every search.
+    cache: RwLock<Option<Arc<Vec<CustomCommand>>>>,
 }
 
 impl std::fmt::Debug for CustomCommandProvider {
@@ -70,12 +73,14 @@ impl CustomCommandProvider {
     }
 
     /// Gets custom commands from cache, loading from storage if needed.
-    fn get_cached_commands(&self) -> Vec<CustomCommand> {
+    ///
+    /// Returns an `Arc`-wrapped vector to avoid deep-cloning on every search call.
+    fn get_cached_commands(&self) -> Arc<Vec<CustomCommand>> {
         // Try to read from cache first
         {
             let cache = self.cache.read();
             if let Some(ref commands) = *cache {
-                return commands.clone();
+                return Arc::clone(commands);
             }
         }
 
@@ -90,12 +95,13 @@ impl CustomCommandProvider {
             },
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to load custom commands");
-                return Vec::new();
+                return Arc::new(Vec::new());
             },
         };
 
-        // Store in cache
-        *self.cache.write() = Some(commands.clone());
+        // Store in cache and return a cheap Arc clone
+        let commands = Arc::new(commands);
+        *self.cache.write() = Some(Arc::clone(&commands));
 
         commands
     }
@@ -196,7 +202,7 @@ impl SearchProvider for CustomCommandProvider {
 
         // 1. Check for exact alias match at start of query
         // e.g., "gc commit message" -> alias "gc", arguments "commit message"
-        for command in &commands {
+        for command in commands.iter() {
             if let Some(ref alias) = command.alias {
                 let alias_lower = alias.to_lowercase();
 
@@ -233,7 +239,7 @@ impl SearchProvider for CustomCommandProvider {
         // 2. Fuzzy search on name and keywords
         let mut matcher = FuzzyMatcher::default();
 
-        for command in &commands {
+        for command in commands.iter() {
             let mut best_score: Option<(u32, Vec<usize>)> = None;
 
             // Match on name

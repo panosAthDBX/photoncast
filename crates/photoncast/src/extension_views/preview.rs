@@ -159,16 +159,12 @@ impl ExtensionPreviewPane {
             .gap(px(8.0))
             .p(px(8.0))
             .child(
-                div()
-                    .max_w_full()
-                    .overflow_hidden()
-                    .rounded(px(8.0))
-                    .child(
-                        img(path)
-                            .max_w(px(280.0))
-                            .max_h(px(400.0))
-                            .object_fit(gpui::ObjectFit::Contain),
-                    ),
+                div().max_w_full().overflow_hidden().rounded(px(8.0)).child(
+                    img(path)
+                        .max_w(px(280.0))
+                        .max_h(px(400.0))
+                        .object_fit(gpui::ObjectFit::Contain),
+                ),
             )
             .when(!alt.is_empty(), |el| {
                 el.child(

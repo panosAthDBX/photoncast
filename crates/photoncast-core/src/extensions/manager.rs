@@ -968,6 +968,10 @@ impl ExtensionManager {
             COMMAND_MATCHER.with_borrow_mut(|command_matcher| {
                 for loaded in self.loaded.values() {
                     let extension_id = loaded.manifest.extension.id.clone();
+                    if extension_id.is_empty() {
+                        continue;
+                    }
+
                     match &loaded.kind {
                         LoadedExtensionKind::InProcess(in_process) => {
                             let provider = in_process.instance.search_provider().into_option();
@@ -975,10 +979,10 @@ impl ExtensionManager {
                                 let items = provider.search(RString::from(query), max_results);
                                 for item in items {
                                     let title = item.title.into_string();
-                                    let match_indices = matcher
-                                        .score(query, &title)
-                                        .map(|(_, indices)| indices)
-                                        .unwrap_or_default();
+                                    let Some((_, match_indices)) = matcher.score(query, &title)
+                                    else {
+                                        continue;
+                                    };
 
                                     results.push(SearchResult {
                                         id: SearchResultId::new(format!(
@@ -1095,10 +1099,10 @@ impl ExtensionManager {
                             };
 
                             for item in response.items {
-                                let match_indices = matcher
-                                    .score(query, &item.title)
-                                    .map(|(_, indices)| indices)
-                                    .unwrap_or_default();
+                                let Some((_, match_indices)) = matcher.score(query, &item.title)
+                                else {
+                                    continue;
+                                };
 
                                 results.push(SearchResult {
                                     id: SearchResultId::new(format!(
@@ -1130,6 +1134,10 @@ impl ExtensionManager {
                     }
 
                     let extension_id = &record.manifest.extension.id;
+                    if extension_id.is_empty() {
+                        continue;
+                    }
+
                     let extension_name = &record.manifest.extension.name;
 
                     // Check if this extension needs permissions consent
@@ -1209,6 +1217,10 @@ impl ExtensionManager {
                     }
 
                     let extension_id = &loaded.manifest.extension.id;
+                    if extension_id.is_empty() {
+                        continue;
+                    }
+
                     let extension_name = &loaded.manifest.extension.name;
                     let needs_consent = self.check_permissions_consent(extension_id).is_some();
 

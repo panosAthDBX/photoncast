@@ -12,10 +12,10 @@ use photoncast_core::extensions::storage::{ExtensionStorageImpl, PreferenceStore
 use photoncast_core::utils::paths;
 use photoncast_extension_api::{
     Action, ActionHandler, ApplicationInfo, CommandArguments as ApiCommandArguments,
-    CommandInvocationResult, ExtensionApiError, ExtensionApiResult, ExtensionBox,
-    ExtensionContext, ExtensionHost, ExtensionHostProtocol, ExtensionRuntime,
-    ExtensionRuntimeTrait, ExtensionStorage, ExtensionView, PreferenceValues, Toast, ToastStyle,
-    ViewHandle, ViewHandleTrait,
+    CommandInvocationResult, ExtensionApiError, ExtensionApiResult, ExtensionBox, ExtensionContext,
+    ExtensionHost, ExtensionHostProtocol, ExtensionRuntime, ExtensionRuntimeTrait,
+    ExtensionStorage, ExtensionView, PreferenceValues, Toast, ToastStyle, ViewHandle,
+    ViewHandleTrait,
 };
 use photoncast_extension_ipc::messages::{
     ClipboardCopyRequest, CommandArguments as IpcCommandArguments, CommandRequest, CommandResponse,
@@ -461,10 +461,7 @@ impl ExtensionHostProtocol for IpcExtensionHost {
         let payload = ToastRequest {
             toast: toast_to_payload(toast),
         };
-        if let Err(err) = self
-            .send_request(HOST_SHOW_TOAST, payload)
-            .into_result()
-        {
+        if let Err(err) = self.send_request(HOST_SHOW_TOAST, payload).into_result() {
             return Err(err).into();
         }
         Ok(()).into()
@@ -776,4 +773,198 @@ fn map_api_result<T>(
         code: -32000,
         message: err.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use abi_stable::std_types::RResult;
+    use photoncast_extension_api::{Action, ActionHandler, ActionStyle, ExtensionApiError};
+    use photoncast_extension_ipc::methods::HOST_SHOW_HUD;
+
+    fn parse_from(args: &[&str]) -> Result<(PathBuf, PathBuf), String> {
+        let mut manifest = None;
+        let mut entry = None;
+        let mut iter = args.iter().copied();
+
+        while let Some(arg) = iter.next() {
+            match arg {
+                "--manifest" => manifest = iter.next().map(PathBuf::from),
+                "--entry" => entry = iter.next().map(PathBuf::from),
+                other => return Err(format!("Unknown argument: {other}")),
+            }
+        }
+
+        match (manifest, entry) {
+            (Some(manifest), Some(entry)) => Ok((manifest, entry)),
+            _ => Err(
+                "Usage: photoncast-extension-runner --manifest <path> --entry <path>".to_string(),
+            ),
+        }
+    }
+
+    fn make_test_storage(namespace: &str) -> ExtensionStorageImpl {
+        let db_path = std::env::temp_dir().join(format!(
+            "photoncast-ext-runner-test-{}-{}.db",
+            namespace,
+            std::process::id()
+        ));
+        ExtensionStorageImpl::new(db_path, namespace).expect("test storage should initialize")
+    }
+
+    #[test]
+    fn test_parse_args_reports_usage_when_missing_required_flags() {
+        let missing_manifest =
+            parse_from(&["--entry", "/tmp/ext.dylib"]).expect_err("missing manifest should fail");
+        assert!(missing_manifest.contains("Usage:"));
+
+        let missing_entry = parse_from(&["--manifest", "/tmp/manifest.json"])
+            .expect_err("missing entry should fail");
+        assert!(missing_entry.contains("Usage:"));
+
+        let unknown = parse_from(&["--unknown"]).expect_err("unknown flag should fail");
+        assert!(unknown.contains("Unknown argument"));
+    }
+
+    #[test]
+    fn test_map_api_result_maps_failures_to_rpc_errors() {
+        let err = ExtensionApiError::message("boom");
+        let result: photoncast_extension_api::ExtensionApiResult<()> = RResult::RErr(err);
+
+        let mapped = map_api_result(result).expect_err("api error should map to rpc error");
+        match mapped {
+            IpcError::RpcError { code, message } => {
+                assert_eq!(code, -32000);
+                assert!(message.contains("boom"));
+            },
+            other => panic!("expected RpcError, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_timeout_and_disconnect_error_shape() {
+        let timeout = IpcError::Timeout { timeout_ms: 50 };
+        assert_eq!(timeout.rpc_code(), -32000);
+        assert!(timeout.rpc_message().contains("timed out"));
+
+        let disconnected = IpcError::Disconnected;
+        assert_eq!(disconnected.rpc_code(), -32000);
+        assert!(disconnected.rpc_message().contains("connection closed"));
+    }
+
+    #[test]
+    fn test_filter_actions_removes_callback_handlers() {
+        let callback = Action {
+            id: RString::from("callback"),
+            title: RString::from("Callback"),
+            icon: ROption::RNone,
+            shortcut: ROption::RNone,
+            style: ActionStyle::Default,
+            handler: ActionHandler::Callback,
+        };
+
+        let non_callback = Action::open_url("https://example.com");
+
+        let actions = RVec::from(vec![callback, non_callback]);
+        let filtered = filter_actions(actions);
+
+        assert_eq!(filtered.len(), 1);
+        assert!(matches!(filtered[0].handler, ActionHandler::OpenUrl(_)));
+    }
+
+    #[test]
+    fn test_ipc_args_to_api_preserves_fields() {
+        let args = IpcCommandArguments {
+            query: Some("q".to_string()),
+            selection: Some("s".to_string()),
+            clipboard: Some("c".to_string()),
+            extra: Some(serde_json::json!({"k": "v"})),
+        };
+
+        let api = ipc_args_to_api(args).expect("ipc args should map");
+        assert_eq!(
+            api.query.into_option().map(|v| v.into_string()),
+            Some("q".to_string())
+        );
+        assert_eq!(
+            api.selection.into_option().map(|v| v.into_string()),
+            Some("s".to_string())
+        );
+        assert_eq!(
+            api.clipboard.into_option().map(|v| v.into_string()),
+            Some("c".to_string())
+        );
+
+        let extra_json = api
+            .extra
+            .into_option()
+            .map(|v| v.get().to_string())
+            .expect("extra should be present");
+        assert!(extra_json.contains("\"k\":\"v\""));
+    }
+
+    #[test]
+    fn test_api_args_to_ipc_roundtrip_extra_json() {
+        let raw = RawValueBox::try_from_string("{\"k\":\"v\"}".to_string())
+            .expect("valid json should build RawValueBox");
+        let args = ApiCommandArguments {
+            query: ROption::RSome(RString::from("q")),
+            selection: ROption::RNone,
+            clipboard: ROption::RNone,
+            extra: ROption::RSome(raw),
+        };
+
+        let ipc = api_args_to_ipc(ROption::RSome(args))
+            .expect("conversion should succeed")
+            .expect("args should be present");
+
+        assert_eq!(ipc.query.as_deref(), Some("q"));
+        assert_eq!(ipc.extra, Some(serde_json::json!({"k": "v"})));
+    }
+
+    #[test]
+    fn test_api_args_to_ipc_none_passthrough() {
+        let ipc = api_args_to_ipc(ROption::RNone).expect("none conversion should succeed");
+        assert!(ipc.is_none());
+    }
+
+    #[test]
+    fn test_send_request_without_connection_fails_closed() {
+        let host = IpcExtensionHost::new(
+            Arc::new(Mutex::new(None)),
+            PreferenceStoreImpl::new(Vec::new()),
+            make_test_storage("no-connection"),
+        );
+
+        let result = host
+            .send_request(
+                HOST_SHOW_HUD,
+                HudRequest {
+                    message: "hello".to_string(),
+                },
+            )
+            .into_result();
+
+        let err = result.expect_err("missing connection should fail");
+        assert!(err.to_string().contains("connection not initialized"));
+    }
+
+    #[test]
+    fn test_view_handle_send_notification_no_connection_is_noop() {
+        let handle = IpcViewHandle {
+            connection: Arc::new(Mutex::new(None)),
+            handle_id: 42,
+        };
+
+        handle.send_notification(
+            HOST_SET_LOADING,
+            SetLoadingRequest {
+                handle_id: 42,
+                loading: true,
+            },
+        );
+
+        // If this line executes, we verified no panic/crash on disconnected IPC channel.
+        assert_eq!(handle.handle_id, 42);
+    }
 }

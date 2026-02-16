@@ -114,6 +114,10 @@ pub struct SearchState {
     pub mode: SearchMode,
     /// Suggestions (recent/frequent apps shown when query is empty)
     pub suggestions: Vec<SearchResult>,
+    /// Generation counter for debounced normal-mode search.
+    pub normal_search_generation: u64,
+    /// Cancellation flag for the currently scheduled normal-mode search.
+    pub normal_search_cancel: Option<Arc<AtomicBool>>,
 }
 
 /// Window animation state
@@ -293,8 +297,11 @@ impl LauncherSharedState {
             ..Default::default()
         };
 
-        let photoncast_app = Arc::new(RwLock::new(PhotonCastApp::with_config(config)));
-        let app_launcher = Arc::new(AppLauncher::new(usage_tracker));
+        let usage_tracker = Arc::new(usage_tracker);
+        let mut app = PhotonCastApp::with_config(config);
+        app.set_usage_tracker(Arc::clone(&usage_tracker));
+        let photoncast_app = Arc::new(RwLock::new(app));
+        let app_launcher = Arc::new(AppLauncher::with_shared_tracker(usage_tracker));
         let command_executor = Arc::new(CommandExecutor::new());
         let calculator_command = Arc::new(RwLock::new(CalculatorCommand::new()));
         let calculator_runtime = Arc::clone(&shared_runtime);
@@ -452,6 +459,8 @@ impl LauncherWindow {
                 core_results: vec![],
                 mode: SearchMode::Normal,
                 suggestions: vec![],
+                normal_search_generation: 0,
+                normal_search_cancel: None,
             },
             animation: AnimationState {
                 window_state: WindowAnimationState::Hidden,

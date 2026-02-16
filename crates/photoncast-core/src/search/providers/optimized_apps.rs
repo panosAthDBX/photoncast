@@ -14,7 +14,9 @@ use crate::indexer::IndexedApp;
 use crate::search::fuzzy::FuzzyMatcher;
 use crate::search::index::{EarlyTerminationConfig, SearchIndex, UsageDataProvider};
 use crate::search::providers::SearchProvider;
+use crate::search::ranking::ResultRanker;
 use crate::search::{IconSource, ResultType, SearchAction, SearchResult, SearchResultId};
+use crate::storage::usage::UsageTracker;
 
 /// Optimized application search provider with pre-computed index.
 ///
@@ -27,6 +29,8 @@ pub struct OptimizedAppProvider {
     index: Arc<RwLock<SearchIndex>>,
     /// Early termination configuration.
     termination_config: EarlyTerminationConfig,
+    /// Optional usage tracker for per-query frecency in the `SearchProvider::search` trait path.
+    usage_tracker: Option<Arc<UsageTracker>>,
 }
 
 impl std::fmt::Debug for OptimizedAppProvider {
@@ -34,6 +38,7 @@ impl std::fmt::Debug for OptimizedAppProvider {
         f.debug_struct("OptimizedAppProvider")
             .field("app_count", &self.index.read().len())
             .field("termination_config", &self.termination_config)
+            .field("has_usage_tracker", &self.usage_tracker.is_some())
             .finish()
     }
 }
@@ -51,6 +56,7 @@ impl OptimizedAppProvider {
         Self {
             index: Arc::new(RwLock::new(SearchIndex::new())),
             termination_config: EarlyTerminationConfig::default(),
+            usage_tracker: None,
         }
     }
 
@@ -60,6 +66,7 @@ impl OptimizedAppProvider {
         Self {
             index,
             termination_config: EarlyTerminationConfig::default(),
+            usage_tracker: None,
         }
     }
 
@@ -69,7 +76,13 @@ impl OptimizedAppProvider {
         Self {
             index: Arc::new(RwLock::new(SearchIndex::new())),
             termination_config,
+            usage_tracker: None,
         }
+    }
+
+    /// Attaches a usage tracker for per-query frecency in the standard search path.
+    pub fn set_usage_tracker(&mut self, tracker: Arc<UsageTracker>) {
+        self.usage_tracker = Some(tracker);
     }
 
     /// Sets the early termination configuration.
@@ -111,6 +124,105 @@ impl OptimizedAppProvider {
     /// Rebuilds the sort order (after batch additions).
     pub fn rebuild_sort(&self) {
         self.index.write().rebuild_sort();
+    }
+}
+
+impl OptimizedAppProvider {
+    /// Search with per-query frecency boost.
+    ///
+    /// Like [`SearchProvider::search`] but additionally looks up per-query
+    /// frecency for each result and adds it to the combined score.
+    pub fn search_with_frecency(
+        &self,
+        query: &str,
+        max_results: usize,
+        usage_tracker: Option<&UsageTracker>,
+    ) -> Vec<SearchResult> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+
+        let query_lower = query.to_lowercase();
+        let index = self.index.read();
+        let mut matcher = FuzzyMatcher::default();
+
+        let termination_threshold = self.termination_config.threshold(max_results);
+        let min_quality = self.termination_config.min_quality_score;
+
+        let mut scored_results: Vec<(usize, u32, Vec<usize>)> = Vec::new();
+        let mut quality_count = 0;
+
+        for (idx, entry) in index.entries().iter().enumerate() {
+            if let Some((score, indices)) = matcher.score(&query_lower, &entry.name_lower) {
+                scored_results.push((idx, score, indices));
+
+                if score >= min_quality {
+                    quality_count += 1;
+                    if quality_count >= termination_threshold {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Sort by combined score (nucleo + global frecency + query frecency)
+        scored_results.sort_by(|a, b| {
+            let entry_a = &index.entries()[a.0];
+            let entry_b = &index.entries()[b.0];
+
+            let query_frec_a = usage_tracker
+                .and_then(|ut| {
+                    ut.get_query_frecency(query, entry_a.app.bundle_id.as_str())
+                        .ok()
+                })
+                .map_or(0.0, |f| f.score());
+            let query_frec_b = usage_tracker
+                .and_then(|ut| {
+                    ut.get_query_frecency(query, entry_b.app.bundle_id.as_str())
+                        .ok()
+                })
+                .map_or(0.0, |f| f.score());
+
+            let combined_a = (entry_a.frecency + query_frec_a)
+                .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
+            let combined_b = (entry_b.frecency + query_frec_b)
+                .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
+
+            combined_b.total_cmp(&combined_a)
+        });
+
+        scored_results
+            .into_iter()
+            .take(max_results)
+            .map(|(idx, score, match_indices)| {
+                let entry = &index.entries()[idx];
+                let app = &entry.app;
+                let bundle_id_str = app.bundle_id.as_str().to_string();
+
+                let query_frec = usage_tracker
+                    .and_then(|ut| ut.get_query_frecency(query, &bundle_id_str).ok())
+                    .map_or(0.0, |f| f.score());
+
+                SearchResult {
+                    id: SearchResultId::new(format!("app:{bundle_id_str}")),
+                    title: app.name.clone(),
+                    subtitle: app.path.display().to_string(),
+                    icon: IconSource::AppIcon {
+                        bundle_id: bundle_id_str.clone(),
+                        icon_path: app.icon_path.clone(),
+                    },
+                    result_type: ResultType::Application,
+                    score: (entry.frecency + query_frec)
+                        .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(score)),
+                    match_indices,
+                    requires_permissions: false,
+                    action: SearchAction::LaunchApp {
+                        bundle_id: bundle_id_str,
+                        path: app.path.clone(),
+                    },
+                }
+            })
+            .collect()
     }
 }
 
@@ -157,14 +269,29 @@ impl SearchProvider for OptimizedAppProvider {
             }
         }
 
-        // Sort by score descending (nucleo score + frecency boost)
+        // Sort by score descending (nucleo score + global frecency + per-query frecency)
+        let tracker = self.usage_tracker.as_deref();
         scored_results.sort_by(|a, b| {
-            let frecency_a = index.entries()[a.0].frecency;
-            let frecency_b = index.entries()[b.0].frecency;
+            let entry_a = &index.entries()[a.0];
+            let entry_b = &index.entries()[b.0];
 
-            // Combine match score with frecency
-            let combined_a = frecency_a.mul_add(10.0, f64::from(a.1));
-            let combined_b = frecency_b.mul_add(10.0, f64::from(b.1));
+            let query_frec_a = tracker
+                .and_then(|ut| {
+                    ut.get_query_frecency(query, entry_a.app.bundle_id.as_str())
+                        .ok()
+                })
+                .map_or(0.0, |f| f.score());
+            let query_frec_b = tracker
+                .and_then(|ut| {
+                    ut.get_query_frecency(query, entry_b.app.bundle_id.as_str())
+                        .ok()
+                })
+                .map_or(0.0, |f| f.score());
+
+            let combined_a = (entry_a.frecency + query_frec_a)
+                .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
+            let combined_b = (entry_b.frecency + query_frec_b)
+                .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
 
             combined_b.total_cmp(&combined_a)
         });
@@ -176,20 +303,27 @@ impl SearchProvider for OptimizedAppProvider {
             .map(|(idx, score, match_indices)| {
                 let entry = &index.entries()[idx];
                 let app = &entry.app;
+                let bundle_id_str = app.bundle_id.as_str().to_string();
+
+                let query_frec = tracker
+                    .and_then(|ut| ut.get_query_frecency(query, &bundle_id_str).ok())
+                    .map_or(0.0, |f| f.score());
+
                 SearchResult {
-                    id: SearchResultId::new(format!("app:{}", app.bundle_id)),
+                    id: SearchResultId::new(format!("app:{bundle_id_str}")),
                     title: app.name.clone(),
                     subtitle: app.path.display().to_string(),
                     icon: IconSource::AppIcon {
-                        bundle_id: app.bundle_id.as_str().to_string(),
+                        bundle_id: bundle_id_str.clone(),
                         icon_path: app.icon_path.clone(),
                     },
                     result_type: ResultType::Application,
-                    score: entry.frecency.mul_add(10.0, f64::from(score)),
+                    score: (entry.frecency + query_frec)
+                        .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(score)),
                     match_indices,
                     requires_permissions: false,
                     action: SearchAction::LaunchApp {
-                        bundle_id: app.bundle_id.as_str().to_string(),
+                        bundle_id: bundle_id_str,
                         path: app.path.clone(),
                     },
                 }
@@ -417,5 +551,80 @@ mod tests {
         let results = provider.search("saf", 10);
         assert!(!results.is_empty());
         assert!(!results[0].match_indices.is_empty());
+    }
+
+    #[test]
+    fn test_optimized_apps_uses_ranking_constant() {
+        // Verify that the provider's scoring uses ResultRanker::FRECENCY_MULTIPLIER
+        let provider = OptimizedAppProvider::new();
+        let apps = [create_test_app("App A", "com.test.a")];
+
+        let usage = TestUsageData {
+            records: vec![(
+                "com.test.a".to_string(),
+                UsageRecord {
+                    launch_count: 10,
+                    last_launched: Utc::now(),
+                },
+            )],
+        };
+
+        provider.build_index_with_usage(&apps, &usage);
+
+        let results = provider.search("app", 10);
+        assert!(!results.is_empty());
+
+        // The score should incorporate the frecency multiplier (35.0, not 10.0)
+        // frecency > 0, so score should be > raw match score + 35*frecency
+        let match_score_only = {
+            let provider2 = OptimizedAppProvider::new();
+            provider2.build_index(&apps);
+            let r = provider2.search("app", 10);
+            r[0].score
+        };
+
+        assert!(
+            results[0].score > match_score_only,
+            "Score with frecency ({}) should exceed match-only score ({})",
+            results[0].score,
+            match_score_only
+        );
+    }
+
+    #[test]
+    fn test_search_with_frecency_boosts_selected_app() {
+        use crate::storage::Database;
+
+        let db = Database::open_in_memory().expect("should open database");
+        let tracker = UsageTracker::new(db);
+
+        let provider = OptimizedAppProvider::new();
+        provider.build_index(&[
+            create_test_app("Shortcuts", "com.apple.Shortcuts"),
+            create_test_app("Shortwave", "com.test.Shortwave"),
+        ]);
+
+        // Record "sh" → "Shortwave" multiple times
+        for _ in 0..5 {
+            tracker
+                .record_query_selection("sh", "com.test.Shortwave")
+                .expect("should record");
+        }
+
+        // Search with query frecency
+        let results = provider.search_with_frecency("sh", 10, Some(&tracker));
+        assert!(!results.is_empty());
+
+        // Shortwave should be boosted over Shortcuts due to per-query frecency
+        let shortwave_idx = results.iter().position(|r| r.title == "Shortwave");
+        let shortcuts_idx = results.iter().position(|r| r.title == "Shortcuts");
+        assert!(
+            shortwave_idx.is_some() && shortcuts_idx.is_some(),
+            "Both apps should appear"
+        );
+        assert!(
+            shortwave_idx.unwrap() < shortcuts_idx.unwrap(),
+            "Shortwave should rank above Shortcuts due to query frecency"
+        );
     }
 }

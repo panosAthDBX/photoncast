@@ -8,9 +8,9 @@
 //!
 //! For detailed tests, see the individual test modules in tests/integration/.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::io::Write;
 use tempfile::TempDir;
 
 // =============================================================================
@@ -44,10 +44,10 @@ mod dock_visibility_tests {
     }
 
     fn read_lsui_element(plist_path: &Path) -> Result<bool, String> {
-        let content = std::fs::read_to_string(plist_path)
-            .map_err(|e| format!("Failed to read: {}", e))?;
-        let value: plist::Value = plist::from_bytes(content.as_bytes())
-            .map_err(|e| format!("Failed to parse: {}", e))?;
+        let content =
+            std::fs::read_to_string(plist_path).map_err(|e| format!("Failed to read: {}", e))?;
+        let value: plist::Value =
+            plist::from_bytes(content.as_bytes()).map_err(|e| format!("Failed to parse: {}", e))?;
         if let Some(dict) = value.as_dictionary() {
             match dict.get("LSUIElement") {
                 Some(plist::Value::Boolean(hidden)) => Ok(!hidden),
@@ -109,8 +109,7 @@ mod dock_visibility_tests {
 
 mod update_tests {
     use photoncast_core::platform::updates::{
-        AvailableUpdate, UpdateError, UpdateManager, UpdateStatus,
-        DEFAULT_FEED_URL,
+        AvailableUpdate, UpdateError, UpdateManager, UpdateStatus, DEFAULT_FEED_URL,
     };
 
     #[tokio::test]
@@ -178,7 +177,7 @@ mod update_tests {
     fn test_update_error_display() {
         let error = UpdateError::NoUpdateAvailable;
         assert!(error.to_string().contains("No update"));
-        
+
         let error = UpdateError::InvalidFeedUrl("bad".to_string());
         assert!(error.to_string().contains("bad"));
     }
@@ -207,26 +206,35 @@ mod menu_bar_tests {
     #[test]
     fn test_click_behavior_mapping() {
         #[derive(PartialEq, Debug)]
-        enum Action { ToggleLauncher, ShowMenu }
-        
+        enum Action {
+            ToggleLauncher,
+            ShowMenu,
+        }
+
         let left_click_action = Action::ToggleLauncher;
         let right_click_action = Action::ShowMenu;
-        
+
         assert_eq!(left_click_action, Action::ToggleLauncher);
         assert_eq!(right_click_action, Action::ShowMenu);
     }
 
     #[test]
     fn test_menu_bar_state() {
-        struct State { visible: bool, launcher_open: bool }
-        
-        let mut state = State { visible: true, launcher_open: false };
+        struct State {
+            visible: bool,
+            launcher_open: bool,
+        }
+
+        let mut state = State {
+            visible: true,
+            launcher_open: false,
+        };
         assert!(state.visible);
-        
+
         // Toggle launcher
         state.launcher_open = !state.launcher_open;
         assert!(state.launcher_open);
-        
+
         state.launcher_open = !state.launcher_open;
         assert!(!state.launcher_open);
     }
@@ -248,7 +256,11 @@ mod signing_tests {
     fn run_cmd(cmd: &str, args: &[&str]) -> (bool, String) {
         let output = Command::new(cmd).args(args).output();
         match output {
-            Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr)),
+            Ok(o) => (
+                o.status.success(),
+                String::from_utf8_lossy(&o.stdout).to_string()
+                    + &String::from_utf8_lossy(&o.stderr),
+            ),
             Err(e) => (false, e.to_string()),
         }
     }
@@ -264,9 +276,14 @@ mod signing_tests {
     #[ignore = "requires signed app bundle"]
     fn test_codesign_verify() {
         let app_path = get_app_path();
-        if !app_path.exists() { return; }
-        
-        let (success, output) = run_cmd("codesign", &["--verify", "--verbose", app_path.to_str().unwrap()]);
+        if !app_path.exists() {
+            return;
+        }
+
+        let (success, output) = run_cmd(
+            "codesign",
+            &["--verify", "--verbose", app_path.to_str().unwrap()],
+        );
         assert!(success, "codesign verify failed: {}", output);
     }
 
@@ -274,19 +291,34 @@ mod signing_tests {
     #[ignore = "requires signed and notarized app"]
     fn test_spctl_accepts_app() {
         let app_path = get_app_path();
-        if !app_path.exists() { return; }
-        
+        if !app_path.exists() {
+            return;
+        }
+
         let (_, output) = run_cmd("spctl", &["-a", "-v", app_path.to_str().unwrap()]);
-        assert!(output.contains("accepted"), "spctl should accept app: {}", output);
+        assert!(
+            output.contains("accepted"),
+            "spctl should accept app: {}",
+            output
+        );
     }
 
     #[test]
     #[ignore = "requires notarized app"]
     fn test_stapler_validate() {
         let app_path = get_app_path();
-        if !app_path.exists() { return; }
-        
-        let (success, output) = run_cmd("xcrun", &["stapler", "validate", app_path.to_str().unwrap()]);
-        assert!(success || output.contains("worked"), "stapler validate failed: {}", output);
+        if !app_path.exists() {
+            return;
+        }
+
+        let (success, output) = run_cmd(
+            "xcrun",
+            &["stapler", "validate", app_path.to_str().unwrap()],
+        );
+        assert!(
+            success || output.contains("worked"),
+            "stapler validate failed: {}",
+            output
+        );
     }
 }

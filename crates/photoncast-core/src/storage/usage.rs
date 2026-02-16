@@ -123,6 +123,72 @@ impl UsageTracker {
     }
 
     // -------------------------------------------------------------------------
+    // Per-Query Frecency
+    // -------------------------------------------------------------------------
+
+    /// Records a query prefix→item selection for per-query frecency.
+    ///
+    /// Extracts prefixes of length 1 through `min(4, query.len())` and records
+    /// each one as a separate association.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any database operation fails.
+    pub fn record_query_selection(&self, query: &str, item_id: &str) -> Result<()> {
+        let query_lower = query.to_lowercase();
+        let max_prefix_len = query_lower.len().min(4);
+
+        for len in 1..=max_prefix_len {
+            // Ensure we split on char boundaries
+            if let Some(prefix) = query_lower.get(..len) {
+                self.db.record_query_selection(prefix, item_id)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Records a query prefix→item selection asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub async fn record_query_selection_async(&self, query: String, item_id: String) -> Result<()> {
+        let db = self.db.clone();
+        task::spawn_blocking(move || {
+            let tracker = UsageTracker::new(db);
+            tracker.record_query_selection(&query, &item_id)
+        })
+        .await?
+    }
+
+    /// Gets the per-query frecency score for an item.
+    ///
+    /// Looks up the query prefix (truncated to 4 chars max) and returns
+    /// a [`FrecencyScore`] using the same 72-hour half-life.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub fn get_query_frecency(&self, query: &str, item_id: &str) -> Result<FrecencyScore> {
+        let query_lower = query.to_lowercase();
+        let prefix_len = query_lower.len().min(4);
+        let Some(prefix) = query_lower.get(..prefix_len) else {
+            return Ok(FrecencyScore::zero());
+        };
+        if prefix.is_empty() {
+            return Ok(FrecencyScore::zero());
+        }
+
+        match self.db.get_query_frecency(prefix, item_id)? {
+            Some((frequency, last_used_ts)) => {
+                let last_used = timestamp_to_system_time(last_used_ts);
+                Ok(FrecencyScore::calculate(frequency, last_used))
+            },
+            None => Ok(FrecencyScore::zero()),
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
 
@@ -476,5 +542,101 @@ mod tests {
         // Combined score should be approximately frequency * recency
         let diff = f64::from(frecency.frequency).mul_add(-frecency.recency, frecency.score());
         assert!(diff.abs() < 0.1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-Query Frecency Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_usage_tracker_record_query_selection() {
+        let tracker = create_tracker();
+
+        // "sh" should record prefixes: "s", "sh"
+        tracker
+            .record_query_selection("sh", "com.test.shortwave")
+            .expect("should record");
+
+        // Verify both prefixes were recorded
+        let db = tracker.database();
+        let prefix_s = db
+            .get_query_frecency("s", "com.test.shortwave")
+            .expect("should get");
+        assert!(prefix_s.is_some());
+
+        let prefix_sh = db
+            .get_query_frecency("sh", "com.test.shortwave")
+            .expect("should get");
+        assert!(prefix_sh.is_some());
+    }
+
+    #[test]
+    fn test_usage_tracker_query_prefix_truncation() {
+        let tracker = create_tracker();
+
+        // "shortwave" (9 chars) should only store prefixes 1-4: "s", "sh", "sho", "shor"
+        tracker
+            .record_query_selection("shortwave", "com.test.shortwave")
+            .expect("should record");
+
+        let db = tracker.database();
+
+        // Prefixes 1-4 should exist
+        for prefix in &["s", "sh", "sho", "shor"] {
+            let result = db
+                .get_query_frecency(prefix, "com.test.shortwave")
+                .expect("should get");
+            assert!(
+                result.is_some(),
+                "prefix '{prefix}' should have been recorded"
+            );
+        }
+
+        // Prefix 5+ should NOT exist (DB rejects >4 char prefixes)
+        let result = db
+            .get_query_frecency("short", "com.test.shortwave")
+            .expect("should get");
+        assert!(result.is_none(), "prefix 'short' should NOT be recorded");
+    }
+
+    #[test]
+    fn test_usage_tracker_get_query_frecency() {
+        let tracker = create_tracker();
+
+        tracker
+            .record_query_selection("sh", "com.test.shortwave")
+            .expect("should record");
+
+        let frecency = tracker
+            .get_query_frecency("sh", "com.test.shortwave")
+            .expect("should get");
+
+        assert_eq!(frecency.frequency, 1);
+        assert!(frecency.score() > 0.0);
+        assert!(frecency.recency > 0.9);
+    }
+
+    #[test]
+    fn test_usage_tracker_get_query_frecency_empty() {
+        let tracker = create_tracker();
+
+        let frecency = tracker
+            .get_query_frecency("zz", "com.nonexistent")
+            .expect("should get");
+
+        assert_eq!(frecency.frequency, 0);
+        assert!(frecency.score().abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_usage_tracker_get_query_frecency_empty_query() {
+        let tracker = create_tracker();
+
+        let frecency = tracker
+            .get_query_frecency("", "com.test.shortwave")
+            .expect("should get");
+
+        assert_eq!(frecency.frequency, 0);
+        assert!(frecency.score().abs() < f64::EPSILON);
     }
 }

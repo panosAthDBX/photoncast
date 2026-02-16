@@ -264,8 +264,13 @@ fn main() {
     // Create a single shared Tokio runtime for the entire application.
     // All async work (clipboard, quicklinks, timers, etc.) uses this runtime
     // instead of creating separate runtimes per subsystem.
-    let shared_runtime =
-        Arc::new(tokio::runtime::Runtime::new().expect("Failed to create shared Tokio runtime"));
+    let shared_runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => Arc::new(runtime),
+        Err(err) => {
+            error!("Failed to create shared Tokio runtime: {}", err);
+            return;
+        },
+    };
 
     // Initialize clipboard subsystem (storage + background monitor)
     let clipboard_state = init_clipboard(shared_runtime.handle());
@@ -326,17 +331,27 @@ fn main() {
         // Spawn a task to listen for app events (hotkey, menu bar)
         let clipboard_state_for_events = clipboard_for_window;
         cx.spawn(|mut cx| async move {
-            let quicklinks_storage = photoncast_quicklinks::QuickLinksStorage::open(
+            let quicklinks_storage = match photoncast_quicklinks::QuickLinksStorage::open(
                 photoncast_core::utils::paths::data_dir().join("quicklinks.db"),
-            )
-            .unwrap_or_else(|e| {
-                error!(
-                    "Failed to open quick links storage, falling back to in-memory: {}",
-                    e
-                );
-                photoncast_quicklinks::QuickLinksStorage::open_in_memory()
-                    .expect("failed to open in-memory quick links storage")
-            });
+            ) {
+                Ok(storage) => storage,
+                Err(err) => {
+                    error!(
+                        "Failed to open quick links storage, falling back to in-memory: {}",
+                        err
+                    );
+                    match photoncast_quicklinks::QuickLinksStorage::open_in_memory() {
+                        Ok(storage) => storage,
+                        Err(in_memory_err) => {
+                            error!(
+                                "Failed to open in-memory quick links storage: {}",
+                                in_memory_err
+                            );
+                            return;
+                        },
+                    }
+                },
+            };
 
             // Populate bundled quicklinks on first use
             if let Err(e) = quicklinks_storage.populate_bundled_if_empty() {

@@ -828,87 +828,95 @@ impl QuickLinksStorage {
     ///
     /// Conflicts are handled by updating existing links with matching URLs.
     pub async fn import_from_toml(&self, toml: QuickLinksToml) -> Result<usize> {
-        let mut imported = 0;
-
-        for toml_link in toml.links {
-            let link: QuickLink = toml_link.into();
-
-            // Check if link with same URL already exists
-            let existing = self.find_by_url(&link.link).await?;
-
-            if let Some(mut existing_link) = existing {
-                // Update existing link
-                existing_link.name = link.name;
-                existing_link.keywords = link.keywords;
-                existing_link.tags = link.tags;
-                existing_link.icon = link.icon;
-                existing_link.alias = link.alias;
-                existing_link.hotkey = link.hotkey;
-                existing_link.open_with = link.open_with;
-                self.update(&existing_link).await?;
-            } else {
-                // Create new link
-                self.store(&link).await?;
-            }
-
-            imported += 1;
-        }
-
-        Ok(imported)
-    }
-
-    /// Finds a link by URL.
-    async fn find_by_url(&self, url: &str) -> Result<Option<QuickLink>> {
-        let url = url.to_string();
         let storage = self.clone();
 
         Self::run_blocking(move || {
-            let result = storage.conn.lock().query_row(
-                "SELECT id, title, url, keywords, tags, icon_type, icon_value, open_with, alias, hotkey, created_at, accessed_at, access_count
-                 FROM quick_links WHERE url = ?1",
-                params![url],
-                |row| {
-                    let keywords_json: String = row.get(3)?;
-                    let tags_json: String = row.get(4)?;
-                    let keywords: Vec<String> =
-                        serde_json::from_str(&keywords_json).unwrap_or_default();
-                    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let conn = storage.conn.lock();
+            let tx = conn.unchecked_transaction()?;
 
-                    let icon_type: String = row
-                        .get::<_, Option<String>>(5)?
-                        .unwrap_or_else(|| "default".to_string());
-                    let icon_value: Option<String> = row.get(6)?;
-                    let icon = Self::db_to_icon(&icon_type, icon_value.as_deref());
+            let mut imported = 0;
 
-                    let open_with: Option<String> = row.get(7)?;
-                    let alias: Option<String> = row.get(8)?;
-                    let hotkey: Option<String> = row.get(9)?;
+            for toml_link in toml.links {
+                let link: QuickLink = toml_link.into();
 
-                    let created_at: i64 = row.get(10)?;
-                    let accessed_at: Option<i64> = row.get(11)?;
+                let keywords_json =
+                    serde_json::to_string(&link.keywords).context("failed to serialize keywords")?;
+                let tags_json =
+                    serde_json::to_string(&link.tags).context("failed to serialize tags")?;
+                let (icon_type, icon_value) = Self::icon_to_db(&link.icon);
 
-                    Ok(QuickLink {
-                        id: QuickLinkId::from(row.get::<_, i64>(0)?),
-                        name: row.get(1)?,
-                        link: row.get(2)?,
-                        open_with,
-                        icon,
-                        alias,
-                        hotkey,
-                        keywords,
-                        tags,
-                        created_at: DateTime::from_timestamp(created_at, 0).unwrap_or_else(Utc::now),
-                        accessed_at: accessed_at.and_then(|t| DateTime::from_timestamp(t, 0)),
-                        access_count: row.get(12)?,
-                    })
-                },
-            );
+                let existing_id = tx.query_row(
+                    "SELECT id FROM quick_links WHERE url = ?1",
+                    params![&link.link],
+                    |row| row.get::<_, i64>(0),
+                );
 
-            match result {
-                Ok(link) => Ok(Some(link)),
-                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                Err(e) => Err(e.into()),
+                match existing_id {
+                    Ok(id_num) => {
+                        tx.execute(
+                            "UPDATE quick_links SET title = ?1, keywords = ?2, tags = ?3, icon_type = ?4, icon_value = ?5, open_with = ?6, alias = ?7, hotkey = ?8
+                             WHERE id = ?9",
+                            params![
+                                &link.name,
+                                &keywords_json,
+                                &tags_json,
+                                &icon_type,
+                                &icon_value,
+                                &link.open_with,
+                                &link.alias,
+                                &link.hotkey,
+                                id_num,
+                            ],
+                        )?;
+
+                        let alias_str = link.alias.as_deref().unwrap_or("");
+                        let fts_keywords = format!("{keywords_json} {alias_str}");
+                        let _ =
+                            tx.execute("DELETE FROM quicklinks_fts WHERE rowid = ?1", params![id_num]);
+                        let _ = tx.execute(
+                            "INSERT INTO quicklinks_fts(rowid, title, url, keywords) VALUES (?1, ?2, ?3, ?4)",
+                            params![id_num, &link.name, &link.link, &fts_keywords],
+                        );
+                    },
+                    Err(rusqlite::Error::QueryReturnedNoRows) => {
+                        tx.execute(
+                            "INSERT INTO quick_links (title, url, keywords, tags, icon_path, favicon_path, icon_type, icon_value, open_with, alias, hotkey, created_at, accessed_at, access_count)
+                             VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                            params![
+                                &link.name,
+                                &link.link,
+                                &keywords_json,
+                                &tags_json,
+                                &icon_type,
+                                &icon_value,
+                                &link.open_with,
+                                &link.alias,
+                                &link.hotkey,
+                                link.created_at.timestamp(),
+                                link.accessed_at.map(|t| t.timestamp()),
+                                link.access_count,
+                            ],
+                        )?;
+
+                        let id = tx.last_insert_rowid();
+
+                        let alias_str = link.alias.as_deref().unwrap_or("");
+                        let fts_keywords = format!("{keywords_json} {alias_str}");
+                        let _ = tx.execute(
+                            "INSERT INTO quicklinks_fts(rowid, title, url, keywords) VALUES (?1, ?2, ?3, ?4)",
+                            params![id, &link.name, &link.link, &fts_keywords],
+                        );
+                    },
+                    Err(e) => return Err(e.into()),
+                }
+
+                imported += 1;
             }
+
+            tx.commit()?;
+            drop(conn);
+
+            Ok(imported)
         })
         .await
     }
@@ -1016,6 +1024,25 @@ mod tests {
 
         // Search by alias
         let results = storage.search("gh").await.unwrap();
+        assert!(!results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_storage_open_with_temp_db_and_roundtrip_search() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("quicklinks.db");
+
+        let storage = QuickLinksStorage::open(&db_path).unwrap();
+        assert!(db_path.exists());
+
+        let link = QuickLink::new("Docs", "https://docs.rs").with_alias("docs");
+        let id = storage.store(&link).await.unwrap();
+
+        let loaded = storage.get(&id).await.unwrap().expect("link should exist");
+        assert_eq!(loaded.name, "Docs");
+        assert_eq!(loaded.link, "https://docs.rs");
+
+        let results = storage.search("docs").await.unwrap();
         assert!(!results.is_empty());
     }
 

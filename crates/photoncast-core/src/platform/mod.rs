@@ -21,6 +21,10 @@ pub use accessibility::{
     open_accessibility_settings, request_accessibility_permission, PermissionPoller,
     PermissionStatus,
 };
+pub use dock_visibility::{
+    get_dock_visibility, set_dock_visibility, toggle_dock_visibility, DockVisibilityError,
+    DockVisibilityManager,
+};
 #[cfg(target_os = "macos")]
 pub use file_actions::{
     compress, copy_file_to_clipboard, delete_permanently, duplicate_file, get_apps_for_file,
@@ -50,11 +54,7 @@ pub use spotlight::{
     FileKind, FileResult, SpotlightError, SpotlightProvider, SpotlightQuery, DEFAULT_MAX_RESULTS,
     DEFAULT_TIMEOUT_MS,
 };
-pub use dock_visibility::{
-    get_dock_visibility, set_dock_visibility, toggle_dock_visibility, DockVisibilityError,
-    DockVisibilityManager,
-};
 pub use updates::{
-    AvailableUpdate, UpdateConfig, UpdateError, UpdateManager, UpdateStatus, DEFAULT_CHECK_INTERVAL,
-    DEFAULT_FEED_URL,
+    AvailableUpdate, UpdateConfig, UpdateError, UpdateManager, UpdateStatus,
+    DEFAULT_CHECK_INTERVAL, DEFAULT_FEED_URL,
 };

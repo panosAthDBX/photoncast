@@ -27,8 +27,8 @@ pub fn get_running_apps() -> Result<Vec<RunningApp>> {
     for i in 0..count {
         let app = apps.objectAtIndex(i);
 
-        #[allow(clippy::cast_sign_loss)]
-        let pid = app.processIdentifier() as u32;
+        let raw_pid = app.processIdentifier();
+        let pid = u32::try_from(raw_pid).unwrap_or(0);
 
         let name = app.localizedName().map_or_else(
             || format!("Process {}", pid),
@@ -89,8 +89,8 @@ pub fn get_running_apps_detailed() -> Result<Vec<RunningApplication>> {
         };
         let bundle_id = bundle_id_ns.to_string();
 
-        #[allow(clippy::cast_sign_loss)]
-        let pid = app.processIdentifier() as u32;
+        let raw_pid = app.processIdentifier();
+        let pid = u32::try_from(raw_pid).unwrap_or(0);
 
         // Get is_hidden directly from NSRunningApplication
         let is_hidden = app.isHidden();
@@ -99,8 +99,7 @@ pub fn get_running_apps_detailed() -> Result<Vec<RunningApplication>> {
         let launch_time = get_app_launch_time(&app);
 
         // Check if app is responding (more expensive, uses Apple Events)
-        #[allow(clippy::cast_possible_wrap)]
-        let is_responding = is_app_responding(pid as i32);
+        let is_responding = is_app_responding(raw_pid);
 
         result.push(RunningApplication {
             pid,
@@ -178,8 +177,8 @@ pub fn get_frontmost_app_bundle_id() -> Option<String> {
 pub fn quit_app(pid: u32) -> Result<()> {
     tracing::info!("Sending quit request to PID {}", pid);
 
-    #[allow(clippy::cast_possible_wrap)]
-    let pid_i32 = pid as i32;
+    let pid_i32 = i32::try_from(pid)
+        .map_err(|_| AppError::Process(format!("PID {} exceeds i32 range", pid)))?;
 
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32);
 
@@ -213,8 +212,8 @@ pub fn quit_app(pid: u32) -> Result<()> {
         use nix::sys::signal::{kill, Signal};
         use nix::unistd::Pid;
 
-        #[allow(clippy::cast_possible_wrap)]
-        let pid_i32 = pid as i32;
+        let pid_i32 = i32::try_from(pid)
+            .map_err(|_| AppError::Process(format!("PID {} exceeds i32 range", pid)))?;
 
         kill(Pid::from_raw(pid_i32), Signal::SIGTERM)
             .map_err(|e| AppError::Process(format!("Failed to send SIGTERM: {}", e)))?;
@@ -239,8 +238,8 @@ pub fn quit_app(pid: u32) -> Result<()> {
 pub fn force_quit_app(pid: u32) -> Result<()> {
     tracing::info!("Force quitting PID {}", pid);
 
-    #[allow(clippy::cast_possible_wrap)]
-    let pid_i32 = pid as i32;
+    let pid_i32 = i32::try_from(pid)
+        .map_err(|_| AppError::Process(format!("PID {} exceeds i32 range", pid)))?;
 
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32);
 
@@ -276,8 +275,8 @@ pub fn force_quit_app(pid: u32) -> Result<()> {
 /// `force_quit_app_action` to avoid code duplication.
 #[cfg(unix)]
 fn send_sigkill(pid: u32) -> Result<()> {
-    #[allow(clippy::cast_possible_wrap)]
-    let pid_i32 = pid as i32;
+    let pid_i32 = i32::try_from(pid)
+        .map_err(|_| AppError::Process(format!("PID {} exceeds i32 range", pid)))?;
     send_sigkill_action(pid_i32).map_err(|e| AppError::Process(e.to_string()))
 }
 
@@ -595,10 +594,10 @@ pub fn should_confirm_force_quit(pid: i32) -> bool {
     true
 }
 
-/// Quits an application by its bundle identifier.
+/// Quits an application by its bundle identifier (fire-and-forget).
 ///
-/// Finds the running application with the given bundle ID and attempts
-/// a graceful quit with timeout.
+/// Finds the running application with the given bundle ID and sends a terminate
+/// signal. Returns immediately without waiting for the app to actually quit.
 ///
 /// # Arguments
 ///
@@ -606,12 +605,12 @@ pub fn should_confirm_force_quit(pid: i32) -> bool {
 ///
 /// # Returns
 ///
-/// * `Ok(true)` - The app quit successfully.
-/// * `Ok(false)` - The quit timed out.
+/// * `Ok(true)` - The terminate signal was sent successfully.
 /// * `Err(AppNotRunning)` - No running app with that bundle ID.
+/// * `Err(OperationFailed)` - Failed to send terminate signal.
 #[cfg(target_os = "macos")]
 pub fn quit_app_by_bundle_id(bundle_id: &str) -> ActionResult<bool> {
-    tracing::info!("Attempting to quit app with bundle ID: {}", bundle_id);
+    tracing::info!("Sending fire-and-forget quit to bundle ID: {}", bundle_id);
 
     let workspace = NSWorkspace::sharedWorkspace();
     let apps = workspace.runningApplications();
@@ -627,7 +626,20 @@ pub fn quit_app_by_bundle_id(bundle_id: &str) -> ActionResult<bool> {
             if app_bundle_id_str.to_lowercase() == bundle_id_lower {
                 let pid = app.processIdentifier();
                 tracing::debug!("Found running app '{}' with PID {}", bundle_id, pid);
-                return quit_app_with_timeout(pid);
+
+                // Send terminate and return immediately — no polling loop
+                let success = app.terminate();
+                if success {
+                    tracing::info!("Terminate signal sent to '{}' (PID {})", bundle_id, pid);
+                    return Ok(true);
+                }
+                return Err(ActionError::OperationFailed {
+                    operation: "quit".to_string(),
+                    reason: format!(
+                        "Failed to send terminate to PID {} - app may not support graceful quit",
+                        pid
+                    ),
+                });
             }
         }
     }
@@ -729,8 +741,7 @@ mod tests {
     #[test]
     fn test_is_app_responding() {
         // Test with current process PID
-        #[allow(clippy::cast_possible_wrap)]
-        let pid = std::process::id() as i32;
+        let pid = i32::try_from(std::process::id()).unwrap_or(0);
         let result = is_app_responding(pid);
         // On macOS, our own process may not be in NSRunningApplication
         // On other platforms, it should work
@@ -762,8 +773,7 @@ mod tests {
         // For the current process, behavior depends on platform:
         // - On macOS: test process may not be in NSRunningApplication
         // - On non-macOS: will check process existence via signal 0
-        #[allow(clippy::cast_possible_wrap)]
-        let current_pid = std::process::id() as i32;
+        let current_pid = i32::try_from(std::process::id()).unwrap_or(0);
         let result = should_confirm_force_quit(current_pid);
         // Just verify it returns a boolean without panicking
         println!("should_confirm_force_quit for current process: {}", result);
@@ -830,14 +840,27 @@ mod tests {
             .find(|app| app.bundle_id.as_deref() == Some("com.apple.finder"))
             .expect("Finder should be running");
 
-        #[allow(clippy::cast_possible_wrap)]
-        let pid = finder.pid as i32;
+        let pid = i32::try_from(finder.pid).expect("Finder PID should fit in i32");
 
-        // Finder should always be responding
+        // Finder responsiveness can be transiently delayed on CI hosts, so retry briefly.
+        let mut is_responsive = false;
+        let attempts = 5;
+
+        for attempt in 1..=attempts {
+            if is_app_responding(pid) {
+                is_responsive = true;
+                break;
+            }
+
+            if attempt < attempts {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+        }
+
         assert!(
-            is_app_responding(pid),
-            "Finder (PID {}) should be responding",
-            pid
+            is_responsive,
+            "Finder (PID {}) should be responding after {} attempts",
+            pid, attempts
         );
     }
 
@@ -908,5 +931,108 @@ mod tests {
             finder.launch_time <= chrono::Utc::now(),
             "Finder launch time should be in the past"
         );
+    }
+
+    // ========================================================================
+    // Phase 4: Fire-and-Forget Quit Tests
+    // ========================================================================
+
+    /// Test that quit_app_by_bundle_id returns immediately (no 5s polling loop).
+    ///
+    /// Even for a non-existent app, the function should return in well under
+    /// 1 second, proving no polling loop is active.
+    #[test]
+    fn test_quit_returns_immediately() {
+        use std::time::Instant;
+
+        let start = Instant::now();
+        let _result = quit_app_by_bundle_id("com.nonexistent.app.for.timing.test");
+        let elapsed = start.elapsed();
+
+        // The function should return near-instantly (no 5s poll).
+        // Allow up to 500ms for NSWorkspace enumeration overhead.
+        assert!(
+            elapsed.as_millis() < 500,
+            "quit_app_by_bundle_id should return immediately, took {:?}",
+            elapsed
+        );
+    }
+
+    /// Test that force_quit_app() is unchanged and still works for invalid PIDs.
+    #[test]
+    fn test_force_quit_unchanged() {
+        // force_quit_app with an invalid PID should return an error, not panic
+        let result = force_quit_app(u32::MAX - 1);
+        assert!(
+            result.is_err(),
+            "force_quit_app with invalid PID should return error"
+        );
+    }
+
+    /// Test that force_quit_app_action() is unchanged and still works for invalid PIDs.
+    #[test]
+    fn test_force_quit_action_unchanged() {
+        let result = force_quit_app_action(i32::MAX - 1);
+        assert!(
+            result.is_err(),
+            "force_quit_app_action with invalid PID should return error"
+        );
+    }
+
+    // ========================================================================
+    // PID Cast Safety Tests
+    // ========================================================================
+
+    /// Test that quit_app rejects PIDs that exceed i32 range.
+    #[test]
+    fn test_quit_app_rejects_overflow_pid() {
+        let result = quit_app(u32::MAX);
+        assert!(result.is_err(), "Should reject PID that exceeds i32 range");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("exceeds i32 range"),
+            "Error should mention i32 range: {}",
+            err_msg
+        );
+    }
+
+    /// Test that force_quit_app rejects PIDs that exceed i32 range.
+    #[test]
+    fn test_force_quit_app_rejects_overflow_pid() {
+        let result = force_quit_app(u32::MAX);
+        assert!(result.is_err(), "Should reject PID that exceeds i32 range");
+    }
+
+    /// Test that get_running_apps returns valid PIDs (no negative values).
+    #[test]
+    fn test_get_running_apps_valid_pids() {
+        let apps = get_running_apps().expect("Should enumerate running apps");
+        for app in &apps {
+            assert!(
+                i32::try_from(app.pid).is_ok(),
+                "PID {} should fit in i32",
+                app.pid
+            );
+        }
+    }
+
+    // ========================================================================
+    // Error Path Tests
+    // ========================================================================
+
+    /// Test quit_app with PID 0 (kernel process, should fail gracefully).
+    #[test]
+    fn test_quit_app_pid_zero() {
+        let result = quit_app(0);
+        // On macOS this may fail with "No running application found" or succeed
+        // depending on the system. The important thing is it doesn't panic.
+        let _ = result;
+    }
+
+    /// Test get_running_apps_detailed returns valid data.
+    #[test]
+    fn test_get_running_apps_detailed_no_panic() {
+        let result = get_running_apps_detailed();
+        assert!(result.is_ok(), "get_running_apps_detailed should not fail");
     }
 }

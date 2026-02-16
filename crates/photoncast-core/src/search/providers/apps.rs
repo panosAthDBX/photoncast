@@ -9,21 +9,26 @@ use parking_lot::RwLock;
 use crate::indexer::IndexedApp;
 use crate::search::fuzzy::FuzzyMatcher;
 use crate::search::providers::SearchProvider;
+use crate::search::ranking::ResultRanker;
 use crate::search::{IconSource, ResultType, SearchAction, SearchResult, SearchResultId};
+use crate::storage::usage::UsageTracker;
 
 /// Provides search results for installed applications.
 ///
 /// This provider holds a reference to the indexed apps and performs
-/// fuzzy matching against app names.
+/// fuzzy matching against app names, boosted by frecency.
 pub struct AppProvider {
     /// The indexed applications.
     apps: Arc<RwLock<Vec<IndexedApp>>>,
+    /// Optional usage tracker for global + per-query frecency.
+    usage_tracker: Option<Arc<UsageTracker>>,
 }
 
 impl std::fmt::Debug for AppProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppProvider")
             .field("app_count", &self.apps.read().len())
+            .field("has_usage_tracker", &self.usage_tracker.is_some())
             .finish()
     }
 }
@@ -40,13 +45,22 @@ impl AppProvider {
     pub fn new() -> Self {
         Self {
             apps: Arc::new(RwLock::new(Vec::new())),
+            usage_tracker: None,
         }
     }
 
     /// Creates a new app provider with a shared app index.
     #[must_use]
     pub fn with_apps(apps: Arc<RwLock<Vec<IndexedApp>>>) -> Self {
-        Self { apps }
+        Self {
+            apps,
+            usage_tracker: None,
+        }
+    }
+
+    /// Attaches a usage tracker for frecency-boosted ranking.
+    pub fn set_usage_tracker(&mut self, tracker: Arc<UsageTracker>) {
+        self.usage_tracker = Some(tracker);
     }
 
     /// Updates the app index with new apps.
@@ -89,6 +103,7 @@ impl SearchProvider for AppProvider {
 
         let apps = self.apps.read();
         let mut matcher = FuzzyMatcher::default();
+        let tracker = self.usage_tracker.as_deref();
 
         // Score all apps against the query
         let mut scored_results: Vec<(usize, u32, Vec<usize>)> = apps
@@ -101,8 +116,33 @@ impl SearchProvider for AppProvider {
             })
             .collect();
 
-        // Sort by score descending
-        scored_results.sort_by(|a, b| b.1.cmp(&a.1));
+        // Sort by combined score: match quality + (global + per-query) frecency
+        scored_results.sort_by(|a, b| {
+            let bid_a = apps[a.0].bundle_id.as_str();
+            let bid_b = apps[b.0].bundle_id.as_str();
+
+            let frec_a = tracker.map_or(0.0, |ut| {
+                let global = ut.get_app_frecency(bid_a).ok().map_or(0.0, |f| f.score());
+                let per_q = ut
+                    .get_query_frecency(query, bid_a)
+                    .ok()
+                    .map_or(0.0, |f| f.score());
+                global + per_q
+            });
+            let frec_b = tracker.map_or(0.0, |ut| {
+                let global = ut.get_app_frecency(bid_b).ok().map_or(0.0, |f| f.score());
+                let per_q = ut
+                    .get_query_frecency(query, bid_b)
+                    .ok()
+                    .map_or(0.0, |f| f.score());
+                global + per_q
+            });
+
+            let combined_a = frec_a.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
+            let combined_b = frec_b.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
+
+            combined_b.total_cmp(&combined_a)
+        });
 
         // Take top results and convert to SearchResult
         scored_results
@@ -110,20 +150,34 @@ impl SearchProvider for AppProvider {
             .take(max_results)
             .map(|(idx, score, match_indices)| {
                 let app = &apps[idx];
+                let bundle_id_str = app.bundle_id.as_str().to_string();
+
+                let frecency = tracker.map_or(0.0, |ut| {
+                    let global = ut
+                        .get_app_frecency(&bundle_id_str)
+                        .ok()
+                        .map_or(0.0, |f| f.score());
+                    let per_q = ut
+                        .get_query_frecency(query, &bundle_id_str)
+                        .ok()
+                        .map_or(0.0, |f| f.score());
+                    global + per_q
+                });
+
                 SearchResult {
-                    id: SearchResultId::new(format!("app:{}", app.bundle_id)),
+                    id: SearchResultId::new(format!("app:{bundle_id_str}")),
                     title: app.name.clone(),
                     subtitle: app.path.display().to_string(),
                     icon: IconSource::AppIcon {
-                        bundle_id: app.bundle_id.as_str().to_string(),
+                        bundle_id: bundle_id_str.clone(),
                         icon_path: app.icon_path.clone(),
                     },
                     result_type: ResultType::Application,
-                    score: f64::from(score),
+                    score: frecency.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(score)),
                     match_indices,
                     requires_permissions: false,
                     action: SearchAction::LaunchApp {
-                        bundle_id: app.bundle_id.as_str().to_string(),
+                        bundle_id: bundle_id_str,
                         path: app.path.clone(),
                     },
                 }

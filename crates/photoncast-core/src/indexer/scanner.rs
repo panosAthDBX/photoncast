@@ -34,6 +34,17 @@ const SCAN_TIMEOUT: Duration = Duration::from_secs(10);
 /// Number of concurrent app metadata parsing tasks.
 const CONCURRENCY_LIMIT: usize = 20;
 
+/// The CoreServices path prefix used to identify system helper apps.
+const CORE_SERVICES_PATH: &str = "/System/Library/CoreServices";
+
+/// Bundle IDs of CoreServices apps that are genuinely user-facing.
+/// Everything else under `/System/Library/CoreServices` is a helper/agent.
+const CORE_SERVICES_WHITELIST: &[&str] = &[
+    "com.apple.finder",
+    "com.apple.ScreenSaver.Engine",
+    "com.apple.installer",
+];
+
 /// Scans the filesystem for installed applications.
 #[derive(Debug, Clone)]
 pub struct AppScanner {
@@ -65,6 +76,44 @@ impl AppScanner {
                 }
             })
             .collect();
+
+        Self {
+            scan_paths,
+            excluded_patterns: EXCLUDED_PATTERNS.iter().map(|s| (*s).to_string()).collect(),
+            timeout: SCAN_TIMEOUT,
+        }
+    }
+
+    /// Creates a new scanner from configuration.
+    ///
+    /// If `custom_paths` is non-empty, uses those instead of `SCAN_PATHS`.
+    /// Tilde (`~`) is expanded to the user's home directory.
+    #[must_use]
+    pub fn from_config(custom_paths: &[PathBuf]) -> Self {
+        let scan_paths = if custom_paths.is_empty() {
+            SCAN_PATHS
+                .iter()
+                .map(|p| {
+                    if p.starts_with('~') {
+                        dirs::home_dir().map_or_else(|| PathBuf::from(p), |h| h.join(&p[2..]))
+                    } else {
+                        PathBuf::from(p)
+                    }
+                })
+                .collect()
+        } else {
+            custom_paths
+                .iter()
+                .map(|p| {
+                    let s = p.to_string_lossy();
+                    if s.starts_with('~') {
+                        dirs::home_dir().map_or_else(|| p.clone(), |h| h.join(&s[2..]))
+                    } else {
+                        p.clone()
+                    }
+                })
+                .collect()
+        };
 
         Self {
             scan_paths,
@@ -214,6 +263,30 @@ impl AppScanner {
             if self.is_excluded(&resolved) {
                 debug!("Excluding app: {}", resolved.display());
                 continue;
+            }
+
+            // Only allow whitelisted apps from CoreServices
+            if path.starts_with(CORE_SERVICES_PATH) {
+                let dominated_plist = resolved.join("Contents/Info.plist");
+                let bundle_id = tokio::fs::read(&dominated_plist)
+                    .await
+                    .ok()
+                    .and_then(|bytes| plist::from_bytes::<plist::Value>(&bytes).ok())
+                    .and_then(|v| v.as_dictionary().cloned())
+                    .and_then(|d| {
+                        d.get("CFBundleIdentifier")
+                            .and_then(|v| v.as_string().map(String::from))
+                    });
+                let dominated_allowed = bundle_id
+                    .as_deref()
+                    .is_some_and(|id| CORE_SERVICES_WHITELIST.contains(&id));
+                if !dominated_allowed {
+                    debug!(
+                        "Excluding non-whitelisted CoreServices app: {}",
+                        resolved.display()
+                    );
+                    continue;
+                }
             }
 
             // Get canonical path for deduplication
@@ -499,5 +572,72 @@ mod tests {
     fn test_timeout_builder() {
         let scanner = AppScanner::new().with_timeout(Duration::from_secs(5));
         assert_eq!(scanner.timeout, Duration::from_secs(5));
+    }
+
+    // ========================================================================
+    // Phase 1: CoreServices whitelist tests
+    // ========================================================================
+
+    #[test]
+    fn test_core_services_whitelist_contains_finder() {
+        assert!(
+            CORE_SERVICES_WHITELIST.contains(&"com.apple.finder"),
+            "Finder should be whitelisted"
+        );
+    }
+
+    #[test]
+    fn test_core_services_whitelist_excludes_helpers() {
+        assert!(
+            !CORE_SERVICES_WHITELIST.contains(&"com.apple.ShortcutsActions"),
+            "ShortcutsActions should not be whitelisted"
+        );
+        assert!(
+            !CORE_SERVICES_WHITELIST.contains(&"com.apple.archiveutility"),
+            "Archive Utility should not be whitelisted"
+        );
+    }
+
+    #[test]
+    fn test_non_core_services_path_not_affected() {
+        let path = Path::new("/Applications/SomeHelper.app");
+        assert!(
+            !path.starts_with(CORE_SERVICES_PATH),
+            "/Applications should not match CoreServices prefix"
+        );
+    }
+
+    // ========================================================================
+    // Phase 1: from_config tests
+    // ========================================================================
+
+    #[test]
+    fn test_scanner_from_config_empty() {
+        let scanner = AppScanner::from_config(&[]);
+        let default_scanner = AppScanner::new();
+        assert_eq!(scanner.scan_paths, default_scanner.scan_paths);
+    }
+
+    #[test]
+    fn test_scanner_from_config_custom() {
+        let custom = vec![PathBuf::from("/my/apps"), PathBuf::from("/other/apps")];
+        let scanner = AppScanner::from_config(&custom);
+        assert_eq!(scanner.scan_paths, custom);
+    }
+
+    #[test]
+    fn test_scanner_from_config_tilde_expansion() {
+        let custom = vec![PathBuf::from("~/MyApps")];
+        let scanner = AppScanner::from_config(&custom);
+        for path in &scanner.scan_paths {
+            assert!(
+                !path.to_string_lossy().starts_with('~'),
+                "Path should not start with ~: {}",
+                path.display()
+            );
+        }
+        if let Some(home) = dirs::home_dir() {
+            assert_eq!(scanner.scan_paths[0], home.join("MyApps"));
+        }
     }
 }

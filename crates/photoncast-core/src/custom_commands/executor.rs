@@ -22,6 +22,9 @@ use super::{
     MAX_OUTPUT_SIZE,
 };
 
+/// Shell binaries explicitly allowed for custom command execution.
+const ALLOWED_SHELLS: &[&str] = &["/bin/bash", "/bin/sh", "/bin/zsh"];
+
 /// Errors that can occur during command execution.
 #[derive(Error, Debug)]
 pub enum ExecutorError {
@@ -48,6 +51,10 @@ pub enum ExecutorError {
     /// Shell not found.
     #[error("shell not found: {shell}")]
     ShellNotFound { shell: String },
+
+    /// Shell path is not in the allowlist.
+    #[error("unsupported shell: {shell}")]
+    UnsupportedShell { shell: String },
 
     /// Command execution failed.
     #[error("command failed with exit code {exit_code}: {message}")]
@@ -81,6 +88,11 @@ impl ExecutorError {
             },
             Self::ShellNotFound { shell } => {
                 format!("Shell not found: {shell}. Check your shell configuration.")
+            },
+            Self::UnsupportedShell { shell } => {
+                format!(
+                    "Shell {shell} is not allowed for custom commands. Use /bin/bash, /bin/sh, or /bin/zsh."
+                )
             },
             Self::ExecutionFailed { exit_code, message } => {
                 format!("Command failed (exit code {exit_code}): {message}")
@@ -198,6 +210,11 @@ impl CommandExecutor {
         let shell = &command.shell;
         if !Path::new(shell).exists() {
             return Err(ExecutorError::ShellNotFound {
+                shell: shell.clone(),
+            });
+        }
+        if !is_allowed_shell(shell) {
+            return Err(ExecutorError::UnsupportedShell {
                 shell: shell.clone(),
             });
         }
@@ -336,6 +353,11 @@ impl CommandExecutor {
                 shell: command.shell.clone(),
             });
         }
+        if !is_allowed_shell(&command.shell) {
+            return Err(ExecutorError::UnsupportedShell {
+                shell: command.shell.clone(),
+            });
+        }
 
         // Check working directory if specified
         if let Some(ref work_dir) = command.working_directory {
@@ -348,6 +370,10 @@ impl CommandExecutor {
 
         Ok(())
     }
+}
+
+fn is_allowed_shell(shell: &str) -> bool {
+    ALLOWED_SHELLS.contains(&shell)
 }
 
 /// Truncates output to the maximum size and converts to UTF-8.
@@ -466,6 +492,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_execute_with_unsupported_shell_fails_closed() {
+        let executor = CommandExecutor::new();
+        let command = CustomCommand::builder("Unsupported Shell", "echo test")
+            .shell("/usr/bin/env")
+            .build();
+
+        let result = executor.execute_with_query(&command, "").await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ExecutorError::UnsupportedShell { .. }
+        ));
+    }
+
+    #[tokio::test]
     async fn test_execute_with_stderr() {
         let executor = CommandExecutor::new();
         let command = CustomCommand::new("Stderr Test", "echo error >&2");
@@ -491,6 +533,21 @@ mod tests {
         assert!(matches!(
             result.unwrap_err(),
             ExecutorError::ShellNotFound { .. }
+        ));
+    }
+
+    #[test]
+    fn test_validate_unsupported_shell() {
+        let executor = CommandExecutor::new();
+        let command = CustomCommand::builder("Test", "echo")
+            .shell("/usr/bin/env")
+            .build();
+
+        let result = executor.validate(&command);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ExecutorError::UnsupportedShell { .. }
         ));
     }
 

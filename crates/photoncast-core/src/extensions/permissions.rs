@@ -572,6 +572,39 @@ mod tests {
     }
 
     #[test]
+    fn test_requires_consent_true_for_sensitive_permission_variants() {
+        let permission_sets = vec![
+            Permissions {
+                network: true,
+                ..Default::default()
+            },
+            Permissions {
+                clipboard: true,
+                ..Default::default()
+            },
+            Permissions {
+                filesystem: vec!["~/Documents".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        for permissions in permission_sets {
+            assert!(requires_consent(&permissions));
+        }
+    }
+
+    #[test]
+    fn test_permissions_store_has_valid_consent_unknown_extension_false() {
+        let store = PermissionsStore::default();
+        let permissions = Permissions {
+            network: true,
+            ..Default::default()
+        };
+
+        assert!(!store.has_valid_consent("com.example.unknown", &permissions));
+    }
+
+    #[test]
     fn test_permissions_dialog_creation() {
         let permissions = Permissions {
             network: true,

@@ -5,13 +5,17 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use parking_lot::RwLock;
-use tracing::{debug, warn};
+use tracing::debug;
 
-use crate::platform::spotlight::{FileKind, SpotlightProvider};
+use crate::platform::spotlight::FileKind;
 use crate::search::providers::SearchProvider;
-use crate::search::{IconSource, ResultType, SearchAction, SearchResult, SearchResultId};
+use crate::search::{
+    FileSearchBackend, FileSearchBackendOptions, FileSearchStrategy, IconSource, ResultType,
+    SearchAction, SearchResult, SearchResultId,
+};
 
 /// Default maximum number of file results.
 pub const DEFAULT_FILE_MAX_RESULTS: usize = 5;
@@ -22,19 +26,26 @@ pub const DEFAULT_FILE_MAX_RESULTS: usize = 5;
 /// and convert results to the standard search result format.
 #[derive(Debug)]
 pub struct FileProvider {
-    /// The underlying Spotlight provider.
-    spotlight: SpotlightProvider,
+    /// Unified backend for spotlight/fallback behavior.
+    backend: FileSearchBackend,
     /// Maximum number of results to return.
     max_results: usize,
+    /// Optional root scope for backend searches.
+    scope: Option<PathBuf>,
+    /// Timeout for spotlight-first strategy.
+    timeout_ms: u64,
     /// Cache for recent search results (optional).
     cache: Arc<RwLock<Option<CachedResults>>>,
 }
 
 /// Cached search results for avoiding repeated Spotlight queries.
+///
+/// Results are wrapped in `Arc` so that cache reads return a cheap
+/// pointer clone instead of deep-cloning the entire results vector.
 #[derive(Debug, Clone)]
 struct CachedResults {
     query: String,
-    results: Vec<SearchResult>,
+    results: Arc<Vec<SearchResult>>,
 }
 
 impl Default for FileProvider {
@@ -48,19 +59,46 @@ impl FileProvider {
     #[must_use]
     pub fn new(max_results: usize) -> Self {
         Self {
-            spotlight: SpotlightProvider::with_max_results(max_results),
+            backend: FileSearchBackend::new(FileSearchStrategy::SpotlightWithFallback {
+                timeout: Duration::from_millis(1000),
+            }),
             max_results,
+            scope: None,
+            timeout_ms: 1000,
             cache: Arc::new(RwLock::new(None)),
         }
     }
 
-    /// Creates a file provider with a custom Spotlight provider.
+    /// Creates a file provider with a custom backend.
     #[must_use]
-    pub fn with_spotlight(spotlight: SpotlightProvider) -> Self {
-        let max_results = spotlight.max_results;
+    pub fn with_backend(backend: FileSearchBackend, max_results: usize) -> Self {
         Self {
-            spotlight,
+            backend,
             max_results,
+            scope: None,
+            timeout_ms: 1000,
+            cache: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Creates a file provider with a custom spotlight provider.
+    #[must_use]
+    pub fn with_spotlight(spotlight: crate::platform::spotlight::SpotlightProvider) -> Self {
+        let max_results = spotlight.max_results;
+        let timeout_ms = spotlight.timeout_ms;
+        let scope = spotlight.search_scope.clone();
+        let backend = FileSearchBackend::with_spotlight_provider(
+            FileSearchStrategy::SpotlightWithFallback {
+                timeout: Duration::from_millis(timeout_ms),
+            },
+            spotlight,
+        );
+
+        Self {
+            backend,
+            max_results,
+            scope,
+            timeout_ms,
             cache: Arc::new(RwLock::new(None)),
         }
     }
@@ -68,14 +106,17 @@ impl FileProvider {
     /// Sets the search scope to a specific directory.
     #[must_use]
     pub fn with_scope(mut self, scope: PathBuf) -> Self {
-        self.spotlight = self.spotlight.with_scope(scope);
+        self.scope = Some(scope);
         self
     }
 
     /// Sets the timeout in milliseconds.
     #[must_use]
     pub fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
-        self.spotlight = self.spotlight.with_timeout_ms(timeout_ms);
+        self.timeout_ms = timeout_ms;
+        self.backend = FileSearchBackend::new(FileSearchStrategy::SpotlightWithFallback {
+            timeout: Duration::from_millis(timeout_ms),
+        });
         self
     }
 
@@ -112,28 +153,34 @@ impl FileProvider {
 
         debug!(query = %query, max_results = max_results, "Executing async file search");
 
-        match self.spotlight.search(query).await {
-            Ok(file_results) => {
-                let results: Vec<SearchResult> = file_results
-                    .into_iter()
-                    .take(max_results)
-                    .enumerate()
-                    .map(|(idx, file_result)| self.convert_to_search_result(file_result, idx))
-                    .collect();
+        let options = FileSearchBackendOptions {
+            root: self
+                .scope
+                .clone()
+                .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))),
+            max_results,
+            recent_days: None,
+        };
 
-                // Update cache
-                *self.cache.write() = Some(CachedResults {
-                    query: query.to_string(),
-                    results: results.clone(),
-                });
+        let file_results = self.backend.search(query, &options).await;
 
-                results
-            },
-            Err(e) => {
-                warn!(query = %query, error = %e, "Spotlight search failed");
-                Vec::new()
-            },
-        }
+        let results: Vec<SearchResult> = file_results
+            .into_iter()
+            .take(max_results)
+            .enumerate()
+            .map(|(idx, file_result)| self.convert_to_search_result(file_result, idx))
+            .collect();
+
+        // Wrap in Arc and store in cache; avoids deep-cloning the vector
+        // on subsequent cache-hit reads.
+        let results = Arc::new(results);
+        *self.cache.write() = Some(CachedResults {
+            query: query.to_string(),
+            results: Arc::clone(&results),
+        });
+
+        // Unwrap the Arc if we hold the only reference, otherwise clone
+        Arc::try_unwrap(results).unwrap_or_else(|arc| (*arc).clone())
     }
 
     /// Converts a Spotlight FileResult to a SearchResult.
@@ -198,29 +245,34 @@ impl SearchProvider for FileProvider {
 
         debug!(query = %query, max_results = max_results, "Executing sync file search");
 
-        // Use synchronous search
-        match self.spotlight.search_sync(query) {
-            Ok(file_results) => {
-                let results: Vec<SearchResult> = file_results
-                    .into_iter()
-                    .take(max_results)
-                    .enumerate()
-                    .map(|(idx, file_result)| self.convert_to_search_result(file_result, idx))
-                    .collect();
+        let options = FileSearchBackendOptions {
+            root: self
+                .scope
+                .clone()
+                .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))),
+            max_results,
+            recent_days: None,
+        };
 
-                // Update cache
-                *self.cache.write() = Some(CachedResults {
-                    query: query.to_string(),
-                    results: results.clone(),
-                });
+        let file_results = self.backend.search_sync(query, &options);
 
-                results
-            },
-            Err(e) => {
-                warn!(query = %query, error = %e, "Spotlight search failed");
-                Vec::new()
-            },
-        }
+        let results: Vec<SearchResult> = file_results
+            .into_iter()
+            .take(max_results)
+            .enumerate()
+            .map(|(idx, file_result)| self.convert_to_search_result(file_result, idx))
+            .collect();
+
+        // Wrap in Arc and store in cache; avoids deep-cloning the vector
+        // on subsequent cache-hit reads.
+        let results = Arc::new(results);
+        *self.cache.write() = Some(CachedResults {
+            query: query.to_string(),
+            results: Arc::clone(&results),
+        });
+
+        // Unwrap the Arc if we hold the only reference, otherwise clone
+        Arc::try_unwrap(results).unwrap_or_else(|arc| (*arc).clone())
     }
 }
 
@@ -274,13 +326,13 @@ mod tests {
     #[test]
     fn test_file_provider_with_scope() {
         let provider = FileProvider::new(5).with_scope(PathBuf::from("/tmp"));
-        assert_eq!(provider.spotlight.search_scope, Some(PathBuf::from("/tmp")));
+        assert_eq!(provider.scope, Some(PathBuf::from("/tmp")));
     }
 
     #[test]
     fn test_file_provider_with_timeout() {
         let provider = FileProvider::new(5).with_timeout_ms(1000);
-        assert_eq!(provider.spotlight.timeout_ms, 1000);
+        assert_eq!(provider.timeout_ms, 1000);
     }
 
     #[test]
@@ -297,7 +349,7 @@ mod tests {
         // Manually set cache
         *provider.cache.write() = Some(CachedResults {
             query: "test".to_string(),
-            results: Vec::new(),
+            results: Arc::new(Vec::new()),
         });
 
         assert!(provider.cache.read().is_some());

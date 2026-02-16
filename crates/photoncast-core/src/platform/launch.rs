@@ -445,6 +445,12 @@ impl AppLauncher {
         Self { usage_tracker }
     }
 
+    /// Returns a reference to the underlying usage tracker.
+    #[must_use]
+    pub fn usage_tracker(&self) -> &Arc<UsageTracker> {
+        &self.usage_tracker
+    }
+
     /// Launches an application by bundle ID and tracks usage.
     ///
     /// On successful launch, increments the launch count and updates

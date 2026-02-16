@@ -4,6 +4,7 @@
 //! - Fuzzy matching on 200 apps
 //! - Ranking on 100 results
 //! - End-to-end search latency
+//! - Provider allocation patterns (quicklinks, custom commands, files, apps)
 //!
 //! Target: <30ms end-to-end search latency
 
@@ -573,6 +574,177 @@ fn bench_target_30ms(c: &mut Criterion) {
 }
 
 // =============================================================================
+// Provider Allocation Benchmarks (Task Group 4)
+// =============================================================================
+
+/// Benchmarks QuickLinksProvider search with Arc-cached data.
+fn bench_quicklinks_provider(c: &mut Criterion) {
+    let mut group = c.benchmark_group("quicklinks_provider");
+
+    // Set up a QuickLinksProvider with in-memory storage and bundled quicklinks
+    let storage = photoncast_quicklinks::QuickLinksStorage::open_in_memory()
+        .expect("should open in-memory quicklinks storage");
+
+    // Populate with bundled quicklinks for a realistic benchmark
+    let _ = storage.populate_bundled_if_empty();
+
+    let provider = photoncast_core::search::providers::QuickLinksProvider::with_storage(storage);
+
+    let queries = ["g", "google", "git", "docs", "r test", "zzz"];
+
+    for query in queries {
+        group.bench_with_input(BenchmarkId::new("search", query), query, |b, query| {
+            b.iter(|| {
+                black_box(provider.search(query, 10));
+            });
+        });
+    }
+
+    // Benchmark repeated searches (cache-hit path with Arc clone)
+    group.bench_function("repeated_cached_search_20x", |b| {
+        // Warm the cache
+        let _ = provider.search("google", 10);
+        b.iter(|| {
+            for _ in 0..20 {
+                black_box(provider.search("google", 10));
+            }
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmarks CustomCommandProvider search with Arc-cached data.
+fn bench_custom_commands_provider(c: &mut Criterion) {
+    let mut group = c.benchmark_group("custom_commands_provider");
+
+    let store = photoncast_core::custom_commands::CustomCommandStore::open_in_memory()
+        .expect("should open in-memory custom command store");
+
+    // Populate with realistic custom commands
+    let commands = [
+        ("Git Commit", "git commit -m {query}", Some("gc")),
+        ("Git Push", "git push origin {query}", Some("gp")),
+        ("Git Pull", "git pull", Some("gl")),
+        ("Git Status", "git status", Some("gs")),
+        ("Open in VS Code", "code {query}", Some("vsc")),
+        ("Docker Build", "docker build -t {query} .", Some("db")),
+        ("Docker Run", "docker run {query}", Some("dr")),
+        ("NPM Install", "npm install {query}", Some("ni")),
+        ("Cargo Build", "cargo build --release", Some("cb")),
+        ("Cargo Test", "cargo test {query}", Some("ct")),
+        ("List Files", "ls -la", None),
+        ("Find Process", "ps aux | grep {query}", Some("psg")),
+        ("Kill Process", "kill -9 {query}", None),
+        ("SSH Connect", "ssh {query}", None),
+        ("Ping Host", "ping -c 4 {query}", None),
+    ];
+
+    for (name, cmd, alias) in &commands {
+        let mut builder = photoncast_core::custom_commands::CustomCommand::builder(*name, *cmd);
+        if let Some(a) = alias {
+            builder = builder.alias(*a);
+        }
+        let _ = store.create(&builder.build());
+    }
+
+    let provider = photoncast_core::search::providers::CustomCommandProvider::new(store);
+
+    let queries = ["gc", "git", "docker", "cargo test", "zzz"];
+
+    for query in queries {
+        group.bench_with_input(BenchmarkId::new("search", query), query, |b, query| {
+            b.iter(|| {
+                black_box(provider.search(query, 10));
+            });
+        });
+    }
+
+    // Benchmark repeated searches (cache-hit path with Arc clone)
+    group.bench_function("repeated_cached_search_20x", |b| {
+        // Warm the cache
+        let _ = provider.search("git", 10);
+        b.iter(|| {
+            for _ in 0..20 {
+                black_box(provider.search("git", 10));
+            }
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmarks FileProvider cache-hit vs cache-miss allocation patterns.
+fn bench_file_provider_cache(c: &mut Criterion) {
+    let mut group = c.benchmark_group("file_provider_cache");
+
+    let provider = photoncast_core::search::providers::FileProvider::new(10);
+
+    // Benchmark empty-query fast path
+    group.bench_function("empty_query_fast_path", |b| {
+        b.iter(|| {
+            black_box(provider.search("", 10));
+        });
+    });
+
+    // Benchmark clear_cache overhead
+    group.bench_function("clear_cache", |b| {
+        b.iter(|| {
+            provider.clear_cache();
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmarks app provider string allocation (bundle_id reuse).
+fn bench_app_provider_allocations(c: &mut Criterion) {
+    let mut group = c.benchmark_group("app_provider_allocations");
+
+    let apps = create_realistic_apps(200);
+    let usage = BenchUsageData::new(&apps);
+
+    // Standard provider
+    let standard = AppProvider::new();
+    standard.set_apps(apps.clone());
+
+    // Optimized provider
+    let optimized = OptimizedAppProvider::new();
+    optimized.build_index_with_usage(&apps, &usage);
+
+    // Queries that produce many results (stress allocation paths)
+    let queries = [
+        ("broad_match", "app"),
+        ("medium_match", "saf"),
+        ("narrow_match", "safari"),
+    ];
+
+    for (name, query) in queries {
+        group.bench_with_input(
+            BenchmarkId::new("standard_alloc", name),
+            query,
+            |b, query| {
+                b.iter(|| {
+                    black_box(standard.search(query, 20));
+                });
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("optimized_alloc", name),
+            query,
+            |b, query| {
+                b.iter(|| {
+                    black_box(optimized.search(query, 20));
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+// =============================================================================
 // Spotlight Prefetch Benchmarks
 // =============================================================================
 
@@ -715,6 +887,10 @@ criterion_group!(
     bench_ranking,
     bench_end_to_end_search,
     bench_target_30ms,
+    bench_quicklinks_provider,
+    bench_custom_commands_provider,
+    bench_file_provider_cache,
+    bench_app_provider_allocations,
     bench_prefetch_comparison,
     bench_cache_effectiveness,
 );
@@ -729,6 +905,10 @@ criterion_group!(
     bench_ranking,
     bench_end_to_end_search,
     bench_target_30ms,
+    bench_quicklinks_provider,
+    bench_custom_commands_provider,
+    bench_file_provider_cache,
+    bench_app_provider_allocations,
 );
 
 criterion_main!(benches);
