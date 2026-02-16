@@ -10,7 +10,7 @@ use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
 use parking_lot::Mutex;
 use rusqlite::{params, Connection};
-use tokio::task;
+use tokio::task::{self, JoinHandle};
 
 use crate::config::ClipboardConfig;
 use crate::encryption::EncryptionManager;
@@ -118,13 +118,21 @@ impl ClipboardStorage {
         Self::run_blocking(move || Self::open(&config)).await
     }
 
+    fn spawn_blocking_task<T, F>(f: F) -> JoinHandle<Result<T>>
+    where
+        F: FnOnce() -> Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        task::spawn_blocking(f)
+    }
+
     async fn run_blocking<T, F>(f: F) -> Result<T>
     where
         F: FnOnce() -> Result<T> + Send + 'static,
         T: Send + 'static,
     {
         if tokio::runtime::Handle::try_current().is_ok() {
-            task::spawn_blocking(f).await?
+            Self::spawn_blocking_task(f).await?
         } else {
             f()
         }
@@ -433,8 +441,10 @@ impl ClipboardStorage {
         }
 
         if !self.config.store_search_text {
-            let mut items = self.load_pinned()?;
-            items.extend(self.load_recent(self.config.history_size)?);
+            let mut items = {
+                let conn = self.conn.lock();
+                self.load_items_for_search_without_fts(&conn)?
+            };
 
             let needle = query.to_lowercase();
             items.retain(|item| item.search_text().to_lowercase().contains(&needle));
@@ -556,18 +566,17 @@ impl ClipboardStorage {
 
     /// Clears all clipboard history.
     pub fn clear_all(&self) -> Result<usize> {
-        // Clean up all files
-        let items = self.load_recent(10_000)?;
-        let pinned = self.load_pinned()?;
+        // Collect items and execute DB delete while holding the lock, then perform file I/O after releasing it.
+        let (rows, items) = {
+            let conn = self.conn.lock();
+            let items = self.load_items_for_cleanup(&conn)?;
+            let rows = conn.execute("DELETE FROM clipboard_items", [])?;
+            (rows, items)
+        };
 
-        for item in items.iter().chain(pinned.iter()) {
+        for item in &items {
             Self::cleanup_item_files(item);
         }
-
-        let rows = {
-            let conn = self.conn.lock();
-            conn.execute("DELETE FROM clipboard_items", [])?
-        };
 
         Ok(rows)
     }
@@ -676,6 +685,61 @@ impl ClipboardStorage {
         }
 
         Ok(())
+    }
+
+    fn load_items_for_search_without_fts(&self, conn: &Connection) -> Result<Vec<ClipboardItem>> {
+        let mut stmt = conn.prepare(
+            r"
+            SELECT id, content_type,
+                   text_content, html_content, rtf_content,
+                   image_path, thumbnail_path, file_paths,
+                   url, link_title, favicon_path,
+                   color_hex, color_rgb, color_name,
+                   source_app, source_bundle_id, size_bytes, is_pinned,
+                   created_at, accessed_at
+            FROM clipboard_items
+            ORDER BY is_pinned DESC, created_at DESC
+            LIMIT ?1
+            ",
+        )?;
+
+        let max_items =
+            i64::try_from(self.config.history_size.saturating_add(1000)).map_err(|_| {
+                ClipboardError::Internal {
+                    message: "history size exceeds i64".to_string(),
+                }
+            })?;
+
+        let items = stmt
+            .query_map([max_items], |row| self.row_to_item(row))?
+            .filter_map(std::result::Result::ok)
+            .collect();
+
+        Ok(items)
+    }
+
+    fn load_items_for_cleanup(&self, conn: &Connection) -> Result<Vec<ClipboardItem>> {
+        let mut stmt = conn.prepare(
+            r"
+            SELECT id, content_type,
+                   text_content, html_content, rtf_content,
+                   image_path, thumbnail_path, file_paths,
+                   url, link_title, favicon_path,
+                   color_hex, color_rgb, color_name,
+                   source_app, source_bundle_id, size_bytes, is_pinned,
+                   created_at, accessed_at
+            FROM clipboard_items
+            ORDER BY is_pinned DESC, created_at DESC
+            LIMIT 11000
+            ",
+        )?;
+
+        let items = stmt
+            .query_map([], |row| self.row_to_item(row))?
+            .filter_map(std::result::Result::ok)
+            .collect();
+
+        Ok(items)
     }
 
     /// Cleans up files associated with an item.
@@ -921,11 +985,17 @@ impl ClipboardStorage {
                 ClipboardContentType::RichText { plain, html, rtf }
             },
             "image" => {
+                let path = PathBuf::from(image_path.unwrap_or_default());
+                let thumbnail_path = PathBuf::from(thumbnail_path.unwrap_or_default());
+                let dimensions = image::image_dimensions(&path)
+                    .or_else(|_| image::image_dimensions(&thumbnail_path))
+                    .unwrap_or((0, 0));
+
                 ClipboardContentType::Image {
-                    path: PathBuf::from(image_path.unwrap_or_default()),
-                    thumbnail_path: PathBuf::from(thumbnail_path.unwrap_or_default()),
+                    path,
+                    thumbnail_path,
                     size_bytes: size_bytes as u64,
-                    dimensions: (0, 0), // TODO: Store dimensions
+                    dimensions,
                 }
             },
             "file" => {
@@ -1284,6 +1354,52 @@ mod tests {
         assert_eq!(prepare_fts_query("hello world"), "\"hello\"* \"world\"*");
         assert_eq!(prepare_fts_query("test:query"), "\"test\\:query\"*");
         assert_eq!(prepare_fts_query("  "), "\"\"");
+    }
+
+    #[tokio::test]
+    async fn test_run_blocking_uses_spawn_blocking_when_runtime_available() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&counter);
+
+        let value = ClipboardStorage::run_blocking(move || {
+            seen.fetch_add(1, Ordering::Relaxed);
+            Ok::<_, crate::error::ClipboardError>(42usize)
+        })
+        .await
+        .expect("run_blocking should succeed");
+
+        assert_eq!(value, 42);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_clear_all_removes_item_files() {
+        let config = create_test_config();
+        let storage = ClipboardStorage::open_in_memory(&config).expect("should open");
+
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let image_path = temp_dir.path().join("image.png");
+        let thumb_path = temp_dir.path().join("thumb.png");
+        std::fs::write(&image_path, b"img").expect("write image");
+        std::fs::write(&thumb_path, b"thumb").expect("write thumb");
+
+        let mut item = ClipboardItem::new(ClipboardContentType::Image {
+            path: image_path.clone(),
+            thumbnail_path: thumb_path.clone(),
+            size_bytes: 3,
+            dimensions: (1, 1),
+        });
+        item.size_bytes = 3;
+
+        storage.store(&item).expect("should store");
+        let cleared = storage.clear_all().expect("should clear");
+
+        assert_eq!(cleared, 1);
+        assert!(!image_path.exists());
+        assert!(!thumb_path.exists());
     }
 
     #[tokio::test]

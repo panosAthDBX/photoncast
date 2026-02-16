@@ -544,12 +544,12 @@ mod tests {
         };
 
         // Should return cached value (hidden from Dock)
-        assert_eq!(manager.get_visibility().unwrap(), false);
+        assert!(!manager.get_visibility().unwrap());
 
         // Invalidate cache and re-read from actual file
         manager.invalidate_cache();
         // File has LSUIElement=false (not hidden), so visible = true
-        assert_eq!(manager.get_visibility().unwrap(), true);
+        assert!(manager.get_visibility().unwrap());
     }
 
     #[test]

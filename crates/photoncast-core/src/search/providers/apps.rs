@@ -138,10 +138,8 @@ impl SearchProvider for AppProvider {
                 global + per_q
             });
 
-            let combined_a =
-                frec_a.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
-            let combined_b =
-                frec_b.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
+            let combined_a = frec_a.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
+            let combined_b = frec_b.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
 
             combined_b.total_cmp(&combined_a)
         });
@@ -175,8 +173,7 @@ impl SearchProvider for AppProvider {
                         icon_path: app.icon_path.clone(),
                     },
                     result_type: ResultType::Application,
-                    score: frecency
-                        .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(score)),
+                    score: frecency.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(score)),
                     match_indices,
                     requires_permissions: false,
                     action: SearchAction::LaunchApp {

@@ -194,7 +194,7 @@ mod tests {
                 assert!(!msg.is_empty());
             },
             Ok(_) => panic!("Expected RawLibrary error for non-dylib file, got success"),
-            Err(_) => panic!("Expected RawLibrary error for non-dylib file"),
+            Err(other) => panic!("Expected RawLibrary error for non-dylib file, got: {other}"),
         }
     }
 

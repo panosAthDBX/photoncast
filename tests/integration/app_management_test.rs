@@ -433,7 +433,7 @@ fn test_auto_quit_manager_save_load_cycle() {
     manager.enable_auto_quit("com.test.app2", 15);
 
     // Simulate activity tracking
-    manager.on_app_activated("com.test.app1");
+    manager.on_app_activated("com.test.app1", 42);
 
     // Manually save config to temp path (since load/save use system paths)
     let toml_content =

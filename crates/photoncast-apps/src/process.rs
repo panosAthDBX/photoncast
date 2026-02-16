@@ -177,9 +177,8 @@ pub fn get_frontmost_app_bundle_id() -> Option<String> {
 pub fn quit_app(pid: u32) -> Result<()> {
     tracing::info!("Sending quit request to PID {}", pid);
 
-    let pid_i32 = i32::try_from(pid).map_err(|_| {
-        AppError::Process(format!("PID {} exceeds i32 range", pid))
-    })?;
+    let pid_i32 = i32::try_from(pid)
+        .map_err(|_| AppError::Process(format!("PID {} exceeds i32 range", pid)))?;
 
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32);
 
@@ -239,9 +238,8 @@ pub fn quit_app(pid: u32) -> Result<()> {
 pub fn force_quit_app(pid: u32) -> Result<()> {
     tracing::info!("Force quitting PID {}", pid);
 
-    let pid_i32 = i32::try_from(pid).map_err(|_| {
-        AppError::Process(format!("PID {} exceeds i32 range", pid))
-    })?;
+    let pid_i32 = i32::try_from(pid)
+        .map_err(|_| AppError::Process(format!("PID {} exceeds i32 range", pid)))?;
 
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid_i32);
 
@@ -988,10 +986,7 @@ mod tests {
     #[test]
     fn test_force_quit_app_rejects_overflow_pid() {
         let result = force_quit_app(u32::MAX);
-        assert!(
-            result.is_err(),
-            "Should reject PID that exceeds i32 range"
-        );
+        assert!(result.is_err(), "Should reject PID that exceeds i32 range");
     }
 
     /// Test that get_running_apps returns valid PIDs (no negative values).

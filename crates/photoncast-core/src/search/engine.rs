@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::future::join_all;
 use tracing::{debug_span, trace, warn};
 
 use crate::search::providers::SearchProvider;
@@ -214,24 +215,32 @@ impl SearchEngine {
         }
 
         let mut all_results = Vec::new();
-        for (provider_name, handle) in handles {
-            if cancellation
-                .as_ref()
-                .is_some_and(|flag| flag.load(Ordering::Relaxed))
-            {
-                trace!(
-                    component = "search",
-                    operation = "search",
-                    cancelled = true,
-                    "search cancelled before collecting all provider results"
-                );
-                return SearchResults::empty();
-            }
+        let provider_outcomes = join_all(handles.into_iter().map(
+            |(provider_name, handle)| async move {
+                let provider_start = std::time::Instant::now();
+                let outcome = handle.await;
+                (provider_name, provider_start.elapsed(), outcome)
+            },
+        ))
+        .await;
 
-            let provider_start = std::time::Instant::now();
-            match handle.await {
+        if cancellation
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            trace!(
+                component = "search",
+                operation = "search",
+                cancelled = true,
+                "search cancelled before collecting all provider results"
+            );
+            return SearchResults::empty();
+        }
+
+        for (provider_name, elapsed, outcome) in provider_outcomes {
+            match outcome {
                 Ok(results) => {
-                    let elapsed_ms = provider_start.elapsed().as_secs_f64() * 1000.0;
+                    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
                     trace!(
                         component = "search",
                         operation = "provider_async",
@@ -332,8 +341,8 @@ impl SearchEngine {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use super::*;
@@ -366,6 +375,28 @@ mod tests {
         }
 
         fn search(&self, _query: &str, max_results: usize) -> Vec<SearchResult> {
+            self.results.iter().take(max_results).cloned().collect()
+        }
+    }
+
+    struct SlowMockProvider {
+        name: &'static str,
+        result_type: ResultType,
+        delay: Duration,
+        results: Vec<SearchResult>,
+    }
+
+    impl SearchProvider for SlowMockProvider {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn result_type(&self) -> ResultType {
+            self.result_type
+        }
+
+        fn search(&self, _query: &str, max_results: usize) -> Vec<SearchResult> {
+            std::thread::sleep(self.delay);
             self.results.iter().take(max_results).cloned().collect()
         }
     }
@@ -552,6 +583,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_async_search_collects_provider_results_in_parallel() {
+        let mut engine = SearchEngine::new();
+        let delay = Duration::from_millis(80);
+
+        engine.add_provider(SlowMockProvider {
+            name: "slow-1",
+            result_type: ResultType::Application,
+            delay,
+            results: vec![create_test_result(
+                "1",
+                "Slow App 1",
+                100.0,
+                ResultType::Application,
+            )],
+        });
+
+        engine.add_provider(SlowMockProvider {
+            name: "slow-2",
+            result_type: ResultType::SystemCommand,
+            delay,
+            results: vec![create_test_result(
+                "2",
+                "Slow Command 2",
+                90.0,
+                ResultType::SystemCommand,
+            )],
+        });
+
+        let started = std::time::Instant::now();
+        let results = engine.search("slow").await;
+        let elapsed = started.elapsed();
+
+        assert_eq!(results.total_count, 2);
+        assert!(
+            elapsed < Duration::from_millis(140),
+            "search should complete near single-provider latency when joins are batched; elapsed={elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_search_with_cancellation_returns_empty_when_cancelled() {
         let mut engine = SearchEngine::new();
         engine.add_provider(MockProvider::new(
@@ -626,11 +697,7 @@ mod tests {
             ResultType::SystemCommand,
             Vec::new(),
         ));
-        engine.add_provider(MockProvider::new(
-            "files",
-            ResultType::File,
-            Vec::new(),
-        ));
+        engine.add_provider(MockProvider::new("files", ResultType::File, Vec::new()));
 
         assert_eq!(engine.provider_count(), 3);
     }

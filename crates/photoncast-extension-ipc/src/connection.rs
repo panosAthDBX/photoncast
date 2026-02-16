@@ -3,9 +3,15 @@ use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use serde_json::Value;
 use tracing::{error, warn};
+
+#[cfg(not(test))]
+const REQUEST_TIMEOUT_MS: u64 = 5_000;
+#[cfg(test)]
+const REQUEST_TIMEOUT_MS: u64 = 120;
 
 use crate::{IpcError, RpcMessage, RpcNotification, RpcRequest, RpcResponse};
 
@@ -58,9 +64,17 @@ impl RpcConnection {
 
         self.write_message(&RpcMessage::Request(request))?;
 
-        match rx.recv() {
+        match rx.recv_timeout(Duration::from_millis(REQUEST_TIMEOUT_MS)) {
             Ok(result) => result,
-            Err(_) => Err(IpcError::ResponseChannelClosed),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if let Ok(mut pending) = self.inner.pending.lock() {
+                    pending.remove(&id);
+                }
+                Err(IpcError::Timeout {
+                    timeout_ms: REQUEST_TIMEOUT_MS,
+                })
+            },
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(IpcError::ResponseChannelClosed),
         }
     }
 
@@ -138,11 +152,17 @@ impl RpcConnection {
                             } else {
                                 let value = response.result.unwrap_or(Value::Null);
                                 if sender.send(Ok(value)).is_err() {
-                                    warn!(id = response.id, "Failed to deliver RPC success response");
+                                    warn!(
+                                        id = response.id,
+                                        "Failed to deliver RPC success response"
+                                    );
                                 }
                             }
                         } else {
-                            warn!(id = response.id, "Received RPC response with no pending request");
+                            warn!(
+                                id = response.id,
+                                "Received RPC response with no pending request"
+                            );
                         }
                     },
                     RpcMessage::Request(request) => {
@@ -166,8 +186,8 @@ impl RpcConnection {
                     RpcMessage::Notification(notification) => {
                         let handler = Arc::clone(&handler);
                         thread::spawn(move || {
-                            if let Err(err) =
-                                handler.handle_notification(&notification.method, notification.params)
+                            if let Err(err) = handler
+                                .handle_notification(&notification.method, notification.params)
                             {
                                 warn!(
                                     error = %err,
@@ -184,7 +204,10 @@ impl RpcConnection {
                 Ok(mut pending) => {
                     for (id, sender) in pending.drain() {
                         if sender.send(Err(IpcError::Disconnected)).is_err() {
-                            warn!(id = id, "Failed to notify pending RPC request of disconnect");
+                            warn!(
+                                id = id,
+                                "Failed to notify pending RPC request of disconnect"
+                            );
                         }
                     }
                 },
@@ -209,6 +232,109 @@ mod tests {
         }
     }
 
+    struct CrashHandler;
+
+    impl RpcHandler for CrashHandler {
+        fn handle_request(&self, _method: &str, _params: Value) -> Result<Value, IpcError> {
+            panic!("intentional test panic");
+        }
+    }
+
+    fn make_loopback_connection(handler: Arc<dyn RpcHandler>) -> RpcConnection {
+        let (host_to_worker_tx, host_to_worker_rx) = mpsc::channel::<Vec<u8>>();
+        let (worker_to_host_tx, worker_to_host_rx) = mpsc::channel::<Vec<u8>>();
+
+        thread::spawn(move || {
+            while let Ok(msg) = host_to_worker_rx.recv() {
+                let text = String::from_utf8_lossy(&msg).to_string();
+                if let Ok(RpcMessage::Request(request)) = RpcMessage::parse_line(&text) {
+                    let response = RpcResponse::success(request.id, Value::Null);
+                    let encoded = serde_json::to_vec(&RpcMessage::Response(response))
+                        .expect("encode response");
+                    let mut encoded_with_nl = encoded;
+                    encoded_with_nl.push(b'\n');
+                    worker_to_host_tx
+                        .send(encoded_with_nl)
+                        .expect("send response");
+                }
+            }
+        });
+
+        struct ChannelReader {
+            rx: mpsc::Receiver<Vec<u8>>,
+            buffer: Vec<u8>,
+            cursor: usize,
+        }
+
+        impl std::io::Read for ChannelReader {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                if self.cursor >= self.buffer.len() {
+                    self.buffer = self.rx.recv().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "channel closed")
+                    })?;
+                    self.cursor = 0;
+                }
+
+                let remaining = self.buffer.len().saturating_sub(self.cursor);
+                let n = remaining.min(out.len());
+                out[..n].copy_from_slice(&self.buffer[self.cursor..self.cursor + n]);
+                self.cursor += n;
+                Ok(n)
+            }
+        }
+
+        impl std::io::BufRead for ChannelReader {
+            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+                if self.cursor >= self.buffer.len() {
+                    self.buffer = self.rx.recv().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "channel closed")
+                    })?;
+                    self.cursor = 0;
+                }
+                Ok(&self.buffer[self.cursor..])
+            }
+
+            fn consume(&mut self, amt: usize) {
+                self.cursor = (self.cursor + amt).min(self.buffer.len());
+            }
+        }
+
+        struct ChannelWriter {
+            tx: mpsc::Sender<Vec<u8>>,
+            pending: Vec<u8>,
+        }
+
+        impl std::io::Write for ChannelWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.pending.extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                if !self.pending.is_empty() {
+                    self.tx
+                        .send(std::mem::take(&mut self.pending))
+                        .map_err(|_| {
+                            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "channel closed")
+                        })?;
+                }
+                Ok(())
+            }
+        }
+
+        let reader = ChannelReader {
+            rx: worker_to_host_rx,
+            buffer: Vec::new(),
+            cursor: 0,
+        };
+        let writer = ChannelWriter {
+            tx: host_to_worker_tx,
+            pending: Vec::new(),
+        };
+
+        RpcConnection::new(reader, writer, handler)
+    }
+
     #[test]
     fn test_rpc_connection_creation() {
         let reader = BufReader::new(Cursor::new(Vec::<u8>::new()));
@@ -220,6 +346,143 @@ mod tests {
         connection
             .send_notification("test.notification", serde_json::json!({"ok": true}))
             .expect("connection should be usable after creation");
+    }
+
+    #[test]
+    fn test_send_request_times_out_when_no_response() {
+        let (_tx, rx) = mpsc::channel::<Vec<u8>>();
+        let writer = Cursor::new(Vec::<u8>::new());
+        let handler: Arc<dyn RpcHandler> = Arc::new(NoopHandler);
+
+        struct BlockingReader {
+            rx: mpsc::Receiver<Vec<u8>>,
+            buffer: Vec<u8>,
+            cursor: usize,
+        }
+
+        impl std::io::Read for BlockingReader {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                if self.cursor >= self.buffer.len() {
+                    self.buffer = self.rx.recv().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "channel closed")
+                    })?;
+                    self.cursor = 0;
+                }
+
+                let remaining = self.buffer.len().saturating_sub(self.cursor);
+                let n = remaining.min(out.len());
+                out[..n].copy_from_slice(&self.buffer[self.cursor..self.cursor + n]);
+                self.cursor += n;
+                Ok(n)
+            }
+        }
+
+        impl std::io::BufRead for BlockingReader {
+            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+                if self.cursor >= self.buffer.len() {
+                    self.buffer = self.rx.recv().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "channel closed")
+                    })?;
+                    self.cursor = 0;
+                }
+                Ok(&self.buffer[self.cursor..])
+            }
+
+            fn consume(&mut self, amt: usize) {
+                self.cursor = (self.cursor + amt).min(self.buffer.len());
+            }
+        }
+
+        let reader = BlockingReader {
+            rx,
+            buffer: Vec::new(),
+            cursor: 0,
+        };
+
+        let connection = RpcConnection::new(reader, writer, handler);
+        let result = connection.send_request("test.request", Value::Null);
+
+        assert!(matches!(result, Err(IpcError::Timeout { .. })));
+    }
+
+    #[test]
+    fn test_send_request_succeeds_with_loopback_response() {
+        let handler: Arc<dyn RpcHandler> = Arc::new(NoopHandler);
+        let connection = make_loopback_connection(handler);
+
+        let response = connection
+            .send_request("test.loopback", serde_json::json!({"ok": true}))
+            .expect("loopback request should receive response");
+
+        assert_eq!(response, Value::Null);
+    }
+
+    #[test]
+    fn test_handler_panic_returns_disconnect_or_timeout() {
+        let (request_tx, request_rx) = mpsc::channel::<Vec<u8>>();
+        let writer = Cursor::new(Vec::<u8>::new());
+        let handler: Arc<dyn RpcHandler> = Arc::new(CrashHandler);
+
+        struct ChannelReader {
+            rx: mpsc::Receiver<Vec<u8>>,
+            buffer: Vec<u8>,
+            cursor: usize,
+        }
+
+        impl std::io::Read for ChannelReader {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                if self.cursor >= self.buffer.len() {
+                    self.buffer = self.rx.recv().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "channel closed")
+                    })?;
+                    self.cursor = 0;
+                }
+                let remaining = self.buffer.len().saturating_sub(self.cursor);
+                let n = remaining.min(out.len());
+                out[..n].copy_from_slice(&self.buffer[self.cursor..self.cursor + n]);
+                self.cursor += n;
+                Ok(n)
+            }
+        }
+
+        impl std::io::BufRead for ChannelReader {
+            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+                if self.cursor >= self.buffer.len() {
+                    self.buffer = self.rx.recv().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "channel closed")
+                    })?;
+                    self.cursor = 0;
+                }
+                Ok(&self.buffer[self.cursor..])
+            }
+
+            fn consume(&mut self, amt: usize) {
+                self.cursor = (self.cursor + amt).min(self.buffer.len());
+            }
+        }
+
+        let reader = ChannelReader {
+            rx: request_rx,
+            buffer: Vec::new(),
+            cursor: 0,
+        };
+
+        let connection = RpcConnection::new(reader, writer, handler);
+
+        let req = RpcRequest::new(99, "panic", Value::Null);
+        let encoded = serde_json::to_vec(&RpcMessage::Request(req)).expect("encode request");
+        let mut line = encoded;
+        line.push(b'\n');
+        request_tx.send(line).expect("send request line");
+        drop(request_tx);
+
+        let result = connection.send_request("host.wait", Value::Null);
+        assert!(matches!(
+            result,
+            Err(IpcError::Disconnected)
+                | Err(IpcError::ResponseChannelClosed)
+                | Err(IpcError::Timeout { .. })
+        ));
     }
 
     #[test]

@@ -772,9 +772,7 @@ impl LauncherWindow {
                             let item_id = bundle_id.clone();
                             let tracker = Arc::clone(launcher.usage_tracker());
                             std::thread::spawn(move || {
-                                if let Err(e) =
-                                    tracker.record_query_selection(&query, &item_id)
-                                {
+                                if let Err(e) = tracker.record_query_selection(&query, &item_id) {
                                     tracing::warn!("Failed to record query selection: {}", e);
                                 }
                             });

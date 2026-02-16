@@ -277,8 +277,7 @@ mod tests {
             require_identity: false,
         };
 
-        verify_code_signature_with_config(signed_path, &config).expect(
-            "expected identity verification to be skipped when require_identity is false",
-        );
+        verify_code_signature_with_config(signed_path, &config)
+            .expect("expected identity verification to be skipped when require_identity is false");
     }
 }

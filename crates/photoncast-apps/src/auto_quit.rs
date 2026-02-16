@@ -198,6 +198,8 @@ pub struct AutoQuitManager {
     config: AutoQuitConfig,
     /// In-memory activity tracker (bundle_id -> last activity instant).
     activity_tracker: HashMap<String, Instant>,
+    /// Last observed process ID for each tracked bundle ID.
+    tracked_pids: HashMap<String, u32>,
 }
 
 impl AutoQuitManager {
@@ -207,6 +209,7 @@ impl AutoQuitManager {
         Self {
             config,
             activity_tracker: HashMap::new(),
+            tracked_pids: HashMap::new(),
         }
     }
 
@@ -225,20 +228,24 @@ impl AutoQuitManager {
         // Initialize activity tracking for enabled apps that are currently running
         // This ensures auto-quit works after app restart
         if let Ok(running_apps) = crate::process::get_running_apps() {
-            let running_bundle_ids: std::collections::HashSet<String> = running_apps
-                .iter()
-                .filter_map(|app| app.bundle_id.as_ref().map(|id| id.to_lowercase()))
+            let running_map: HashMap<String, u32> = running_apps
+                .into_iter()
+                .filter_map(|app| app.bundle_id.map(|id| (id.to_lowercase(), app.pid)))
                 .collect();
 
             let now = Instant::now();
             for (bundle_id, app_config) in &manager.config.apps {
-                if app_config.enabled && running_bundle_ids.contains(&bundle_id.to_lowercase()) {
-                    // App is enabled and running - start tracking it
-                    manager.activity_tracker.insert(bundle_id.clone(), now);
-                    tracing::debug!(
-                        "Auto-quit: Initialized tracking for running app: {}",
-                        bundle_id
-                    );
+                if app_config.enabled {
+                    let key = bundle_id.to_lowercase();
+                    if let Some(&pid) = running_map.get(&key) {
+                        manager.activity_tracker.insert(bundle_id.clone(), now);
+                        manager.tracked_pids.insert(bundle_id.clone(), pid);
+                        tracing::debug!(
+                            "Auto-quit: Initialized tracking for running app: {} (pid {})",
+                            bundle_id,
+                            pid
+                        );
+                    }
                 }
             }
         }
@@ -269,9 +276,10 @@ impl AutoQuitManager {
     /// Records that an app was activated (became frontmost/focused).
     ///
     /// This resets the idle timer for the app.
-    pub fn on_app_activated(&mut self, bundle_id: &str) {
+    pub fn on_app_activated(&mut self, bundle_id: &str, pid: u32) {
         self.activity_tracker
             .insert(bundle_id.to_string(), Instant::now());
+        self.tracked_pids.insert(bundle_id.to_string(), pid);
 
         // Also update the persistent last_active time
         if let Some(app_config) = self.config.apps.get_mut(bundle_id) {
@@ -313,16 +321,47 @@ impl AutoQuitManager {
         for (bundle_id, timeout_minutes) in apps_to_check {
             let timeout = std::time::Duration::from_secs(u64::from(timeout_minutes) * 60);
 
+            // Check if the tracked process is still the current process for this bundle.
+            // If the process changed (e.g., app was relaunched), reset the timer.
+            let current_pid = running_map.get(&bundle_id.to_lowercase()).copied();
+            if let Some(pid) = current_pid {
+                match self.tracked_pids.get(&bundle_id).copied() {
+                    Some(tracked_pid) if tracked_pid != pid => {
+                        self.activity_tracker.insert(bundle_id.clone(), now);
+                        self.tracked_pids.insert(bundle_id.clone(), pid);
+                        tracing::debug!(
+                            "Auto-quit: Process changed for {}, resetting timer ({} -> {})",
+                            bundle_id,
+                            tracked_pid,
+                            pid
+                        );
+                        continue;
+                    },
+                    None => {
+                        self.activity_tracker.insert(bundle_id.clone(), now);
+                        self.tracked_pids.insert(bundle_id.clone(), pid);
+                        tracing::debug!(
+                            "Auto-quit: Started tracking running process for {} (pid {})",
+                            bundle_id,
+                            pid
+                        );
+                        continue;
+                    },
+                    Some(_) => {},
+                }
+            }
+
             // Check if the app has been tracked and is idle
             if let Some(last_active) = self.activity_tracker.get(&bundle_id) {
                 if now.duration_since(*last_active) >= timeout {
                     // App is idle, try to quit it using the cached running apps
-                    if let Some(&pid) = running_map.get(&bundle_id.to_lowercase()) {
+                    if let Some(pid) = current_pid {
                         if let Err(e) = crate::process::quit_app(pid) {
                             tracing::warn!("Failed to auto-quit {}: {}", bundle_id, e);
                         } else {
                             quit_apps.push(bundle_id.clone());
                             self.activity_tracker.remove(&bundle_id);
+                            self.tracked_pids.remove(&bundle_id);
                             tracing::info!("Auto-quit idle app: {}", bundle_id);
                         }
                     }
@@ -355,6 +394,7 @@ impl AutoQuitManager {
             config.enabled = false;
         }
         self.activity_tracker.remove(bundle_id);
+        self.tracked_pids.remove(bundle_id);
     }
 
     /// Checks if auto-quit is enabled for an app.
@@ -379,6 +419,8 @@ impl AutoQuitManager {
     /// Cleans up tracking for apps that are no longer running.
     pub fn cleanup_stale_entries(&mut self, running_bundle_ids: &[&str]) {
         self.activity_tracker
+            .retain(|bundle_id, _| running_bundle_ids.contains(&bundle_id.as_str()));
+        self.tracked_pids
             .retain(|bundle_id, _| running_bundle_ids.contains(&bundle_id.as_str()));
     }
 
@@ -405,14 +447,25 @@ impl AutoQuitManager {
     pub fn tick(&mut self) -> (Option<String>, Vec<String>) {
         // Get the currently frontmost app and update its activity
         let frontmost = crate::process::get_frontmost_app_bundle_id();
-        if let Some(ref bundle_id) = frontmost {
+        let running_apps = crate::process::get_running_apps().ok();
+
+        if let (Some(bundle_id), Some(apps)) = (frontmost.as_ref(), running_apps.as_ref()) {
             // Only track if this app has auto-quit enabled
             if self.is_auto_quit_enabled(bundle_id) {
-                self.on_app_activated(bundle_id);
-                tracing::trace!(
-                    "Auto-quit: Updated activity for frontmost app: {}",
-                    bundle_id
-                );
+                let frontmost_key = bundle_id.to_lowercase();
+                if let Some(pid) = apps.iter().find_map(|app| {
+                    app.bundle_id
+                        .as_ref()
+                        .filter(|id| id.eq_ignore_ascii_case(&frontmost_key))
+                        .map(|_| app.pid)
+                }) {
+                    self.on_app_activated(bundle_id, pid);
+                    tracing::trace!(
+                        "Auto-quit: Updated activity for frontmost app: {} (pid {})",
+                        bundle_id,
+                        pid
+                    );
+                }
             }
         }
 
@@ -512,7 +565,7 @@ mod tests {
 
         // Enable and track activity
         manager.enable_auto_quit("com.example.app", 5);
-        manager.on_app_activated("com.example.app");
+        manager.on_app_activated("com.example.app", 42);
 
         // Activity should be tracked
         assert!(manager.activity_tracker.contains_key("com.example.app"));
@@ -654,7 +707,7 @@ mod tests {
         // Call on_app_activated to update timestamp
         let before = *manager.activity_tracker.get(bundle_id).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
-        manager.on_app_activated(bundle_id);
+        manager.on_app_activated(bundle_id, 42);
         let after = *manager.activity_tracker.get(bundle_id).unwrap();
 
         // The timestamp should have been updated (after should be later than before)
@@ -833,7 +886,7 @@ mod tests {
         // Configure multiple apps
         manager.enable_auto_quit("com.test.app1", 10);
         manager.enable_auto_quit("com.test.app2", 15);
-        manager.on_app_activated("com.test.app1");
+        manager.on_app_activated("com.test.app1", 42);
 
         // Serialize the config (simulating save)
         let toml_content = toml::to_string_pretty(manager.config()).expect("Failed to serialize");

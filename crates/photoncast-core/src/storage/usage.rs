@@ -559,15 +559,15 @@ mod tests {
 
         // Verify both prefixes were recorded
         let db = tracker.database();
-        let s_result = db
+        let prefix_s = db
             .get_query_frecency("s", "com.test.shortwave")
             .expect("should get");
-        assert!(s_result.is_some());
+        assert!(prefix_s.is_some());
 
-        let sh_result = db
+        let prefix_sh = db
             .get_query_frecency("sh", "com.test.shortwave")
             .expect("should get");
-        assert!(sh_result.is_some());
+        assert!(prefix_sh.is_some());
     }
 
     #[test]

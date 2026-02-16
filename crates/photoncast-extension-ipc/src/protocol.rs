@@ -113,11 +113,8 @@ mod tests {
 
     #[test]
     fn test_message_serialization_roundtrip() {
-        let message = RpcMessage::Request(RpcRequest::new(
-            42,
-            "ping",
-            serde_json::json!({"value": 1}),
-        ));
+        let message =
+            RpcMessage::Request(RpcRequest::new(42, "ping", serde_json::json!({"value": 1})));
 
         let json = serde_json::to_string(&message).expect("should serialize rpc message");
         let parsed = RpcMessage::parse_line(&json).expect("should parse serialized message");
@@ -143,8 +140,8 @@ mod tests {
 
     #[test]
     fn test_parse_empty_message_returns_error() {
-        let error = RpcMessage::parse_line("   ")
-            .expect_err("expected empty message parse to fail");
+        let error =
+            RpcMessage::parse_line("   ").expect_err("expected empty message parse to fail");
 
         match error {
             IpcError::InvalidMessage(message) => {

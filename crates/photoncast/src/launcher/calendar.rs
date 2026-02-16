@@ -21,9 +21,10 @@ impl LauncherWindow {
                 match result {
                     Ok(events) => {
                         tracing::debug!("fetch_next_meeting: got {} events", events.len());
-                        // Find the next event that hasn't ended yet
+                        // Find the next non-all-day event that hasn't ended yet
                         let now = photoncast_calendar::chrono::Local::now();
-                        this.meeting.next_meeting = events.into_iter().find(|e| e.end > now);
+                        this.meeting.next_meeting =
+                            events.into_iter().find(|e| !e.is_all_day && e.end > now);
                         if this.meeting.next_meeting.is_some() {
                             tracing::debug!(
                                 "Next meeting found: {:?}",

@@ -774,10 +774,10 @@ app_search_scope = ["/my/apps", "/other/apps"]
 
     #[test]
     fn test_search_config_deserialize_without_scope() {
-        let toml_str = r#"
+        let toml_str = r"
 include_system_apps = true
 file_result_limit = 5
-"#;
+";
         let config: SearchConfig = toml::from_str(toml_str).unwrap();
         assert!(
             config.app_search_scope.is_empty(),
@@ -795,11 +795,11 @@ file_result_limit = 5
 
     #[test]
     fn test_config_deserialize_partial_toml() {
-        let toml_str = r#"
+        let toml_str = r"
 [general]
 max_results = 25
 launch_at_login = true
-"#;
+";
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.general.max_results, 25);
         assert!(config.general.launch_at_login);
