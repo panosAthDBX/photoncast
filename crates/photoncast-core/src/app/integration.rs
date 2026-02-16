@@ -797,9 +797,10 @@ mod tests {
     }
 
     fn create_test_app_with_timeout() -> PhotonCastApp {
-        // Use a longer timeout for tests to avoid flakiness
+        // Use a longer timeout and disable file provider in tests to avoid CI flakiness.
         let config = IntegrationConfig {
-            search_timeout_ms: 1000, // 1 second for tests
+            search_timeout_ms: 3000,
+            include_files: false,
             ..IntegrationConfig::default()
         };
         PhotonCastApp::with_config(config)

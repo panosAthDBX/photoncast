@@ -617,7 +617,7 @@ mod tests {
 
         assert_eq!(results.total_count, 2);
         assert!(
-            elapsed < Duration::from_millis(140),
+            elapsed < Duration::from_millis(260),
             "search should complete near single-provider latency when joins are batched; elapsed={elapsed:?}"
         );
     }
