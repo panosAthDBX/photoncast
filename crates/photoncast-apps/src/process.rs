@@ -842,11 +842,25 @@ mod tests {
 
         let pid = i32::try_from(finder.pid).expect("Finder PID should fit in i32");
 
-        // Finder should always be responding
+        // Finder responsiveness can be transiently delayed on CI hosts, so retry briefly.
+        let mut is_responsive = false;
+        let attempts = 5;
+
+        for attempt in 1..=attempts {
+            if is_app_responding(pid) {
+                is_responsive = true;
+                break;
+            }
+
+            if attempt < attempts {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+        }
+
         assert!(
-            is_app_responding(pid),
-            "Finder (PID {}) should be responding",
-            pid
+            is_responsive,
+            "Finder (PID {}) should be responding after {} attempts",
+            pid, attempts
         );
     }
 
