@@ -2,13 +2,18 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   fmt:
@@ -119,3 +124,75 @@ jobs:
           name: photoncast-macos
           path: target/release/photoncast
           if-no-files-found: warn
+
+  dmg:
+    name: Build DMG
+    runs-on: macos-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Build release app bundle
+        run: ./scripts/release-build.sh
+
+      - name: Create DMG
+        run: ./scripts/create-dmg.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: photoncast-dmg
+          path: build/PhotonCast.dmg
+          if-no-files-found: error
+
+  changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          output="build/changelog-main.md"
+          last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+
+          if [[ -n "${last_tag}" ]]; then
+            range="${last_tag}..HEAD"
+            since_label="Since tag: ${last_tag}"
+          else
+            range="$(git rev-list --max-parents=0 HEAD)..HEAD"
+            since_label="Since: initial commit"
+          fi
+
+          {
+            echo "# Changelog"
+            echo
+            echo "Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            echo "Branch: ${GITHUB_REF_NAME}"
+            echo "${since_label}"
+            echo
+            echo "## Commits"
+            git log --reverse --pretty=format:'- %h %s (%an)' "${range}"
+          } > "${output}"
+
+          cat "${output}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog-main
+          path: build/changelog-main.md
+          if-no-files-found: error
