@@ -385,6 +385,9 @@ impl ExtensionManager {
                 .map_err(|e| ExtensionApiError::message(e.to_string()))?,
             )),
             command_invocation_guard: self.invocation_guard.clone(),
+            allow_network: record.manifest.permissions.network,
+            allow_clipboard: record.manifest.permissions.clipboard,
+            allow_notifications: record.manifest.permissions.notifications,
             allowed_filesystem_paths: record
                 .manifest
                 .permissions
@@ -782,6 +785,9 @@ impl ExtensionManager {
                 },
             )),
             command_invocation_guard: self.invocation_guard.clone(),
+            allow_network: manifest.permissions.network,
+            allow_clipboard: manifest.permissions.clipboard,
+            allow_notifications: manifest.permissions.notifications,
             allowed_filesystem_paths: manifest
                 .permissions
                 .filesystem

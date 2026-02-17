@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 env:
@@ -155,6 +153,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build]
+    outputs:
+      content: ${{ steps.changelog.outputs.content }}
+      latest_tag: ${{ steps.changelog.outputs.latest_tag }}
+      commit_count: ${{ steps.changelog.outputs.commit_count }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -162,6 +164,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate changelog
+        id: changelog
         shell: bash
         run: |
           set -euo pipefail
@@ -190,9 +193,74 @@ jobs:
 
           cat "${output}" >> "${GITHUB_STEP_SUMMARY}"
 
+          if [[ -n "${last_tag}" ]]; then
+            commit_count="$(git rev-list --count "${last_tag}..HEAD")"
+          else
+            commit_count="$(git rev-list --count HEAD)"
+          fi
+
+          {
+            echo "content<<EOF"
+            cat "${output}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${last_tag}" >> "$GITHUB_OUTPUT"
+          echo "commit_count=${commit_count}" >> "$GITHUB_OUTPUT"
+
       - name: Upload changelog artifact
         uses: actions/upload-artifact@v4
         with:
           name: changelog-main
           path: build/changelog-main.md
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [dmg, changelog]
+    permissions:
+      contents: write
+    steps:
+      - name: Download DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: photoncast-dmg
+          path: build
+
+      - name: Create checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          shasum -a 256 build/PhotonCast.dmg > build/PhotonCast.dmg.sha256
+
+      - name: Prepare release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          timestamp="$(date -u +'%Y.%m.%d-%H%M%S')"
+          tag="main-build-${timestamp}"
+          title="Main Build ${timestamp}"
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "title=${title}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.title }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: false
+          files: |
+            build/PhotonCast.dmg
+            build/PhotonCast.dmg.sha256
+          body: |
+            Automated main-branch build release.
+
+            - Commit: ${{ github.sha }}
+            - Branch: main
+            - Commits since last tag: ${{ needs.changelog.outputs.commit_count }}
+
+            ${{ needs.changelog.outputs.content }}
