@@ -90,16 +90,7 @@ pub fn execute_action(
     };
 
     if let Some(payload) = payload_for_action(extension_id, action) {
-        callback(payload.clone(), cx);
-
-        if let ExtensionViewCallbackPayload::DelegatedAction {
-            extension_id,
-            should_close: true,
-            ..
-        } = payload
-        {
-            callback(ExtensionViewCallbackPayload::CloseView { extension_id }, cx);
-        }
+        callback(payload, cx);
     }
 }
 

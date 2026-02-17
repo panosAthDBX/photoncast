@@ -476,7 +476,7 @@ impl LauncherWindow {
                 extension_id,
                 action_id,
                 action,
-                ..
+                should_close,
             } => {
                 let result = self
                     .photoncast_app
@@ -490,6 +490,9 @@ impl LauncherWindow {
                             action_id = %action_id,
                             "Executed delegated extension action"
                         );
+                        if should_close {
+                            self.hide(cx);
+                        }
                     },
                     Err(
                         photoncast_core::app::integration::ExtensionActionError::PermissionsConsentRequired {

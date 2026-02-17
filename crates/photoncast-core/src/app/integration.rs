@@ -469,6 +469,19 @@ impl PhotonCastApp {
         Ok(())
     }
 
+    fn escape_applescript_string(value: &str) -> String {
+        value.replace('\\', "\\\\").replace('"', "\\\"")
+    }
+
+    fn build_copy_image_clipboard_scripts(path: &str) -> (String, String) {
+        let escaped = Self::escape_applescript_string(path);
+        let png_script =
+            format!(r#"set the clipboard to (read (POSIX file "{escaped}") as «class PNGf»)"#);
+        let tiff_script =
+            format!(r#"set the clipboard to (read (POSIX file "{escaped}") as TIFF picture)"#);
+        (png_script, tiff_script)
+    }
+
     #[allow(clippy::result_large_err)]
     fn ensure_extension_loaded_for_action(
         manager: &mut ExtensionManager,
@@ -736,13 +749,15 @@ impl PhotonCastApp {
                     });
                 }
 
-                let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
-                let png_script = format!(
-                    r#"set the clipboard to (read (POSIX file \"{escaped}\") as «class PNGf»)"#
-                );
-                let tiff_script = format!(
-                    r#"set the clipboard to (read (POSIX file \"{escaped}\") as TIFF picture)"#
-                );
+                if !permissions.clipboard {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_image_to_clipboard",
+                        reason: "manifest does not grant clipboard permission".to_string(),
+                    });
+                }
+
+                let (png_script, tiff_script) = Self::build_copy_image_clipboard_scripts(path);
 
                 let run_script = |script: &str| {
                     std::process::Command::new("osascript")
@@ -1166,6 +1181,7 @@ mod tests {
     use crate::indexer::AppBundleId;
     use chrono::Utc;
     use std::path::PathBuf;
+    use tempfile::NamedTempFile;
 
     fn create_test_app(name: &str, bundle_id: &str) -> IndexedApp {
         IndexedApp {
@@ -1285,6 +1301,30 @@ mod tests {
         // Verify it implements std::error::Error by using it as a trait object
         let _: &dyn std::error::Error = &err;
         assert_eq!(err.to_string(), "test error");
+    }
+
+    #[test]
+    fn test_build_copy_image_clipboard_scripts_quote_path_correctly() {
+        let (png_script, tiff_script) =
+            PhotonCastApp::build_copy_image_clipboard_scripts("/tmp/image \"quoted\".png");
+
+        assert_eq!(
+            png_script,
+            "set the clipboard to (read (POSIX file \"/tmp/image \\\"quoted\\\".png\") as «class PNGf»)"
+        );
+        assert_eq!(
+            tiff_script,
+            "set the clipboard to (read (POSIX file \"/tmp/image \\\"quoted\\\".png\") as TIFF picture)"
+        );
+        assert!(!png_script.contains("\\\"/tmp"));
+    }
+
+    #[test]
+    fn test_validate_extension_path_allows_tmp_file_without_parent_components() {
+        let file = NamedTempFile::new().expect("temp file should be created");
+        let path = file.path().to_str().expect("path should be valid utf-8");
+
+        assert!(PhotonCastApp::validate_extension_path(path).is_ok());
     }
 
     #[tokio::test]
