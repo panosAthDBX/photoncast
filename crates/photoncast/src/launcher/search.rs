@@ -1065,41 +1065,10 @@ impl LauncherWindow {
                                 "Extension command executed"
                             );
                             // Check if the extension rendered a view
-                            let pending_view = self.photoncast_app.read().take_extension_view(extension_id);
+                            let pending_view =
+                                self.photoncast_app.read().take_extension_view(extension_id);
                             if let Some(ext_view) = pending_view {
-                                tracing::info!(
-                                    extension_id = %extension_id,
-                                    "Extension rendered a view, displaying it"
-                                );
-                                // Create action callback to handle cancel and other actions
-                                let view_handle = cx.view().downgrade();
-                                let action_callback: crate::extension_views::ActionCallback =
-                                    std::sync::Arc::new(move |action_id, cx| {
-                                        if action_id == crate::extension_views::CLOSE_VIEW_ACTION {
-                                            if let Some(view) = view_handle.upgrade() {
-                                                view.update(cx, |launcher, cx| {
-                                                    launcher.close_extension_view(cx);
-                                                });
-                                            }
-                                        }
-                                    });
-                                let rendered = crate::extension_views::render_extension_view(
-                                    ext_view,
-                                    Some(action_callback),
-                                    cx,
-                                );
-                                // Focus the extension view so it receives keyboard events
-                                if let Ok(list_view) = rendered.clone().downcast::<crate::extension_views::ExtensionListView>() {
-                                    cx.focus_view(&list_view);
-                                }
-                                self.extension_view.view = Some(rendered);
-                                self.extension_view.id = Some(extension_id.to_string());
-                                // Resize window to fit extension view
-                                crate::platform::resize_window(
-                                    crate::constants::LAUNCHER_WIDTH.0.into(),
-                                    crate::constants::EXPANDED_HEIGHT.0.into(),
-                                );
-                                cx.notify();
+                                self.show_extension_view(extension_id, ext_view, cx);
                             } else {
                                 self.hide(cx);
                             }

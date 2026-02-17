@@ -114,9 +114,10 @@ impl FileProvider {
     #[must_use]
     pub fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
-        self.backend = FileSearchBackend::new(FileSearchStrategy::SpotlightWithFallback {
-            timeout: Duration::from_millis(timeout_ms),
-        });
+        self.backend = self
+            .backend
+            .clone()
+            .with_timeout(Duration::from_millis(timeout_ms));
         self
     }
 
@@ -333,6 +334,16 @@ mod tests {
     fn test_file_provider_with_timeout() {
         let provider = FileProvider::new(5).with_timeout_ms(1000);
         assert_eq!(provider.timeout_ms, 1000);
+    }
+
+    #[test]
+    fn test_with_timeout_preserves_scope() {
+        let provider = FileProvider::new(5)
+            .with_scope(PathBuf::from("/tmp"))
+            .with_timeout_ms(750);
+
+        assert_eq!(provider.timeout_ms, 750);
+        assert_eq!(provider.scope, Some(PathBuf::from("/tmp")));
     }
 
     #[test]

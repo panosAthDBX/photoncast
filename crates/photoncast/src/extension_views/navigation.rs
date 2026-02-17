@@ -19,7 +19,7 @@ use photoncast_extension_api::{ExtensionView, ListItem, ViewHandle, ViewHandleTr
 
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
-use super::{render_extension_view, ActionCallback, CLOSE_VIEW_ACTION};
+use super::{render_extension_view, ActionCallback, ExtensionViewCallbackPayload};
 
 // ============================================================================
 // Actions
@@ -154,7 +154,8 @@ impl NavigationStack {
         let id = self.next_id;
         self.next_id += 1;
 
-        let rendered = render_extension_view(view.clone(), action_callback, cx);
+        let rendered =
+            render_extension_view(view.clone(), self.extension_id.clone(), action_callback, cx);
         self.stack.push(NavigationEntry { view, rendered, id });
         id
     }
@@ -178,7 +179,8 @@ impl NavigationStack {
         let id = self.next_id;
         self.next_id += 1;
 
-        let rendered = render_extension_view(view.clone(), action_callback, cx);
+        let rendered =
+            render_extension_view(view.clone(), self.extension_id.clone(), action_callback, cx);
 
         if self.stack.is_empty() {
             self.stack.push(NavigationEntry { view, rendered, id });
@@ -401,7 +403,12 @@ impl NavigationContainer {
         if !self.stack.can_pop() {
             // Can't pop - trigger cancel callback instead
             if let Some(callback) = &self.action_callback {
-                callback(CLOSE_VIEW_ACTION, cx);
+                callback(
+                    ExtensionViewCallbackPayload::CloseView {
+                        extension_id: self.stack.extension_id().to_string(),
+                    },
+                    cx,
+                );
             }
             return;
         }

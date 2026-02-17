@@ -362,7 +362,6 @@ pub fn open_url(url: &str) -> Result<(), LaunchError> {
     }
 }
 
-#[allow(clippy::manual_let_else)]
 fn is_allowed_url(url: &url::Url) -> bool {
     if !matches!(url.scheme(), "http" | "https" | "mailto" | "tel") {
         return false;
@@ -372,20 +371,12 @@ fn is_allowed_url(url: &url::Url) -> bool {
         return true;
     }
 
-    let host = match url.host_str() {
-        Some(host) => host,
-        None => return false,
-    };
-
-    if host.eq_ignore_ascii_case("localhost") {
-        return false;
+    match url.host() {
+        Some(url::Host::Domain(host)) => !host.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(addr)) => !is_private_ip(&IpAddr::V4(addr)),
+        Some(url::Host::Ipv6(addr)) => !is_private_ip(&IpAddr::V6(addr)),
+        None => false,
     }
-
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        return !is_private_ip(&ip);
-    }
-
-    true
 }
 
 fn is_private_ip(ip: &IpAddr) -> bool {
@@ -796,6 +787,33 @@ mod tests {
     fn test_open_url_blocks_localhost() {
         let result = open_url("http://localhost:8080");
         assert!(matches!(result, Err(LaunchError::UrlNotAllowed { .. })));
+    }
+
+    #[test]
+    fn test_is_allowed_url_blocks_private_ipv4() {
+        let url = url::Url::parse("http://192.168.1.12/resource").expect("valid url");
+        assert!(!is_allowed_url(&url));
+    }
+
+    #[test]
+    fn test_is_allowed_url_blocks_loopback_ipv6() {
+        let url = url::Url::parse("http://[::1]/api").expect("valid url");
+        assert!(!is_allowed_url(&url));
+    }
+
+    #[test]
+    fn test_is_allowed_url_allows_mailto_and_tel() {
+        let mailto = url::Url::parse("mailto:user@example.com").expect("valid mailto url");
+        let tel = url::Url::parse("tel:+15551234567").expect("valid tel url");
+
+        assert!(is_allowed_url(&mailto));
+        assert!(is_allowed_url(&tel));
+    }
+
+    #[test]
+    fn test_is_allowed_url_blocks_disallowed_scheme() {
+        let file_url = url::Url::parse("file:///etc/passwd").expect("valid file url");
+        assert!(!is_allowed_url(&file_url));
     }
 
     #[test]

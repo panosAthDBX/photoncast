@@ -116,30 +116,28 @@ impl SearchProvider for AppProvider {
             })
             .collect();
 
+        let mut frecency_by_index = vec![0.0; apps.len()];
+        if let Some(ut) = tracker {
+            for (idx, _, _) in &scored_results {
+                let bundle_id = apps[*idx].bundle_id.as_str();
+                let global = ut
+                    .get_app_frecency(bundle_id)
+                    .ok()
+                    .map_or(0.0, |f| f.score());
+                let per_q = ut
+                    .get_query_frecency(query, bundle_id)
+                    .ok()
+                    .map_or(0.0, |f| f.score());
+                frecency_by_index[*idx] = global + per_q;
+            }
+        }
+
         // Sort by combined score: match quality + (global + per-query) frecency
         scored_results.sort_by(|a, b| {
-            let bid_a = apps[a.0].bundle_id.as_str();
-            let bid_b = apps[b.0].bundle_id.as_str();
-
-            let frec_a = tracker.map_or(0.0, |ut| {
-                let global = ut.get_app_frecency(bid_a).ok().map_or(0.0, |f| f.score());
-                let per_q = ut
-                    .get_query_frecency(query, bid_a)
-                    .ok()
-                    .map_or(0.0, |f| f.score());
-                global + per_q
-            });
-            let frec_b = tracker.map_or(0.0, |ut| {
-                let global = ut.get_app_frecency(bid_b).ok().map_or(0.0, |f| f.score());
-                let per_q = ut
-                    .get_query_frecency(query, bid_b)
-                    .ok()
-                    .map_or(0.0, |f| f.score());
-                global + per_q
-            });
-
-            let combined_a = frec_a.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
-            let combined_b = frec_b.mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
+            let combined_a =
+                frecency_by_index[a.0].mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
+            let combined_b =
+                frecency_by_index[b.0].mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
 
             combined_b.total_cmp(&combined_a)
         });
@@ -151,18 +149,7 @@ impl SearchProvider for AppProvider {
             .map(|(idx, score, match_indices)| {
                 let app = &apps[idx];
                 let bundle_id_str = app.bundle_id.as_str().to_string();
-
-                let frecency = tracker.map_or(0.0, |ut| {
-                    let global = ut
-                        .get_app_frecency(&bundle_id_str)
-                        .ok()
-                        .map_or(0.0, |f| f.score());
-                    let per_q = ut
-                        .get_query_frecency(query, &bundle_id_str)
-                        .ok()
-                        .map_or(0.0, |f| f.score());
-                    global + per_q
-                });
+                let frecency = frecency_by_index[idx];
 
                 SearchResult {
                     id: SearchResultId::new(format!("app:{bundle_id_str}")),

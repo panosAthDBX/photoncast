@@ -16,7 +16,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use photoncast_extension_api::{DropdownOption, FieldType, FormField, FormView, ROption};
 
-use super::actions::CLOSE_VIEW_ACTION;
+use super::actions::{build_submit_payload, close_view};
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
 use super::ActionCallback;
@@ -65,6 +65,8 @@ pub struct ExtensionFormView {
     dropdown_index: usize,
     /// Focus handle for keyboard navigation.
     focus_handle: FocusHandle,
+    /// Extension ID owning this view.
+    extension_id: String,
     /// Action callback for handling form submission.
     action_callback: Option<ActionCallback>,
 }
@@ -88,6 +90,7 @@ impl ExtensionFormView {
     /// Creates a new extension form view.
     pub fn new(
         form_view: FormView,
+        extension_id: impl Into<String>,
         action_callback: Option<ActionCallback>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
@@ -152,6 +155,7 @@ impl ExtensionFormView {
             dropdown_open: false,
             dropdown_index: 0,
             focus_handle,
+            extension_id: extension_id.into(),
             action_callback,
         };
 
@@ -308,7 +312,9 @@ impl ExtensionFormView {
                     values_str.push(',');
                 }
                 let val_str = match value {
-                    FieldValue::Text(s) => format!("\"{}\":\"{}\"", key, s.replace('"', "\\\"")),
+                    FieldValue::Text(s) => {
+                        format!("\"{}\":\"{}\"", key, s.replace('"', "\\\""))
+                    },
                     FieldValue::Number(n) => format!("\"{}\":{}", key, n),
                     FieldValue::Boolean(b) => format!("\"{}\":{}", key, b),
                     FieldValue::Date(t) => format!("\"{}\":{}", key, t),
@@ -317,7 +323,7 @@ impl ExtensionFormView {
             }
             values_str.push('}');
 
-            callback(&format!("__submit__:{}", values_str), cx);
+            callback(build_submit_payload(&self.extension_id, values_str), cx);
         }
     }
 
@@ -393,8 +399,8 @@ impl ExtensionFormView {
         if self.dropdown_open {
             self.dropdown_open = false;
             cx.notify();
-        } else if let Some(callback) = &self.action_callback {
-            callback(CLOSE_VIEW_ACTION, cx);
+        } else {
+            close_view(&self.extension_id, &self.action_callback, cx);
         }
     }
 
