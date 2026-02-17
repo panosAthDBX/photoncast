@@ -4,6 +4,8 @@
 //! to Spotlight search than direct NSMetadataQuery FFI.
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Utc};
@@ -332,11 +334,12 @@ impl SpotlightQuery {
 
     /// Executes the query synchronously (blocking).
     ///
-    /// Uses `std::process::Command` for synchronous execution.
+    /// Uses a bounded wait around a worker thread to ensure timeout behavior
+    /// matches [`Self::execute`] in synchronous contexts.
     ///
     /// # Errors
     ///
-    /// Returns an error if the command fails.
+    /// Returns an error if the command fails or times out.
     pub fn execute_sync(&self) -> Result<Vec<FileResult>, SpotlightError> {
         if self.query.is_empty() {
             return Ok(Vec::new());
@@ -348,33 +351,62 @@ impl SpotlightQuery {
             });
         }
 
-        // Build mdfind command
-        let mut cmd = std::process::Command::new("mdfind");
-        cmd.arg("-name").arg(&self.query);
+        let (tx, rx) = mpsc::channel();
+        let query = self.query.clone();
+        let max_results = self.max_results;
+        let search_scope = self.search_scope.clone();
+        let timeout_ms = self.timeout_ms;
 
-        if let Some(scope) = &self.search_scope {
-            cmd.arg("-onlyin").arg(scope);
+        thread::spawn(move || {
+            let result = execute_sync_query(&query, max_results, search_scope.as_ref());
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {
+                warn!(
+                    query = %self.query,
+                    timeout_ms = self.timeout_ms,
+                    "Spotlight sync query timed out"
+                );
+                Err(SpotlightError::Timeout { timeout_ms })
+            },
         }
-
-        let output = cmd.output()?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SpotlightError::CommandFailed {
-                reason: stderr.to_string(),
-            });
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let results: Vec<FileResult> = stdout
-            .lines()
-            .filter(|line| !line.is_empty())
-            .take(self.max_results)
-            .map(|line| FileResult::from_path(PathBuf::from(line)))
-            .collect();
-
-        Ok(results)
     }
+}
+
+fn execute_sync_query(
+    query: &str,
+    max_results: usize,
+    search_scope: Option<&PathBuf>,
+) -> Result<Vec<FileResult>, SpotlightError> {
+    // Build mdfind command
+    let mut cmd = std::process::Command::new("mdfind");
+    cmd.arg("-name").arg(query);
+
+    if let Some(scope) = &search_scope {
+        cmd.arg("-onlyin").arg(scope);
+    }
+
+    let output = cmd.output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(SpotlightError::CommandFailed {
+            reason: stderr.to_string(),
+        });
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let results: Vec<FileResult> = stdout
+        .lines()
+        .filter(|line| !line.is_empty())
+        .take(max_results)
+        .map(|line| FileResult::from_path(PathBuf::from(line)))
+        .collect();
+
+    Ok(results)
 }
 
 /// Provider for Spotlight file searches.
@@ -648,6 +680,17 @@ mod tests {
         let query = SpotlightQuery::new("test\0query");
         let result = query.execute_sync();
         assert!(matches!(result, Err(SpotlightError::InvalidQuery { .. })));
+    }
+
+    #[test]
+    fn test_sync_query_respects_timeout() {
+        let query = SpotlightQuery::new("readme").with_timeout_ms(1);
+        let result = query.execute_sync();
+
+        assert!(matches!(
+            result,
+            Err(SpotlightError::Timeout { .. } | SpotlightError::CommandFailed { .. })
+        ));
     }
 
     // -------------------------------------------------------------------------

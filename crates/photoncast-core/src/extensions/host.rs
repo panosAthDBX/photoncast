@@ -531,6 +531,14 @@ mod tests {
         allow_network: bool,
         allow_clipboard: bool,
     ) -> ExtensionHostImpl {
+        create_test_host_with_filesystem_permissions(allow_network, allow_clipboard, Vec::new())
+    }
+
+    fn create_test_host_with_filesystem_permissions(
+        allow_network: bool,
+        allow_clipboard: bool,
+        allowed_filesystem_paths: Vec<PathBuf>,
+    ) -> ExtensionHostImpl {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let storage_path = temp_dir.path().join("storage.db");
         let storage = ExtensionStorageImpl::new(storage_path, "test.extension".to_string())
@@ -543,7 +551,7 @@ mod tests {
             allow_network,
             allow_clipboard,
             allow_notifications: false,
-            allowed_filesystem_paths: Vec::new(),
+            allowed_filesystem_paths,
         })
     }
 
@@ -586,5 +594,93 @@ mod tests {
         let host = create_test_host_with_permissions(true, true);
 
         assert!(host.require_network_permission("open_url").is_ok());
+    }
+
+    #[test]
+    fn test_open_file_denied_outside_allowlist() {
+        let allowed_dir = tempfile::tempdir().expect("failed to create allowed dir");
+        let blocked_dir = tempfile::tempdir().expect("failed to create blocked dir");
+        let blocked_file = blocked_dir.path().join("outside.txt");
+        std::fs::write(&blocked_file, b"blocked").expect("failed to write blocked file");
+
+        let host = create_test_host_with_filesystem_permissions(
+            true,
+            true,
+            vec![allowed_dir.path().to_path_buf()],
+        );
+
+        let blocked_file_str = blocked_file.to_string_lossy().into_owned();
+        let result = host.open_file(RStr::from_str(&blocked_file_str));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_open_file_allowed_inside_allowlist() {
+        let allowed_dir = tempfile::tempdir().expect("failed to create allowed dir");
+        let allowed_file = allowed_dir.path().join("inside.txt");
+        std::fs::write(&allowed_file, b"allowed").expect("failed to write allowed file");
+
+        let host = create_test_host_with_filesystem_permissions(
+            true,
+            true,
+            vec![allowed_dir.path().to_path_buf()],
+        );
+
+        let allowed_file_str = allowed_file.to_string_lossy().into_owned();
+        let result = host
+            .open_file(RStr::from_str(&allowed_file_str))
+            .into_result();
+
+        if let Err(err) = result {
+            assert!(
+                !err.to_string().contains("Permission denied"),
+                "allowlisted path should not be rejected by permission gate"
+            );
+        }
+    }
+
+    #[test]
+    fn test_reveal_in_finder_denied_outside_allowlist() {
+        let allowed_dir = tempfile::tempdir().expect("failed to create allowed dir");
+        let blocked_dir = tempfile::tempdir().expect("failed to create blocked dir");
+        let blocked_file = blocked_dir.path().join("outside.txt");
+        std::fs::write(&blocked_file, b"blocked").expect("failed to write blocked file");
+
+        let host = create_test_host_with_filesystem_permissions(
+            true,
+            true,
+            vec![allowed_dir.path().to_path_buf()],
+        );
+
+        let blocked_file_str = blocked_file.to_string_lossy().into_owned();
+        let result = host.reveal_in_finder(RStr::from_str(&blocked_file_str));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reveal_in_finder_allowed_inside_allowlist() {
+        let allowed_dir = tempfile::tempdir().expect("failed to create allowed dir");
+        let allowed_file = allowed_dir.path().join("inside.txt");
+        std::fs::write(&allowed_file, b"allowed").expect("failed to write allowed file");
+
+        let host = create_test_host_with_filesystem_permissions(
+            true,
+            true,
+            vec![allowed_dir.path().to_path_buf()],
+        );
+
+        let allowed_file_str = allowed_file.to_string_lossy().into_owned();
+        let result = host
+            .reveal_in_finder(RStr::from_str(&allowed_file_str))
+            .into_result();
+
+        if let Err(err) = result {
+            assert!(
+                !err.to_string().contains("Permission denied"),
+                "allowlisted path should not be rejected by permission gate"
+            );
+        }
     }
 }

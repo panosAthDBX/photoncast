@@ -3,6 +3,8 @@
 //! This module handles registering all search providers, initializing the search engine,
 //! and managing the application lifecycle.
 
+use std::io::Write as _;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,7 +13,9 @@ use tracing::{debug, info, warn};
 
 use crate::extensions::permissions::PermissionsDialog;
 use crate::extensions::registry::ExtensionState;
-use crate::extensions::{ExtensionConfig, ExtensionManager, ExtensionManagerError};
+use crate::extensions::{
+    ExtensionConfig, ExtensionManager, ExtensionManagerError, ExtensionViewHostAction, Permissions,
+};
 use crate::indexer::IndexedApp;
 use crate::search::providers::{
     AppProvider, AppsProvider, CalendarProvider, CommandProvider, CustomCommandProvider,
@@ -76,6 +80,77 @@ impl std::fmt::Display for ExtensionLaunchError {
 }
 
 impl std::error::Error for ExtensionLaunchError {}
+
+#[derive(Debug)]
+pub enum ExtensionActionError {
+    ExtensionNotRegistered {
+        extension_id: String,
+    },
+    ExtensionNotLoaded {
+        extension_id: String,
+    },
+    PermissionsConsentRequired {
+        extension_id: String,
+        dialog: PermissionsDialog,
+    },
+    PermissionDenied {
+        extension_id: String,
+        action: &'static str,
+        reason: String,
+    },
+    InvalidInput {
+        extension_id: String,
+        action: &'static str,
+        reason: String,
+    },
+    OperationFailed {
+        extension_id: String,
+        action: &'static str,
+        reason: String,
+    },
+}
+
+impl std::fmt::Display for ExtensionActionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExtensionNotRegistered { extension_id } => {
+                write!(f, "Extension is not registered: {extension_id}")
+            },
+            Self::ExtensionNotLoaded { extension_id } => {
+                write!(f, "Extension is not loaded: {extension_id}")
+            },
+            Self::PermissionsConsentRequired { extension_id, .. } => {
+                write!(f, "Extension {extension_id} requires permissions consent")
+            },
+            Self::PermissionDenied {
+                extension_id,
+                action,
+                reason,
+            } => write!(
+                f,
+                "Permission denied for extension {extension_id} while executing {action}: {reason}"
+            ),
+            Self::InvalidInput {
+                extension_id,
+                action,
+                reason,
+            } => write!(
+                f,
+                "Invalid input for extension {extension_id} while executing {action}: {reason}"
+            ),
+            Self::OperationFailed {
+                extension_id,
+                action,
+                reason,
+            } => write!(
+                f,
+                "Failed to execute {action} for extension {extension_id}: {reason}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExtensionActionError {}
 
 /// Result of a search operation, including timeout status.
 #[derive(Debug, Clone)]
@@ -343,6 +418,361 @@ impl PhotonCastApp {
     #[must_use]
     pub fn extension_manager(&self) -> &Arc<RwLock<ExtensionManager>> {
         &self.extension_manager
+    }
+
+    fn validate_extension_url(url: &str) -> Result<(), &'static str> {
+        if url.is_empty() {
+            return Err("URL is empty");
+        }
+
+        let parsed = url::Url::parse(url).map_err(|_| "URL is invalid")?;
+        if !matches!(parsed.scheme(), "http" | "https" | "mailto" | "tel") {
+            return Err("URL scheme is not allowed");
+        }
+
+        if matches!(parsed.scheme(), "mailto" | "tel") {
+            return Ok(());
+        }
+
+        let Some(host) = parsed.host_str() else {
+            return Err("URL host is missing");
+        };
+
+        if host.eq_ignore_ascii_case("localhost") {
+            return Err("localhost URLs are not allowed");
+        }
+
+        if host.parse::<std::net::IpAddr>().is_ok() {
+            return Err("IP-based hosts are not allowed");
+        }
+
+        Ok(())
+    }
+
+    fn validate_extension_path(path: &str) -> Result<(), &'static str> {
+        if path.is_empty() {
+            return Err("Path is empty");
+        }
+
+        let candidate = Path::new(path);
+        if candidate
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err("Path traversal is not allowed");
+        }
+
+        if !candidate.exists() {
+            return Err("Path does not exist");
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn ensure_extension_loaded_for_action(
+        manager: &mut ExtensionManager,
+        extension_id: &str,
+    ) -> Result<(), ExtensionActionError> {
+        if manager.registry().get(extension_id).is_none() {
+            return Err(ExtensionActionError::ExtensionNotRegistered {
+                extension_id: extension_id.to_string(),
+            });
+        }
+
+        if !manager.is_loaded(extension_id) {
+            if let Err(err) = manager.load_and_activate(extension_id) {
+                return match err {
+                    ExtensionManagerError::PermissionsConsentRequired { id, dialog } => {
+                        Err(ExtensionActionError::PermissionsConsentRequired {
+                            extension_id: id,
+                            dialog,
+                        })
+                    },
+                    other => Err(ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "load_extension",
+                        reason: other.to_string(),
+                    }),
+                };
+            }
+        }
+
+        if !manager.is_loaded(extension_id) {
+            return Err(ExtensionActionError::ExtensionNotLoaded {
+                extension_id: extension_id.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn extension_permissions_for_action(
+        manager: &ExtensionManager,
+        extension_id: &str,
+    ) -> Result<Permissions, ExtensionActionError> {
+        manager
+            .get_extension_permissions(extension_id)
+            .cloned()
+            .ok_or_else(|| ExtensionActionError::ExtensionNotRegistered {
+                extension_id: extension_id.to_string(),
+            })
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn execute_extension_view_action(
+        &self,
+        extension_id: &str,
+        action: &ExtensionViewHostAction,
+    ) -> Result<(), ExtensionActionError> {
+        let mut manager = self.extension_manager.write();
+        Self::ensure_extension_loaded_for_action(&mut manager, extension_id)?;
+
+        let permissions = Self::extension_permissions_for_action(&manager, extension_id)?;
+
+        match action {
+            ExtensionViewHostAction::OpenUrl { url } => {
+                Self::validate_extension_url(url).map_err(|reason| {
+                    ExtensionActionError::InvalidInput {
+                        extension_id: extension_id.to_string(),
+                        action: "open_url",
+                        reason: reason.to_string(),
+                    }
+                })?;
+
+                if !permissions.network {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "open_url",
+                        reason: "manifest does not grant network permission".to_string(),
+                    });
+                }
+
+                crate::platform::launch::open_url(url).map_err(|err| {
+                    ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "open_url",
+                        reason: err.to_string(),
+                    }
+                })
+            },
+            ExtensionViewHostAction::OpenFile { path } => {
+                Self::validate_extension_path(path).map_err(|reason| {
+                    ExtensionActionError::InvalidInput {
+                        extension_id: extension_id.to_string(),
+                        action: "open_file",
+                        reason: reason.to_string(),
+                    }
+                })?;
+
+                let path_buf = Path::new(path).to_path_buf();
+                if !manager.has_path_permission(extension_id, &path_buf) {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "open_file",
+                        reason: "path is outside extension filesystem permissions".to_string(),
+                    });
+                }
+
+                crate::platform::launch::open_file(&path_buf).map_err(|err| {
+                    ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "open_file",
+                        reason: err.to_string(),
+                    }
+                })
+            },
+            ExtensionViewHostAction::RevealInFinder { path } => {
+                Self::validate_extension_path(path).map_err(|reason| {
+                    ExtensionActionError::InvalidInput {
+                        extension_id: extension_id.to_string(),
+                        action: "reveal_in_finder",
+                        reason: reason.to_string(),
+                    }
+                })?;
+
+                let path_buf = Path::new(path).to_path_buf();
+                if !manager.has_path_permission(extension_id, &path_buf) {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "reveal_in_finder",
+                        reason: "path is outside extension filesystem permissions".to_string(),
+                    });
+                }
+
+                crate::platform::launch::reveal_in_finder(&path_buf).map_err(|err| {
+                    ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "reveal_in_finder",
+                        reason: err.to_string(),
+                    }
+                })
+            },
+            ExtensionViewHostAction::QuickLook { path } => {
+                Self::validate_extension_path(path).map_err(|reason| {
+                    ExtensionActionError::InvalidInput {
+                        extension_id: extension_id.to_string(),
+                        action: "quick_look",
+                        reason: reason.to_string(),
+                    }
+                })?;
+
+                let path_buf = Path::new(path).to_path_buf();
+                if !manager.has_path_permission(extension_id, &path_buf) {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "quick_look",
+                        reason: "path is outside extension filesystem permissions".to_string(),
+                    });
+                }
+
+                std::process::Command::new("qlmanage")
+                    .args(["-p", path])
+                    .spawn()
+                    .map(|_| ())
+                    .map_err(|err| ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "quick_look",
+                        reason: err.to_string(),
+                    })
+            },
+            ExtensionViewHostAction::CopyToClipboard { text } => {
+                if !permissions.clipboard {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_to_clipboard",
+                        reason: "manifest does not grant clipboard permission".to_string(),
+                    });
+                }
+
+                let mut child = std::process::Command::new("pbcopy")
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .map_err(|err| ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_to_clipboard",
+                        reason: err.to_string(),
+                    })?;
+
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin.write_all(text.as_bytes()).map_err(|err| {
+                        ExtensionActionError::OperationFailed {
+                            extension_id: extension_id.to_string(),
+                            action: "copy_to_clipboard",
+                            reason: err.to_string(),
+                        }
+                    })?;
+                }
+
+                child
+                    .wait()
+                    .map_err(|err| ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_to_clipboard",
+                        reason: err.to_string(),
+                    })?
+                    .success()
+                    .then_some(())
+                    .ok_or_else(|| ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_to_clipboard",
+                        reason: "pbcopy exited with non-zero status".to_string(),
+                    })
+            },
+            ExtensionViewHostAction::MoveToTrash { path } => {
+                Self::validate_extension_path(path).map_err(|reason| {
+                    ExtensionActionError::InvalidInput {
+                        extension_id: extension_id.to_string(),
+                        action: "move_to_trash",
+                        reason: reason.to_string(),
+                    }
+                })?;
+
+                let path_buf = Path::new(path).to_path_buf();
+                if !manager.has_path_permission(extension_id, &path_buf) {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "move_to_trash",
+                        reason: "path is outside extension filesystem permissions".to_string(),
+                    });
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    crate::platform::move_to_trash(&path_buf)
+                        .map(|_| ())
+                        .map_err(|err| ExtensionActionError::OperationFailed {
+                            extension_id: extension_id.to_string(),
+                            action: "move_to_trash",
+                            reason: err.to_string(),
+                        })
+                }
+
+                #[cfg(not(target_os = "macos"))]
+                {
+                    Err(ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "move_to_trash",
+                        reason: "move_to_trash is only supported on macOS".to_string(),
+                    })
+                }
+            },
+            ExtensionViewHostAction::CopyImageToClipboard { path } => {
+                Self::validate_extension_path(path).map_err(|reason| {
+                    ExtensionActionError::InvalidInput {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_image_to_clipboard",
+                        reason: reason.to_string(),
+                    }
+                })?;
+
+                let path_buf = Path::new(path).to_path_buf();
+                if !manager.has_path_permission(extension_id, &path_buf) {
+                    return Err(ExtensionActionError::PermissionDenied {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_image_to_clipboard",
+                        reason: "path is outside extension filesystem permissions".to_string(),
+                    });
+                }
+
+                let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
+                let png_script = format!(
+                    r#"set the clipboard to (read (POSIX file \"{escaped}\") as «class PNGf»)"#
+                );
+                let tiff_script = format!(
+                    r#"set the clipboard to (read (POSIX file \"{escaped}\") as TIFF picture)"#
+                );
+
+                let run_script = |script: &str| {
+                    std::process::Command::new("osascript")
+                        .args(["-e", script])
+                        .output()
+                        .map_err(|err| ExtensionActionError::OperationFailed {
+                            extension_id: extension_id.to_string(),
+                            action: "copy_image_to_clipboard",
+                            reason: err.to_string(),
+                        })
+                };
+
+                let png = run_script(&png_script)?;
+                if png.status.success() {
+                    return Ok(());
+                }
+
+                let tiff = run_script(&tiff_script)?;
+                if tiff.status.success() {
+                    Ok(())
+                } else {
+                    let stderr = String::from_utf8_lossy(&png.stderr).to_string();
+                    Err(ExtensionActionError::OperationFailed {
+                        extension_id: extension_id.to_string(),
+                        action: "copy_image_to_clipboard",
+                        reason: stderr,
+                    })
+                }
+            },
+        }
     }
 
     /// Launches an extension command.

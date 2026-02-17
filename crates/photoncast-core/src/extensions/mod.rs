@@ -27,7 +27,18 @@ pub use dylib_cache::{DylibCache, DylibCacheError};
 pub use host::{ExtensionHostImpl, ExtensionHostServices};
 pub use loader::{ExtensionLibrary, ExtensionLoadError, ExtensionLoader};
 pub use manager::{ExtensionManager, ExtensionManagerError, ReloadResult};
-pub use manifest::{ExtensionManifest, ManifestError};
+pub use manifest::{ExtensionManifest, ManifestError, Permissions};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtensionViewHostAction {
+    OpenUrl { url: String },
+    OpenFile { path: String },
+    RevealInFinder { path: String },
+    QuickLook { path: String },
+    CopyToClipboard { text: String },
+    MoveToTrash { path: String },
+    CopyImageToClipboard { path: String },
+}
 pub use permissions::{
     extract_permission_items, permissions_changed, requires_consent, AcceptedPermissions,
     PermissionItem, PermissionType, PermissionsDialog, PermissionsError, PermissionsStore,

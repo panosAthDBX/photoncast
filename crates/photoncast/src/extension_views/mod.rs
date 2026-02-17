@@ -27,8 +27,6 @@ pub mod list_view;
 mod navigation;
 mod preview;
 
-pub use actions::CLOSE_VIEW_ACTION;
-
 pub use colors::ExtensionViewColors;
 pub use design_system::{
     animation, border_radius, constrain_image_size, constrain_image_to_max, get_icon_size,
@@ -51,11 +49,49 @@ use std::sync::Arc;
 
 use abi_stable::std_types::RVec;
 use gpui::*;
+use photoncast_core::extensions::ExtensionViewHostAction;
 use photoncast_extension_api::{ExtensionView, ListItem};
+
+/// Structured callback payload emitted by extension views.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtensionViewCallbackPayload {
+    /// Request to close the currently displayed extension view.
+    CloseView { extension_id: String },
+    /// Extension-defined callback action (`ActionHandler::Callback`).
+    CallbackAction {
+        extension_id: String,
+        action_id: String,
+    },
+    /// Form submission payload.
+    SubmitForm {
+        extension_id: String,
+        values_json: String,
+    },
+    /// Privileged action delegated to the launcher/app layer.
+    DelegatedAction {
+        extension_id: String,
+        action_id: String,
+        action: ExtensionViewHostAction,
+        should_close: bool,
+    },
+}
+
+impl ExtensionViewCallbackPayload {
+    #[must_use]
+    pub fn extension_id(&self) -> &str {
+        match self {
+            Self::CloseView { extension_id }
+            | Self::CallbackAction { extension_id, .. }
+            | Self::SubmitForm { extension_id, .. }
+            | Self::DelegatedAction { extension_id, .. } => extension_id,
+        }
+    }
+}
 
 /// Callback type for action handlers.
 /// Uses Arc to allow cloning for multiple views/navigation.
-pub type ActionCallback = Arc<dyn Fn(&str, &mut WindowContext) + Send + Sync + 'static>;
+pub type ActionCallback =
+    Arc<dyn Fn(ExtensionViewCallbackPayload, &mut WindowContext) + Send + Sync + 'static>;
 
 /// Renders an extension view as a GPUI element.
 ///
@@ -63,24 +99,43 @@ pub type ActionCallback = Arc<dyn Fn(&str, &mut WindowContext) + Send + Sync + '
 /// `ExtensionView` and returns an appropriate GPUI view.
 pub fn render_extension_view(
     view: ExtensionView,
+    extension_id: impl Into<String>,
     action_callback: Option<ActionCallback>,
     cx: &mut WindowContext,
 ) -> AnyView {
+    let extension_id = extension_id.into();
+
     match view {
         ExtensionView::List(list_view) => {
-            let view = cx.new_view(|cx| ExtensionListView::new(list_view, action_callback, cx));
+            let extension_id = extension_id.clone();
+            let action_callback = action_callback.clone();
+            let view = cx.new_view(move |cx| {
+                ExtensionListView::new(list_view, extension_id, action_callback, cx)
+            });
             view.into()
         },
         ExtensionView::Detail(detail_view) => {
-            let view = cx.new_view(|cx| ExtensionDetailView::new(detail_view, action_callback, cx));
+            let extension_id = extension_id.clone();
+            let action_callback = action_callback.clone();
+            let view = cx.new_view(move |cx| {
+                ExtensionDetailView::new(detail_view, extension_id, action_callback, cx)
+            });
             view.into()
         },
         ExtensionView::Form(form_view) => {
-            let view = cx.new_view(|cx| ExtensionFormView::new(form_view, action_callback, cx));
+            let extension_id = extension_id.clone();
+            let action_callback = action_callback.clone();
+            let view = cx.new_view(move |cx| {
+                ExtensionFormView::new(form_view, extension_id, action_callback, cx)
+            });
             view.into()
         },
         ExtensionView::Grid(grid_view) => {
-            let view = cx.new_view(|cx| ExtensionGridView::new(grid_view, action_callback, cx));
+            let extension_id = extension_id.clone();
+            let action_callback = action_callback.clone();
+            let view = cx.new_view(move |cx| {
+                ExtensionGridView::new(grid_view, extension_id, action_callback, cx)
+            });
             view.into()
         },
     }

@@ -165,27 +165,25 @@ impl OptimizedAppProvider {
             }
         }
 
+        let mut query_frecency_by_idx = vec![0.0; index.entries().len()];
+        if let Some(ut) = usage_tracker {
+            for (idx, _, _) in &scored_results {
+                let bundle_id = index.entries()[*idx].app.bundle_id.as_str();
+                query_frecency_by_idx[*idx] = ut
+                    .get_query_frecency(query, bundle_id)
+                    .ok()
+                    .map_or(0.0, |f| f.score());
+            }
+        }
+
         // Sort by combined score (nucleo + global frecency + query frecency)
         scored_results.sort_by(|a, b| {
             let entry_a = &index.entries()[a.0];
             let entry_b = &index.entries()[b.0];
 
-            let query_frec_a = usage_tracker
-                .and_then(|ut| {
-                    ut.get_query_frecency(query, entry_a.app.bundle_id.as_str())
-                        .ok()
-                })
-                .map_or(0.0, |f| f.score());
-            let query_frec_b = usage_tracker
-                .and_then(|ut| {
-                    ut.get_query_frecency(query, entry_b.app.bundle_id.as_str())
-                        .ok()
-                })
-                .map_or(0.0, |f| f.score());
-
-            let combined_a = (entry_a.frecency + query_frec_a)
+            let combined_a = (entry_a.frecency + query_frecency_by_idx[a.0])
                 .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
-            let combined_b = (entry_b.frecency + query_frec_b)
+            let combined_b = (entry_b.frecency + query_frecency_by_idx[b.0])
                 .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
 
             combined_b.total_cmp(&combined_a)
@@ -198,10 +196,7 @@ impl OptimizedAppProvider {
                 let entry = &index.entries()[idx];
                 let app = &entry.app;
                 let bundle_id_str = app.bundle_id.as_str().to_string();
-
-                let query_frec = usage_tracker
-                    .and_then(|ut| ut.get_query_frecency(query, &bundle_id_str).ok())
-                    .map_or(0.0, |f| f.score());
+                let query_frec = query_frecency_by_idx[idx];
 
                 SearchResult {
                     id: SearchResultId::new(format!("app:{bundle_id_str}")),
@@ -269,28 +264,26 @@ impl SearchProvider for OptimizedAppProvider {
             }
         }
 
-        // Sort by score descending (nucleo score + global frecency + per-query frecency)
         let tracker = self.usage_tracker.as_deref();
+        let mut query_frecency_by_idx = vec![0.0; index.entries().len()];
+        if let Some(ut) = tracker {
+            for (idx, _, _) in &scored_results {
+                let bundle_id = index.entries()[*idx].app.bundle_id.as_str();
+                query_frecency_by_idx[*idx] = ut
+                    .get_query_frecency(query, bundle_id)
+                    .ok()
+                    .map_or(0.0, |f| f.score());
+            }
+        }
+
+        // Sort by score descending (nucleo score + global frecency + per-query frecency)
         scored_results.sort_by(|a, b| {
             let entry_a = &index.entries()[a.0];
             let entry_b = &index.entries()[b.0];
 
-            let query_frec_a = tracker
-                .and_then(|ut| {
-                    ut.get_query_frecency(query, entry_a.app.bundle_id.as_str())
-                        .ok()
-                })
-                .map_or(0.0, |f| f.score());
-            let query_frec_b = tracker
-                .and_then(|ut| {
-                    ut.get_query_frecency(query, entry_b.app.bundle_id.as_str())
-                        .ok()
-                })
-                .map_or(0.0, |f| f.score());
-
-            let combined_a = (entry_a.frecency + query_frec_a)
+            let combined_a = (entry_a.frecency + query_frecency_by_idx[a.0])
                 .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(a.1));
-            let combined_b = (entry_b.frecency + query_frec_b)
+            let combined_b = (entry_b.frecency + query_frecency_by_idx[b.0])
                 .mul_add(ResultRanker::FRECENCY_MULTIPLIER, f64::from(b.1));
 
             combined_b.total_cmp(&combined_a)
@@ -304,10 +297,7 @@ impl SearchProvider for OptimizedAppProvider {
                 let entry = &index.entries()[idx];
                 let app = &entry.app;
                 let bundle_id_str = app.bundle_id.as_str().to_string();
-
-                let query_frec = tracker
-                    .and_then(|ut| ut.get_query_frecency(query, &bundle_id_str).ok())
-                    .map_or(0.0, |f| f.score());
+                let query_frec = query_frecency_by_idx[idx];
 
                 SearchResult {
                     id: SearchResultId::new(format!("app:{bundle_id_str}")),

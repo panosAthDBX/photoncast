@@ -10,7 +10,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use photoncast_extension_api::{Action, EmptyState, GridItem, GridView, ImageSource, ROption};
 
-use super::actions::{execute_and_maybe_close, CLOSE_VIEW_ACTION};
+use super::actions::{close_view, execute_action};
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
 use super::ActionCallback;
@@ -55,6 +55,8 @@ pub struct ExtensionGridView {
     selected_index: usize,
     /// Focus handle for keyboard navigation.
     focus_handle: FocusHandle,
+    /// Extension ID owning this view.
+    extension_id: String,
     /// Action callback for handling item actions.
     action_callback: Option<ActionCallback>,
 }
@@ -63,6 +65,7 @@ impl ExtensionGridView {
     /// Creates a new extension grid view.
     pub fn new(
         grid_view: GridView,
+        extension_id: impl Into<String>,
         action_callback: Option<ActionCallback>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
@@ -73,6 +76,7 @@ impl ExtensionGridView {
             grid_view,
             selected_index: 0,
             focus_handle,
+            extension_id: extension_id.into(),
             action_callback,
         }
     }
@@ -123,7 +127,7 @@ impl ExtensionGridView {
 
     /// Executes an action using the shared action execution logic.
     fn execute_action(&mut self, action: &Action, cx: &mut ViewContext<Self>) {
-        execute_and_maybe_close(action, &self.action_callback, cx);
+        execute_action(&self.extension_id, action, &self.action_callback, cx);
     }
 
     // ========================================================================
@@ -198,9 +202,7 @@ impl ExtensionGridView {
     }
 
     fn cancel(&mut self, _: &Cancel, cx: &mut ViewContext<Self>) {
-        if let Some(callback) = &self.action_callback {
-            callback(CLOSE_VIEW_ACTION, cx);
-        }
+        close_view(&self.extension_id, &self.action_callback, cx);
     }
 
     // ========================================================================

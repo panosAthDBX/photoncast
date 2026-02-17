@@ -4,216 +4,255 @@
 //! extension view types (ListView, DetailView, GridView).
 
 use gpui::WindowContext;
+use photoncast_core::extensions::ExtensionViewHostAction;
 use photoncast_extension_api::{Action, ActionHandler};
 
-use super::ActionCallback;
-
-/// Copies an image file to the macOS clipboard using NSPasteboard.
-///
-/// This loads the image from the given path and writes it to the system clipboard
-/// so it can be pasted into other applications as an image (not a file reference).
-#[cfg(target_os = "macos")]
-fn copy_image_to_clipboard(path: &str) -> Result<(), String> {
-    use std::process::Command;
-
-    // Use osascript to copy image to clipboard via AppleScript
-    // This is more reliable than raw NSPasteboard bindings and handles various image formats
-    let script = format!(
-        r#"set the clipboard to (read (POSIX file "{}") as «class PNGf»)"#,
-        path.replace('\\', "\\\\").replace('"', "\\\"")
-    );
-
-    let output = Command::new("osascript")
-        .args(["-e", &script])
-        .output()
-        .map_err(|e| format!("Failed to run osascript: {e}"))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        // Try with TIFF format as fallback (works with more image types)
-        let script_tiff = format!(
-            r#"set the clipboard to (read (POSIX file "{}") as TIFF picture)"#,
-            path.replace('\\', "\\\\").replace('"', "\\\"")
-        );
-
-        let output_tiff = Command::new("osascript")
-            .args(["-e", &script_tiff])
-            .output()
-            .map_err(|e| format!("Failed to run osascript: {e}"))?;
-
-        if output_tiff.status.success() {
-            Ok(())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(format!("Failed to copy image: {stderr}"))
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn copy_image_to_clipboard(_path: &str) -> Result<(), String> {
-    Err("Image clipboard copy is only supported on macOS".to_string())
-}
-
-/// Validates a URL supplied by an extension before opening.
-/// Only allows http/https schemes to prevent arbitrary protocol handlers.
-fn validate_url(url: &str) -> bool {
-    // Check scheme is http or https
-    url.starts_with("http://") || url.starts_with("https://")
-}
-
-/// Validates a filesystem path supplied by an extension.
-/// Rejects paths with traversal components and verifies the path exists.
-fn validate_path(path: &str) -> bool {
-    let p = std::path::Path::new(path);
-    // Reject paths with traversal segments
-    for component in p.components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            tracing::warn!(path = %path, "Extension action rejected: path contains traversal segment");
-            return false;
-        }
-    }
-    // Path must exist on the filesystem
-    if !p.exists() {
-        tracing::warn!(path = %path, "Extension action rejected: path does not exist");
-        return false;
-    }
-    true
-}
+use super::{ActionCallback, ExtensionViewCallbackPayload};
 
 /// Action ID used to signal that the extension view should close.
 pub const CLOSE_VIEW_ACTION: &str = "__cancel__";
 
-/// Result of executing an action.
-pub struct ActionResult {
-    /// Whether the action should close the extension view.
-    pub should_close: bool,
+/// Returns true if the action is terminal and should close the extension view.
+#[must_use]
+pub fn is_terminal_action(handler: &ActionHandler) -> bool {
+    matches!(
+        handler,
+        ActionHandler::OpenUrl(_)
+            | ActionHandler::OpenFile(_)
+            | ActionHandler::RevealInFinder(_)
+            | ActionHandler::CopyToClipboard(_)
+            | ActionHandler::MoveToTrash(_)
+            | ActionHandler::CopyImageToClipboard(_)
+    )
 }
 
-/// Executes an action and returns whether it should close the view.
-///
-/// This is the shared implementation used by all extension view types.
-/// Terminal actions (OpenUrl, OpenFile, etc.) return `should_close = true`.
-/// QuickLook intentionally keeps the view open for continued browsing.
-pub fn execute_action(
-    action: &Action,
-    action_callback: &Option<ActionCallback>,
-    cx: &mut WindowContext,
-) -> ActionResult {
-    let mut should_close = false;
-
-    match &action.handler {
-        ActionHandler::Callback => {
-            if let Some(callback) = action_callback {
-                callback(action.id.as_str(), cx);
-            }
-        },
-        ActionHandler::OpenUrl(url) => {
-            let url = url.to_string();
-            if validate_url(&url) {
-                let _ = open::that(&url);
-                should_close = true;
-            } else {
-                tracing::warn!(url = %url, "Extension action rejected: invalid URL scheme");
-            }
-        },
-        ActionHandler::OpenFile(path) => {
-            let path = path.to_string();
-            if validate_path(&path) {
-                let _ = open::that(&path);
-                should_close = true;
-            }
-        },
-        ActionHandler::RevealInFinder(path) => {
-            let path = path.to_string();
-            if validate_path(&path) {
-                let _ = std::process::Command::new("open")
-                    .args(["-R", &path])
-                    .spawn();
-                should_close = true;
-            }
-        },
-        ActionHandler::QuickLook(path) => {
-            let path = path.to_string();
-            if validate_path(&path) {
-                let _ = std::process::Command::new("qlmanage")
-                    .args(["-p", &path])
-                    .spawn();
-            }
-            // Don't close for QuickLook - user may want to continue browsing
-        },
-        ActionHandler::CopyToClipboard(text) => {
-            let text = text.to_string();
-            let preview = if text.len() > 100 {
-                &text[..100]
-            } else {
-                &text
-            };
-            tracing::info!(
-                content_length = text.len(),
-                preview = %preview,
-                "Extension action: copying content to clipboard"
-            );
-            cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-            should_close = true;
-        },
-        ActionHandler::PushView(_view) => {
-            // TODO: Implement view navigation
-        },
-        ActionHandler::SubmitForm => {
-            // Handled by form view specifically
-        },
-        ActionHandler::MoveToTrash(path) => {
-            let path = path.to_string();
-            if validate_path(&path) {
-                match trash::delete(&path) {
-                    Ok(()) => {
-                        tracing::info!(path = %path, "Moved file to trash");
-                        should_close = true;
-                    },
-                    Err(err) => {
-                        tracing::error!(path = %path, error = %err, "Failed to move file to trash");
-                    },
-                }
-            }
-        },
+fn build_delegated_host_action(handler: &ActionHandler) -> Option<ExtensionViewHostAction> {
+    match handler {
+        ActionHandler::OpenUrl(url) => Some(ExtensionViewHostAction::OpenUrl {
+            url: url.as_str().to_string(),
+        }),
+        ActionHandler::OpenFile(path) => Some(ExtensionViewHostAction::OpenFile {
+            path: path.as_str().to_string(),
+        }),
+        ActionHandler::RevealInFinder(path) => Some(ExtensionViewHostAction::RevealInFinder {
+            path: path.as_str().to_string(),
+        }),
+        ActionHandler::QuickLook(path) => Some(ExtensionViewHostAction::QuickLook {
+            path: path.as_str().to_string(),
+        }),
+        ActionHandler::CopyToClipboard(text) => Some(ExtensionViewHostAction::CopyToClipboard {
+            text: text.as_str().to_string(),
+        }),
+        ActionHandler::MoveToTrash(path) => Some(ExtensionViewHostAction::MoveToTrash {
+            path: path.as_str().to_string(),
+        }),
         ActionHandler::CopyImageToClipboard(path) => {
-            let path = path.to_string();
-            if validate_path(&path) {
-                match copy_image_to_clipboard(&path) {
-                    Ok(()) => {
-                        tracing::info!(path = %path, "Copied image to clipboard");
-                        should_close = true;
-                    },
-                    Err(err) => {
-                        tracing::error!(path = %path, error = %err, "Failed to copy image to clipboard");
-                    },
-                }
-            }
+            Some(ExtensionViewHostAction::CopyImageToClipboard {
+                path: path.as_str().to_string(),
+            })
         },
-    }
-
-    ActionResult { should_close }
-}
-
-/// Closes the extension view by invoking the callback with the close action.
-pub fn close_view(action_callback: &Option<ActionCallback>, cx: &mut WindowContext) {
-    if let Some(callback) = action_callback {
-        callback(CLOSE_VIEW_ACTION, cx);
+        ActionHandler::PushView(_) | ActionHandler::SubmitForm | ActionHandler::Callback => None,
     }
 }
 
-/// Executes an action and closes the view if it's a terminal action.
-///
-/// This is a convenience function that combines `execute_action` and `close_view`.
-pub fn execute_and_maybe_close(
+/// Builds the callback payload that should be emitted for the provided action.
+#[must_use]
+pub fn payload_for_action(
+    extension_id: &str,
+    action: &Action,
+) -> Option<ExtensionViewCallbackPayload> {
+    match &action.handler {
+        ActionHandler::Callback => Some(ExtensionViewCallbackPayload::CallbackAction {
+            extension_id: extension_id.to_string(),
+            action_id: action.id.as_str().to_string(),
+        }),
+        ActionHandler::PushView(_) | ActionHandler::SubmitForm => None,
+        _ => build_delegated_host_action(&action.handler).map(|delegated| {
+            ExtensionViewCallbackPayload::DelegatedAction {
+                extension_id: extension_id.to_string(),
+                action_id: action.id.as_str().to_string(),
+                action: delegated,
+                should_close: is_terminal_action(&action.handler),
+            }
+        }),
+    }
+}
+
+/// Executes an action by delegating payload handling to the launcher callback.
+pub fn execute_action(
+    extension_id: &str,
     action: &Action,
     action_callback: &Option<ActionCallback>,
     cx: &mut WindowContext,
 ) {
-    let result = execute_action(action, action_callback, cx);
-    if result.should_close {
-        close_view(action_callback, cx);
+    let Some(callback) = action_callback else {
+        return;
+    };
+
+    if let Some(payload) = payload_for_action(extension_id, action) {
+        callback(payload.clone(), cx);
+
+        if let ExtensionViewCallbackPayload::DelegatedAction {
+            extension_id,
+            should_close: true,
+            ..
+        } = payload
+        {
+            callback(ExtensionViewCallbackPayload::CloseView { extension_id }, cx);
+        }
+    }
+}
+
+/// Closes the extension view by invoking the callback with the close action.
+pub fn close_view(
+    extension_id: &str,
+    action_callback: &Option<ActionCallback>,
+    cx: &mut WindowContext,
+) {
+    if let Some(callback) = action_callback {
+        callback(
+            ExtensionViewCallbackPayload::CloseView {
+                extension_id: extension_id.to_string(),
+            },
+            cx,
+        );
+    }
+}
+
+/// Builds a structured form submit callback payload.
+#[must_use]
+pub fn build_submit_payload(
+    extension_id: &str,
+    values_json: String,
+) -> ExtensionViewCallbackPayload {
+    ExtensionViewCallbackPayload::SubmitForm {
+        extension_id: extension_id.to_string(),
+        values_json,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_action(id: &str, handler: ActionHandler) -> Action {
+        Action {
+            id: id.into(),
+            title: "Test".into(),
+            icon: abi_stable::std_types::ROption::RNone,
+            shortcut: abi_stable::std_types::ROption::RNone,
+            style: photoncast_extension_api::ActionStyle::Default,
+            handler,
+        }
+    }
+
+    #[test]
+    fn payload_for_callback_action_contains_ids() {
+        let action = make_action("callback-id", ActionHandler::Callback);
+        let payload = payload_for_action("ext.example", &action).expect("payload expected");
+
+        assert_eq!(
+            payload,
+            ExtensionViewCallbackPayload::CallbackAction {
+                extension_id: "ext.example".to_string(),
+                action_id: "callback-id".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn payload_for_open_url_delegates_and_closes() {
+        let action = make_action(
+            "open-url",
+            ActionHandler::OpenUrl("https://example.com".into()),
+        );
+        let payload = payload_for_action("ext.example", &action).expect("payload expected");
+
+        assert_eq!(
+            payload,
+            ExtensionViewCallbackPayload::DelegatedAction {
+                extension_id: "ext.example".to_string(),
+                action_id: "open-url".to_string(),
+                action: ExtensionViewHostAction::OpenUrl {
+                    url: "https://example.com".to_string(),
+                },
+                should_close: true,
+            }
+        );
+    }
+
+    #[test]
+    fn payload_for_quick_look_does_not_close() {
+        let action = make_action(
+            "quick-look",
+            ActionHandler::QuickLook("/tmp/example.png".into()),
+        );
+        let payload = payload_for_action("ext.example", &action).expect("payload expected");
+
+        assert_eq!(
+            payload,
+            ExtensionViewCallbackPayload::DelegatedAction {
+                extension_id: "ext.example".to_string(),
+                action_id: "quick-look".to_string(),
+                action: ExtensionViewHostAction::QuickLook {
+                    path: "/tmp/example.png".to_string(),
+                },
+                should_close: false,
+            }
+        );
+    }
+
+    #[test]
+    fn push_view_and_submit_form_do_not_emit_payload() {
+        let push_action = make_action(
+            "push-view",
+            ActionHandler::PushView(abi_stable::std_types::RBox::new(
+                photoncast_extension_api::ExtensionView::List(photoncast_extension_api::ListView {
+                    title: "Title".into(),
+                    search_bar: abi_stable::std_types::ROption::RNone,
+                    sections: abi_stable::std_types::RVec::new(),
+                    empty_state: abi_stable::std_types::ROption::RNone,
+                    show_preview: false,
+                }),
+            )),
+        );
+        let submit_action = make_action("submit", ActionHandler::SubmitForm);
+
+        assert!(payload_for_action("ext.example", &push_action).is_none());
+        assert!(payload_for_action("ext.example", &submit_action).is_none());
+    }
+
+    #[test]
+    fn terminal_action_detection_matches_contract() {
+        assert!(is_terminal_action(&ActionHandler::OpenFile(
+            "/tmp/a".into()
+        )));
+        assert!(is_terminal_action(&ActionHandler::CopyToClipboard(
+            "abc".into()
+        )));
+        assert!(is_terminal_action(&ActionHandler::MoveToTrash(
+            "/tmp/a".into()
+        )));
+        assert!(is_terminal_action(&ActionHandler::CopyImageToClipboard(
+            "/tmp/a".into()
+        )));
+
+        assert!(!is_terminal_action(&ActionHandler::QuickLook(
+            "/tmp/a".into()
+        )));
+        assert!(!is_terminal_action(&ActionHandler::Callback));
+        assert!(!is_terminal_action(&ActionHandler::SubmitForm));
+    }
+
+    #[test]
+    fn build_submit_payload_is_structured() {
+        let payload = build_submit_payload("ext.example", "{\"a\":1}".to_string());
+        assert_eq!(
+            payload,
+            ExtensionViewCallbackPayload::SubmitForm {
+                extension_id: "ext.example".to_string(),
+                values_json: "{\"a\":1}".to_string(),
+            }
+        );
     }
 }

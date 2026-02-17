@@ -17,7 +17,7 @@ use photoncast_extension_api::{
     Accessory, Action, EmptyState, IconSource, ListItem, ListSection, ListView, ROption,
 };
 
-use super::actions::{execute_and_maybe_close, CLOSE_VIEW_ACTION};
+use super::actions::{close_view, execute_action};
 use super::colors::ExtensionViewColors;
 use super::dimensions::*;
 use super::preview::ExtensionPreviewPane;
@@ -94,6 +94,8 @@ pub struct ExtensionListView {
     focus_handle: FocusHandle,
     /// Scroll handle for the results list.
     scroll_handle: ScrollHandle,
+    /// Extension ID owning this view.
+    extension_id: String,
     /// Action callback for handling item actions.
     action_callback: Option<ActionCallback>,
     /// Whether the list is in loading state.
@@ -123,12 +125,14 @@ impl ExtensionListView {
     /// Creates a new extension list view.
     pub fn new(
         list_view: ListView,
+        extension_id: impl Into<String>,
         action_callback: Option<ActionCallback>,
         cx: &mut ViewContext<Self>,
     ) -> Self {
         let focus_handle = cx.focus_handle();
         cx.focus(&focus_handle);
 
+        let extension_id = extension_id.into();
         let flat_items = Self::flatten_items(&list_view.sections);
         let filtered_indices = (0..flat_items.len()).collect();
 
@@ -143,6 +147,7 @@ impl ExtensionListView {
             search_generation: 0,
             focus_handle,
             scroll_handle: ScrollHandle::new(),
+            extension_id,
             action_callback,
             loading: false,
             error: None,
@@ -356,7 +361,7 @@ impl ExtensionListView {
         // Close actions menu after executing
         self.show_actions_menu = false;
 
-        execute_and_maybe_close(action, &self.action_callback, cx);
+        execute_action(&self.extension_id, action, &self.action_callback, cx);
 
         cx.notify();
     }
@@ -444,9 +449,7 @@ impl ExtensionListView {
             cx.notify();
         } else {
             // Close the view
-            if let Some(callback) = &self.action_callback {
-                callback(CLOSE_VIEW_ACTION, cx);
-            }
+            close_view(&self.extension_id, &self.action_callback, cx);
         }
     }
 

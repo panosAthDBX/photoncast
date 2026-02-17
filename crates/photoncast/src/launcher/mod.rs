@@ -35,6 +35,7 @@ use crate::constants::{
     ThemeColorSet, EXPANDED_HEIGHT, ICON_SIZE_LG, ICON_SIZE_MD, ICON_SIZE_SM, LAUNCHER_HEIGHT,
     LAUNCHER_WIDTH, LIST_ITEM_HEIGHT, SEARCH_BAR_HEIGHT, TEXT_SIZE_LG, TEXT_SIZE_MD,
 };
+use crate::extension_views::ExtensionViewCallbackPayload;
 use crate::{
     Activate, Cancel, ConfirmDialog, CopyBundleId, CopyFile, CopyPath, ForceQuitApp, HideApp,
     NextGroup, OpenPreferences, PreviousGroup, QuickLook, QuickSelect1, QuickSelect2, QuickSelect3,
@@ -431,6 +432,143 @@ pub enum SearchMode {
 }
 
 impl LauncherWindow {
+    pub(super) fn handle_extension_view_callback(
+        &mut self,
+        payload: ExtensionViewCallbackPayload,
+        cx: &mut ViewContext<Self>,
+    ) {
+        let current_extension = self.extension_view.id.as_deref();
+        if current_extension != Some(payload.extension_id()) {
+            tracing::warn!(
+                callback_extension_id = %payload.extension_id(),
+                active_extension_id = ?current_extension,
+                "Ignoring extension callback for inactive extension view"
+            );
+            return;
+        }
+
+        match payload {
+            ExtensionViewCallbackPayload::CloseView { .. } => {
+                self.close_extension_view(cx);
+            },
+            ExtensionViewCallbackPayload::CallbackAction {
+                extension_id,
+                action_id,
+            } => {
+                tracing::info!(
+                    extension_id = %extension_id,
+                    action_id = %action_id,
+                    "Extension callback action triggered"
+                );
+            },
+            ExtensionViewCallbackPayload::SubmitForm {
+                extension_id,
+                values_json,
+            } => {
+                tracing::info!(
+                    extension_id = %extension_id,
+                    payload_size = values_json.len(),
+                    "Extension form submitted"
+                );
+                self.close_extension_view(cx);
+            },
+            ExtensionViewCallbackPayload::DelegatedAction {
+                extension_id,
+                action_id,
+                action,
+                ..
+            } => {
+                let result = self
+                    .photoncast_app
+                    .read()
+                    .execute_extension_view_action(&extension_id, &action);
+
+                match result {
+                    Ok(()) => {
+                        tracing::info!(
+                            extension_id = %extension_id,
+                            action_id = %action_id,
+                            "Executed delegated extension action"
+                        );
+                    },
+                    Err(
+                        photoncast_core::app::integration::ExtensionActionError::PermissionsConsentRequired {
+                            extension_id: ext_id,
+                            dialog,
+                        },
+                    ) => {
+                        tracing::info!(
+                            extension_id = %ext_id,
+                            action_id = %action_id,
+                            "Extension delegated action requires permissions consent"
+                        );
+                        self.pending_permissions_consent =
+                            Some(crate::permissions_dialog::PendingPermissionsConsent {
+                                dialog,
+                                pending_command: None,
+                                is_first_launch: false,
+                            });
+                        cx.notify();
+                    },
+                    Err(err) => {
+                        tracing::error!(
+                            extension_id = %extension_id,
+                            action_id = %action_id,
+                            error = %err,
+                            "Failed to execute delegated extension action"
+                        );
+                    },
+                }
+            },
+        }
+    }
+
+    pub(super) fn show_extension_view(
+        &mut self,
+        extension_id: &str,
+        ext_view: photoncast_extension_api::ExtensionView,
+        cx: &mut ViewContext<Self>,
+    ) {
+        tracing::info!(
+            extension_id = %extension_id,
+            "Extension rendered a view, displaying it"
+        );
+
+        let view_handle = cx.view().downgrade();
+        let action_callback: crate::extension_views::ActionCallback =
+            std::sync::Arc::new(move |payload, cx| {
+                if let Some(view) = view_handle.upgrade() {
+                    view.update(cx, |launcher, cx| {
+                        launcher.handle_extension_view_callback(payload, cx);
+                    });
+                }
+            });
+
+        let rendered = crate::extension_views::render_extension_view(
+            ext_view,
+            extension_id.to_string(),
+            Some(action_callback),
+            cx,
+        );
+
+        // Focus the extension view so it receives keyboard events
+        if let Ok(list_view) = rendered
+            .clone()
+            .downcast::<crate::extension_views::ExtensionListView>()
+        {
+            cx.focus_view(&list_view);
+        }
+        self.extension_view.view = Some(rendered);
+        self.extension_view.id = Some(extension_id.to_string());
+
+        // Resize window to fit extension view
+        crate::platform::resize_window(
+            crate::constants::LAUNCHER_WIDTH.0.into(),
+            crate::constants::EXPANDED_HEIGHT.0.into(),
+        );
+        cx.notify();
+    }
+
     /// Creates a new launcher window
     pub fn new(cx: &mut ViewContext<Self>, shared_state: &LauncherSharedState) -> Self {
         let focus_handle = cx.focus_handle();
@@ -721,8 +859,8 @@ impl LauncherWindow {
     }
 
     /// Closes the extension view and returns to the search view.
-    /// Called when the extension view's cancel callback is triggered.
-    fn close_extension_view(&mut self, cx: &mut ViewContext<Self>) {
+    /// Called when the extension view's callback protocol emits `CloseView`.
+    pub(super) fn close_extension_view(&mut self, cx: &mut ViewContext<Self>) {
         if self.extension_view.view.is_some() {
             self.extension_view.view = None;
             self.extension_view.id = None;
@@ -830,42 +968,7 @@ impl LauncherWindow {
                         // Check if the extension rendered a view
                         let pending_view = self.photoncast_app.read().take_extension_view(&ext_id);
                         if let Some(ext_view) = pending_view {
-                            tracing::info!(
-                                extension_id = %ext_id,
-                                "Extension rendered a view, displaying it"
-                            );
-                            // Create action callback to handle cancel and other actions
-                            let view_handle = cx.view().downgrade();
-                            let action_callback: crate::extension_views::ActionCallback =
-                                std::sync::Arc::new(move |action_id, cx| {
-                                    if action_id == crate::extension_views::CLOSE_VIEW_ACTION {
-                                        if let Some(view) = view_handle.upgrade() {
-                                            view.update(cx, |launcher, cx| {
-                                                launcher.close_extension_view(cx);
-                                            });
-                                        }
-                                    }
-                                });
-                            let rendered = crate::extension_views::render_extension_view(
-                                ext_view,
-                                Some(action_callback),
-                                cx,
-                            );
-                            // Focus the extension view so it receives keyboard events
-                            if let Ok(list_view) = rendered
-                                .clone()
-                                .downcast::<crate::extension_views::ExtensionListView>(
-                            ) {
-                                cx.focus_view(&list_view);
-                            }
-                            self.extension_view.view = Some(rendered);
-                            self.extension_view.id = Some(ext_id.clone());
-                            // Resize window to fit extension view
-                            crate::platform::resize_window(
-                                crate::constants::LAUNCHER_WIDTH.0.into(),
-                                crate::constants::EXPANDED_HEIGHT.0.into(),
-                            );
-                            cx.notify();
+                            self.show_extension_view(&ext_id, ext_view, cx);
                         } else {
                             self.hide(cx);
                         }

@@ -592,6 +592,27 @@ impl ExtensionManager {
                 .has_valid_consent(id, &record.manifest.permissions)
     }
 
+    /// Returns true if the path is allowed by the extension's filesystem permissions.
+    #[must_use]
+    pub fn has_path_permission(&self, extension_id: &str, path: &Path) -> bool {
+        let Some(record) = self.registry.get(extension_id) else {
+            return false;
+        };
+
+        let filesystem_paths = &record.manifest.permissions.filesystem;
+        if filesystem_paths.is_empty() {
+            return false;
+        }
+
+        let canonical_target = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+
+        filesystem_paths.iter().any(|allowed| {
+            let expanded = crate::utils::paths::expand_tilde(allowed);
+            let canonical_allowed = expanded.canonicalize().unwrap_or(expanded);
+            canonical_target.starts_with(&canonical_allowed)
+        })
+    }
+
     // ========================================================================
     // Extension Hot-Reload
     // ========================================================================
@@ -978,6 +999,8 @@ impl ExtensionManager {
                         continue;
                     }
 
+                    let needs_consent = self.check_permissions_consent(&extension_id).is_some();
+
                     match &loaded.kind {
                         LoadedExtensionKind::InProcess(in_process) => {
                             let provider = in_process.instance.search_provider().into_option();
@@ -1009,7 +1032,7 @@ impl ExtensionManager {
                                             extension_id: extension_id.clone(),
                                             command_id: item.id.to_string(),
                                         },
-                                        requires_permissions: false,
+                                        requires_permissions: needs_consent,
                                     });
                                 }
                             }
@@ -1081,7 +1104,7 @@ impl ExtensionManager {
                                         extension_id: extension_id.clone(),
                                         command_id: command.id.to_string(),
                                     },
-                                    requires_permissions: false,
+                                    requires_permissions: needs_consent,
                                 });
                             }
                         },
@@ -1125,7 +1148,7 @@ impl ExtensionManager {
                                         extension_id: extension_id.clone(),
                                         command_id: item.id.clone(),
                                     },
-                                    requires_permissions: false,
+                                    requires_permissions: needs_consent,
                                 });
                             }
                         },
@@ -1536,6 +1559,8 @@ fn resolve_entry_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
 
     // =============================================================================
     // ExtensionManager Creation and Defaults
@@ -1692,5 +1717,51 @@ mod tests {
             id: "com.example.disabled".to_string(),
         };
         assert!(err.to_string().contains("not enabled"));
+    }
+
+    #[test]
+    fn test_resolve_entry_path_rejects_path_traversal() {
+        let temp_dir = TempDir::new().expect("failed to create temp dir");
+        let base_dir = temp_dir.path().join("extension");
+        fs::create_dir_all(&base_dir).expect("failed to create extension dir");
+
+        let outside_dylib = temp_dir.path().join("outside.dylib");
+        fs::write(&outside_dylib, b"fake dylib").expect("failed to create outside dylib");
+
+        let manifest = ExtensionManifest {
+            schema_version: 1,
+            extension: crate::extensions::manifest::ExtensionInfo {
+                id: "com.example.test".to_string(),
+                name: "Test Extension".to_string(),
+                version: "1.0.0".to_string(),
+                description: "test".to_string(),
+                author: None,
+                license: None,
+                homepage: None,
+                min_photoncast_version: None,
+                api_version: crate::extensions::manifest::SUPPORTED_API_VERSION,
+            },
+            entry: crate::extensions::manifest::ExtensionEntry {
+                kind: "dylib".to_string(),
+                path: "../outside.dylib".to_string(),
+            },
+            permissions: Permissions::default(),
+            commands: Vec::new(),
+            preferences: Vec::new(),
+            directory: Some(base_dir),
+        };
+
+        let result = resolve_entry_path(&manifest, None);
+        match result {
+            Err(ExtensionManagerError::PathTraversal { .. }) => {},
+            Err(ExtensionManagerError::PathResolutionFailed { reason }) => {
+                assert!(
+                    reason.contains("canonicalize"),
+                    "expected canonicalization failure reason for traversal"
+                );
+            },
+            Ok(path) => panic!("expected traversal/path-resolution error, got Ok({path:?})"),
+            Err(other) => panic!("expected traversal-related error, got {other:?}"),
+        }
     }
 }

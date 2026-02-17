@@ -4,6 +4,7 @@
 //! Spotlight-first or filesystem-only strategy and explicit fallback policy.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
@@ -72,6 +73,26 @@ impl FileSearchBackend {
             strategy,
             spotlight,
         }
+    }
+
+    /// Returns a copy of this backend with an updated timeout.
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.strategy = match self.strategy {
+            FileSearchStrategy::SpotlightWithFallback { .. } => {
+                FileSearchStrategy::SpotlightWithFallback { timeout }
+            },
+            FileSearchStrategy::FilesystemOnly => FileSearchStrategy::FilesystemOnly,
+        };
+
+        let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        self.spotlight = self.spotlight.clone().with_timeout_ms(timeout_ms);
+        self
+    }
+
+    #[must_use]
+    pub const fn strategy(&self) -> &FileSearchStrategy {
+        &self.strategy
     }
 
     /// Runs a filename query according to strategy and fallback policy.
@@ -238,6 +259,37 @@ enum SpotlightAttempt {
     Failed(crate::platform::spotlight::SpotlightError),
 }
 
+const MAX_IN_FLIGHT_SPOTLIGHT_THREADS: usize = 8;
+static IN_FLIGHT_SPOTLIGHT_THREADS: AtomicUsize = AtomicUsize::new(0);
+
+struct InFlightSpotlightGuard;
+
+impl InFlightSpotlightGuard {
+    fn acquire() -> Option<Self> {
+        let mut current = IN_FLIGHT_SPOTLIGHT_THREADS.load(Ordering::Acquire);
+        loop {
+            if current >= MAX_IN_FLIGHT_SPOTLIGHT_THREADS {
+                return None;
+            }
+            match IN_FLIGHT_SPOTLIGHT_THREADS.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Some(Self),
+                Err(observed) => current = observed,
+            }
+        }
+    }
+}
+
+impl Drop for InFlightSpotlightGuard {
+    fn drop(&mut self) {
+        IN_FLIGHT_SPOTLIGHT_THREADS.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 fn spotlight_search_with_timeout(
     spotlight: &SpotlightProvider,
     query: &str,
@@ -248,10 +300,21 @@ fn spotlight_search_with_timeout(
     provider.max_results = options.max_results;
     provider.search_scope = Some(options.root.clone());
 
+    let Some(in_flight_guard) = InFlightSpotlightGuard::acquire() else {
+        warn!(
+            component = "search",
+            operation = "spotlight_timeout_guard",
+            max_in_flight = MAX_IN_FLIGHT_SPOTLIGHT_THREADS,
+            "spotlight worker limit reached, treating as timeout"
+        );
+        return SpotlightAttempt::TimedOut;
+    };
+
     let (tx, rx) = mpsc::channel();
     let query = query.to_string();
 
     thread::spawn(move || {
+        let _guard = in_flight_guard;
         let _ = tx.send(provider.search_sync(&query));
     });
 
@@ -408,5 +471,31 @@ mod tests {
 
         assert_eq!(sync_results.len(), async_results.len());
         assert!(async_results.iter().any(|r| r.path == file));
+    }
+
+    #[test]
+    fn with_timeout_updates_strategy_and_provider_timeout() {
+        let backend = FileSearchBackend::new(FileSearchStrategy::SpotlightWithFallback {
+            timeout: Duration::from_millis(100),
+        })
+        .with_timeout(Duration::from_millis(250));
+
+        match backend.strategy() {
+            FileSearchStrategy::SpotlightWithFallback { timeout } => {
+                assert_eq!(*timeout, Duration::from_millis(250));
+            },
+            FileSearchStrategy::FilesystemOnly => {
+                panic!("expected spotlight strategy after timeout update")
+            },
+        }
+
+        let options = FileSearchBackendOptions {
+            root: std::env::temp_dir(),
+            max_results: 5,
+            recent_days: None,
+        };
+        let start = Instant::now();
+        let _ = backend.search_sync("unlikely-query-that-should-timeout", &options);
+        assert!(start.elapsed() < Duration::from_secs(2));
     }
 }
