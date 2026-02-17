@@ -30,6 +30,9 @@ pub struct ExtensionHostServices {
     pub preference_store: PreferenceStoreImpl,
     pub storage: Arc<Mutex<ExtensionStorageImpl>>,
     pub command_invocation_guard: CommandInvocationGuard,
+    pub allow_network: bool,
+    pub allow_clipboard: bool,
+    pub allow_notifications: bool,
     /// Allowed filesystem paths from the extension manifest.
     pub allowed_filesystem_paths: Vec<PathBuf>,
 }
@@ -38,6 +41,7 @@ pub struct ExtensionHostServices {
 // - PreferenceStoreImpl: Arc<RwLock<Vec<...>>> fields — Send + Sync
 // - Arc<Mutex<ExtensionStorageImpl>>: Mutex<T>: Sync requires T: Send — satisfied
 // - CommandInvocationGuard: Arc<RwLock<HashSet<String>>> — Send + Sync
+// - bool fields: Send + Sync
 // - Vec<PathBuf>: Send + Sync
 
 impl ExtensionHostImpl {
@@ -67,6 +71,34 @@ impl Default for ExtensionHostImpl {
 }
 
 impl ExtensionHostImpl {
+    fn require_clipboard_permission(&self, operation: &str) -> Result<(), ExtensionApiError> {
+        let Some(services) = &self.services else {
+            return Ok(());
+        };
+
+        if services.allow_clipboard {
+            Ok(())
+        } else {
+            Err(ExtensionApiError::message(format!(
+                "Permission denied: clipboard permission required for {operation}"
+            )))
+        }
+    }
+
+    fn require_network_permission(&self, operation: &str) -> Result<(), ExtensionApiError> {
+        let Some(services) = &self.services else {
+            return Ok(());
+        };
+
+        if services.allow_network {
+            Ok(())
+        } else {
+            Err(ExtensionApiError::message(format!(
+                "Permission denied: network permission required for {operation}"
+            )))
+        }
+    }
+
     pub fn render_view_handle(&self, view: ExtensionView) -> HostViewHandle {
         let handle = HostViewHandle::new();
         handle.update(view);
@@ -208,6 +240,10 @@ impl ExtensionHostProtocol for ExtensionHostImpl {
     }
 
     fn copy_to_clipboard(&self, text: RStr<'_>) -> ExtensionApiResult<()> {
+        if let Err(e) = self.require_clipboard_permission("copy_to_clipboard") {
+            return Err(e).into();
+        }
+
         let child = std::process::Command::new("pbcopy")
             .stdin(std::process::Stdio::piped())
             .spawn();
@@ -232,6 +268,10 @@ impl ExtensionHostProtocol for ExtensionHostImpl {
     }
 
     fn read_clipboard(&self) -> ExtensionApiResult<ROption<RString>> {
+        if let Err(e) = self.require_clipboard_permission("read_clipboard") {
+            return Err(e).into();
+        }
+
         let output = std::process::Command::new("pbpaste").output();
         match output {
             Ok(out) if out.status.success() => {
@@ -249,6 +289,10 @@ impl ExtensionHostProtocol for ExtensionHostImpl {
     }
 
     fn open_url(&self, url: RStr<'_>) -> ExtensionApiResult<()> {
+        if let Err(e) = self.require_network_permission("open_url") {
+            return Err(e).into();
+        }
+
         match platform::launch::open_url(url.as_str()) {
             Ok(()) => Ok(()).into(),
             Err(e) => Err(ExtensionApiError::message(e.to_string())).into(),
@@ -365,7 +409,7 @@ impl ExtensionHostProtocol for ExtensionHostImpl {
 mod tests {
     use super::*;
     use abi_stable::std_types::{ROption, RString, RVec};
-    use photoncast_extension_api::{ExtensionView, ListView};
+    use photoncast_extension_api::{ExtensionHostProtocol, ExtensionView, ListView};
 
     fn create_test_view() -> ExtensionView {
         ExtensionView::List(ListView {
@@ -481,5 +525,66 @@ mod tests {
         // Final state: both empty
         assert!(host.view_handles.read().is_empty());
         assert!(host.view_handle_index.read().is_empty());
+    }
+
+    fn create_test_host_with_permissions(
+        allow_network: bool,
+        allow_clipboard: bool,
+    ) -> ExtensionHostImpl {
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let storage_path = temp_dir.path().join("storage.db");
+        let storage = ExtensionStorageImpl::new(storage_path, "test.extension".to_string())
+            .expect("failed to create test storage");
+
+        ExtensionHostImpl::with_services(ExtensionHostServices {
+            preference_store: PreferenceStoreImpl::new(Vec::new()),
+            storage: Arc::new(Mutex::new(storage)),
+            command_invocation_guard: CommandInvocationGuard::default(),
+            allow_network,
+            allow_clipboard,
+            allow_notifications: false,
+            allowed_filesystem_paths: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn test_copy_to_clipboard_denied_without_permission() {
+        let host = create_test_host_with_permissions(false, false);
+
+        let result = host.copy_to_clipboard(RStr::from_str("hello"));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_clipboard_denied_without_permission() {
+        let host = create_test_host_with_permissions(false, false);
+
+        let result = host.read_clipboard();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_open_url_denied_without_permission() {
+        let host = create_test_host_with_permissions(false, true);
+
+        let result = host.open_url(RStr::from_str("https://example.com"));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_clipboard_permission_allowed_when_declared() {
+        let host = create_test_host_with_permissions(true, true);
+
+        assert!(host.require_clipboard_permission("read_clipboard").is_ok());
+    }
+
+    #[test]
+    fn test_network_permission_allowed_when_declared() {
+        let host = create_test_host_with_permissions(true, true);
+
+        assert!(host.require_network_permission("open_url").is_ok());
     }
 }
