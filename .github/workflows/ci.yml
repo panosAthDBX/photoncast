@@ -199,10 +199,12 @@ jobs:
             commit_count="$(git rev-list --count HEAD)"
           fi
 
+          delimiter="CHANGELOG_EOF_$(date +%s%N)"
           {
-            echo "content<<EOF"
+            echo "content<<${delimiter}"
             cat "${output}"
-            echo "EOF"
+            echo
+            echo "${delimiter}"
           } >> "$GITHUB_OUTPUT"
           echo "latest_tag=${last_tag}" >> "$GITHUB_OUTPUT"
           echo "commit_count=${commit_count}" >> "$GITHUB_OUTPUT"
