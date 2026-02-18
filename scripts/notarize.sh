@@ -119,7 +119,7 @@ else
         echo "Then set it with: export APPLE_APP_SPECIFIC_PASSWORD='xxxx-xxxx-xxxx-xxxx'"
         exit 1
     fi
-    echo -e "${BLUE}Using Apple ID authentication: ${APPLE_ID}${NC}"
+    echo -e "${BLUE}Using Apple ID authentication${NC}"
 fi
 
 # Create ZIP for submission (notarytool accepts DMG directly, but ZIP is an alternative)

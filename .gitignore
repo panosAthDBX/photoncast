@@ -34,3 +34,15 @@
 # Build artifacts
 *.dSYM/
 /build/
+
+# Sensitive key/certificate material
+/certs/
+*.key
+*.pem
+*.p8
+*.p12
+*.pfx
+*.cert
+*.crt
+AuthKey*.p8
+certificate.p12
