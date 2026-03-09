@@ -379,6 +379,7 @@ fn main() {
                 ),
                 calendar_command: photoncast_calendar::CalendarCommand::with_default_config(),
             };
+            let event_rx = Arc::new(std::sync::Mutex::new(event_rx));
 
             // Timer polling setup (runs on main thread, executes actions in background)
             let timer_manager = launcher_state.timer_manager();
@@ -387,10 +388,18 @@ fn main() {
             let mut last_timer_check = std::time::Instant::now();
 
             loop {
-                // Poll for events (non-blocking with small sleep)
-                cx.background_executor()
-                    .timer(Duration::from_millis(50))
-                    .await;
+                let wait_timeout = Duration::from_millis(250)
+                    .min(Duration::from_secs(1).saturating_sub(last_timer_check.elapsed()));
+                let next_event = {
+                    let event_rx = Arc::clone(&event_rx);
+                    cx.background_executor().spawn(async move {
+                        event_rx
+                            .lock()
+                            .expect("app event receiver poisoned")
+                            .recv_timeout(wait_timeout)
+                    })
+                }
+                .await;
 
                 // Check timer every second (database read is fast, action executes in background)
                 if last_timer_check.elapsed() >= Duration::from_secs(1) {
@@ -422,16 +431,16 @@ fn main() {
                 }
 
                 // Dispatch app events via the extracted handler
-                match event_rx.try_recv() {
+                match next_event {
                     Ok(event) => {
                         if !state.handle_event(event, &mut cx) {
                             break;
                         }
                     },
-                    Err(mpsc::TryRecvError::Empty) => {
-                        // No event, continue
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        // No event before timeout, continue to timer check / next wait.
                     },
-                    Err(mpsc::TryRecvError::Disconnected) => {
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
                         // Channel closed, stop listening
                         info!("Event channel closed");
                         break;

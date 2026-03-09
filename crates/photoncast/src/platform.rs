@@ -56,12 +56,21 @@ mod macos {
     }
 
     /// Gets app icon using NSWorkspace and returns PNG data.
-    /// This handles all icon formats (icns, asset catalogs, etc.)
+    /// This handles all icon formats (icns, asset catalogs, etc.).
     ///
-    /// MUST be called from the main thread (GPUI ensures this for UI operations).
+    /// If called off the main thread, the AppKit work is dispatched
+    /// synchronously onto the main queue.
     pub fn get_app_icon_png(app_path: &Path, size: u32) -> Option<Vec<u8>> {
-        // SAFETY: This function is called from GPUI UI code which runs on the main thread
-        let _mtm = unsafe { MainThreadMarker::new_unchecked() };
+        if MainThreadMarker::new().is_some() {
+            return get_app_icon_png_on_main_thread(app_path, size);
+        }
+
+        let app_path = app_path.to_path_buf();
+        dispatch::Queue::main().exec_sync(move || get_app_icon_png_on_main_thread(&app_path, size))
+    }
+
+    fn get_app_icon_png_on_main_thread(app_path: &Path, size: u32) -> Option<Vec<u8>> {
+        let _mtm = MainThreadMarker::new().expect("App icon extraction must run on main thread");
 
         let path_str = app_path.to_string_lossy();
         let ns_path = NSString::from_str(&path_str);

@@ -44,6 +44,25 @@ cargo build --release
 cargo run
 ```
 
+## Local Install
+
+```bash
+# Create a stable local code-signing identity once
+./scripts/create-dev-signing-identity.sh
+
+# Build a signed-or-ad-hoc app bundle in build/PhotonCast.app
+./scripts/release-build.sh
+
+# Replace the installed app in /Applications and relaunch it
+./scripts/install-app.sh
+```
+
+If PhotonCast is only ad-hoc signed, macOS tracks it by `cdhash`, so Accessibility
+and Calendar permissions may need to be re-granted after rebuilds. A stable signing
+identity avoids that churn. `create-dev-signing-identity.sh` provisions a local
+`PhotonCast Local Dev` identity, and `release-build.sh` / `sign.sh` automatically
+use it when `~/.config/photoncast/dev-signing.env` is present.
+
 ## Project Structure
 
 ```

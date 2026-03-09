@@ -129,7 +129,7 @@ pub fn clear_icon(app_path: &Path) {
 /// Extracts an app icon to the cache path.
 ///
 /// Spawns a synchronous `sips` process to convert `.icns` to `.png`.
-/// Must be called from a background thread (see [`get_icon_static`]).
+/// This is used as a fallback when the richer `NSWorkspace` path fails.
 pub fn extract_icon(app_path: &Path, cache_path: &Path) -> Option<PathBuf> {
     // Try to find the icon in the app bundle
     let icns_path = app_path.join("Contents/Resources/AppIcon.icns");
@@ -199,15 +199,20 @@ pub fn extract_icon(app_path: &Path, cache_path: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Static version of [`get_icon`] for use in async context.
-///
-/// # Threading Model
-///
-/// This function performs synchronous I/O (filesystem checks and `sips` process
-/// spawning). It must only be called from a background thread — never from the
-/// main/UI thread. All current call sites dispatch through
-/// `cx.background_executor().spawn()` which satisfies this requirement.
-pub fn get_icon_static(app_path: &Path) -> Option<PathBuf> {
+fn extract_best_available_icon(app_path: &Path, cache_path: &Path) -> Option<PathBuf> {
+    if crate::platform::save_app_icon_as_png(app_path, cache_path, 64) {
+        tracing::debug!(
+            "Extracted icon for {} -> {}",
+            app_path.display(),
+            cache_path.display()
+        );
+        Some(cache_path.to_path_buf())
+    } else {
+        extract_icon(app_path, cache_path)
+    }
+}
+
+fn get_or_extract_icon(app_path: &Path) -> Option<PathBuf> {
     let cache_dir = cache_dir();
 
     // Ensure cache directory exists
@@ -236,52 +241,20 @@ pub fn get_icon_static(app_path: &Path) -> Option<PathBuf> {
         }
     }
 
-    // Extract icon using platform-specific code
-    extract_icon(app_path, &cached_path)
+    extract_best_available_icon(app_path, &cached_path)
+}
+
+/// Static version of [`get_icon`] for use in async context.
+///
+/// Safe to call from a background thread. AppKit icon extraction is marshalled
+/// onto the main queue internally, with `.icns` conversion as a fallback.
+pub fn get_icon_static(app_path: &Path) -> Option<PathBuf> {
+    get_or_extract_icon(app_path)
 }
 
 /// Gets or extracts the icon for an app bundle as PNG.
 ///
-/// Uses `NSWorkspace` to handle all icon formats including asset catalogs.
+/// Safe to call from any thread.
 pub fn get_icon(app_path: &Path) -> Option<PathBuf> {
-    let cache_dir = cache_dir();
-
-    // Ensure cache directory exists
-    if let Err(e) = std::fs::create_dir_all(&cache_dir) {
-        tracing::warn!("Failed to create icon cache dir: {}", e);
-        return None;
-    }
-
-    let cached_path = cached_icon_filename(app_path);
-
-    // Return cached icon if it exists and is fresh
-    if cached_path.exists() {
-        // Check if app is newer than cached icon
-        let app_modified = std::fs::metadata(app_path)
-            .ok()
-            .and_then(|m| m.modified().ok());
-        let cached_modified = std::fs::metadata(&cached_path)
-            .ok()
-            .and_then(|m| m.modified().ok());
-
-        match (app_modified, cached_modified) {
-            (Some(app_time), Some(cache_time)) if cache_time >= app_time => {
-                return Some(cached_path);
-            },
-            _ => {}, // Re-extract if we can't determine freshness
-        }
-    }
-
-    // Extract icon using NSWorkspace (handles all icon formats)
-    if crate::platform::save_app_icon_as_png(app_path, &cached_path, 64) {
-        tracing::debug!(
-            "Extracted icon for {} -> {}",
-            app_path.display(),
-            cached_path.display()
-        );
-        Some(cached_path)
-    } else {
-        tracing::warn!("Failed to extract icon for {}", app_path.display());
-        None
-    }
+    get_or_extract_icon(app_path)
 }

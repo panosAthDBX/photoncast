@@ -635,7 +635,18 @@ impl LauncherWindow {
             .map(|result| {
                 let icon_path = match &result.icon {
                     IconSource::FileIcon { path } => Self::get_app_icon_path(path),
-                    IconSource::AppIcon { icon_path, .. } => icon_path.clone(),
+                    IconSource::AppIcon { icon_path, .. } => {
+                        if icon_path.is_some() {
+                            icon_path.clone()
+                        } else {
+                            match &result.action {
+                                SearchAction::LaunchApp { path, .. } => {
+                                    Self::get_cached_icon_path(path)
+                                },
+                                _ => None,
+                            }
+                        }
+                    },
                     _ => None,
                 };
 

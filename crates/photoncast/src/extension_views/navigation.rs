@@ -312,7 +312,9 @@ impl NavigationContainer {
     /// Starts polling for external updates from ViewHandle.
     fn start_update_polling(&self, cx: &mut ViewContext<Self>) {
         cx.spawn(|this, mut cx| async move {
-            const POLL_INTERVAL_MS: u64 = 16; // ~60 FPS
+            // Extension updates are not animation frames; keep this low-frequency
+            // while the actual transition animation uses its own 16ms timer.
+            const POLL_INTERVAL_MS: u64 = 100;
 
             loop {
                 cx.background_executor()

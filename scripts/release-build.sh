@@ -23,6 +23,10 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=./lib/signing_env.sh
+source "${PROJECT_ROOT}/scripts/lib/signing_env.sh"
+load_photoncast_signing_env
+
 # Default values
 BUNDLE_ID="com.photoncast.app"
 APP_NAME="PhotonCast"
@@ -43,6 +47,8 @@ CONTENTS_DIR="${APP_BUNDLE_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 FRAMEWORKS_DIR="${CONTENTS_DIR}/Frameworks"
+SIGNING_IDENTITY="${PHOTONCAST_SIGNING_IDENTITY:-}"
+SIGNING_KEYCHAIN="${PHOTONCAST_SIGNING_KEYCHAIN:-}"
 
 # Clean and create build directory
 echo -e "${BLUE}Setting up build directory...${NC}"
@@ -159,13 +165,47 @@ if [[ ! -f "${CONTENTS_DIR}/Info.plist" ]]; then
     exit 1
 fi
 
-# Ad-hoc sign the bundle to bind Info.plist and bundle identifier.
-# This is required on macOS 26+ where TCC validates code identity for
-# accessibility permissions. Without this, each rebuild gets a different
-# auto-generated identifier, invalidating previously granted permissions.
-echo -e "${BLUE}Ad-hoc signing app bundle...${NC}"
-codesign -s - --force --deep "${APP_BUNDLE_DIR}"
-echo -e "${GREEN}✓ App bundle signed (ad-hoc)${NC}"
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+    IDENTITY_ARGS=(-v -p codesigning)
+    if [[ -n "$SIGNING_KEYCHAIN" ]]; then
+        IDENTITY_ARGS+=("$SIGNING_KEYCHAIN")
+    fi
+
+    IDENTITIES=$(security find-identity "${IDENTITY_ARGS[@]}" 2>/dev/null || true)
+    for pattern in "Developer ID Application" "Apple Development" "PhotonCast Local Dev"; do
+        SIGNING_IDENTITY=$(printf '%s\n' "$IDENTITIES" | \
+            grep "$pattern" | \
+            head -1 | \
+            sed -E 's/.*"([^"]+)".*/\1/' || true)
+        if [[ -n "$SIGNING_IDENTITY" ]]; then
+            break
+        fi
+    done
+fi
+
+if [[ -n "$SIGNING_IDENTITY" ]]; then
+    echo -e "${BLUE}Signing app bundle with stable identity...${NC}"
+    echo "  Identity: ${SIGNING_IDENTITY}"
+    if [[ -n "$SIGNING_KEYCHAIN" ]]; then
+        echo "  Keychain: ${SIGNING_KEYCHAIN}"
+    fi
+
+    PHOTONCAST_SIGNING_IDENTITY="$SIGNING_IDENTITY" \
+    PHOTONCAST_SIGNING_KEYCHAIN="$SIGNING_KEYCHAIN" \
+    bash "${PROJECT_ROOT}/scripts/sign.sh" "$SIGNING_IDENTITY"
+else
+    # Ad-hoc signing binds the bundle metadata, but the designated requirement is
+    # just the cdhash. Any code change produces a new identity, which means TCC
+    # permissions like Accessibility may need to be re-granted after reinstall.
+    echo -e "${YELLOW}No stable signing identity found; falling back to ad-hoc signing.${NC}"
+    echo -e "${YELLOW}Accessibility and Calendar permissions may need to be re-granted after reinstall.${NC}"
+    echo -e "${BLUE}Ad-hoc signing app bundle...${NC}"
+    codesign -s - --force --deep "${APP_BUNDLE_DIR}"
+    echo -e "${GREEN}✓ App bundle signed (ad-hoc)${NC}"
+fi
+
+echo -e "${BLUE}Designated requirement:${NC}"
+codesign -d -r- "${APP_BUNDLE_DIR}" 2>&1 | sed -n '1,3p'
 
 # Print bundle info
 echo -e "${GREEN}✓ App bundle created successfully!${NC}"
@@ -181,6 +221,12 @@ find "${APP_BUNDLE_DIR}" -type f -o -type d | head -20
 
 echo ""
 echo -e "${GREEN}Build complete. Next steps:${NC}"
-echo "  1. Sign the bundle: ./scripts/sign.sh"
-echo "  2. Create DMG: ./scripts/create-dmg.sh"
-echo "  3. Notarize: ./scripts/notarize.sh"
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+    echo "  1. Install locally: ./scripts/install-app.sh"
+    echo "  2. If you add a stable signing identity, rebuild to preserve TCC permissions better"
+    echo "  3. Create DMG: ./scripts/create-dmg.sh"
+else
+    echo "  1. Install locally: ./scripts/install-app.sh"
+    echo "  2. Create DMG: ./scripts/create-dmg.sh"
+    echo "  3. Notarize: ./scripts/notarize.sh"
+fi

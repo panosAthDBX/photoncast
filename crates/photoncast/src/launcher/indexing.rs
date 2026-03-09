@@ -12,7 +12,6 @@ impl LauncherWindow {
         // but GPUI uses its own async executor
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let photoncast_app_for_icons = Arc::clone(&photoncast_app);
         std::thread::spawn(move || {
             tracing::info!("Starting application indexing...");
 
@@ -23,42 +22,7 @@ impl LauncherWindow {
             });
 
             // Send scan results immediately so UI becomes responsive
-            let apps_for_icons = result.as_ref().ok().cloned();
             let _ = tx.send(result);
-
-            // Now extract icons in the same background thread (doesn't block UI)
-            if let Some(apps) = apps_for_icons {
-                tracing::info!(
-                    "Starting background icon extraction for {} apps",
-                    apps.len()
-                );
-                let start = std::time::Instant::now();
-                let mut extracted = 0;
-                let mut cached = 0;
-
-                for app in &apps {
-                    // Extract or get cached icon
-                    if let Some(icon_path) = Self::get_app_icon_path(&app.path) {
-                        // Update the app's icon in shared state
-                        photoncast_app_for_icons
-                            .write()
-                            .update_app_icon(&app.bundle_id.to_string(), icon_path);
-
-                        if Self::get_cached_icon_path(&app.path).is_some() {
-                            cached += 1;
-                        } else {
-                            extracted += 1;
-                        }
-                    }
-                }
-
-                tracing::info!(
-                    "Icon extraction complete: {} cached, {} extracted in {:?}",
-                    cached,
-                    extracted,
-                    start.elapsed()
-                );
-            }
         });
 
         // Poll for results in GPUI's async context
@@ -73,6 +37,7 @@ impl LauncherWindow {
                 match rx.try_recv() {
                     Ok(Ok(apps)) => {
                         let app_count = apps.len();
+                        let apps_for_icons = apps.clone();
                         tracing::info!("Indexed {} applications", app_count);
 
                         // Update the PhotonCast app with indexed apps
@@ -87,6 +52,43 @@ impl LauncherWindow {
                             this.start_app_watching(cx);
                             cx.notify();
                         });
+
+                        let photoncast_app_for_icons = Arc::clone(&photoncast_app);
+                        let this_for_icons = this.clone();
+                        cx.spawn(|mut cx| async move {
+                            tracing::info!(
+                                "Starting background icon extraction for {} apps",
+                                apps_for_icons.len()
+                            );
+
+                            let mut updated_icons = 0usize;
+                            for app in apps_for_icons {
+                                let app_path = app.path.clone();
+                                let bundle_id = app.bundle_id.to_string();
+
+                                let icon_result = cx
+                                    .background_executor()
+                                    .spawn(async move { Self::get_app_icon_path_static(&app_path) })
+                                    .await;
+
+                                if let Some(icon_path) = icon_result {
+                                    photoncast_app_for_icons
+                                        .write()
+                                        .update_app_icon(&bundle_id, icon_path);
+                                    updated_icons += 1;
+
+                                    let _ = this_for_icons.update(&mut cx, |this, cx| {
+                                        this.refresh_visible_app_icons(cx);
+                                    });
+                                }
+                            }
+
+                            tracing::info!(
+                                "Background icon extraction complete: {} icons updated",
+                                updated_icons
+                            );
+                        })
+                        .detach();
                         break;
                     },
                     Ok(Err(e)) => {
@@ -156,30 +158,44 @@ impl LauncherWindow {
                 }
             });
         });
+        let event_rx = Arc::new(std::sync::Mutex::new(event_rx));
 
         // Process watch events in GPUI's async context
         cx.spawn(|this, mut cx| async move {
-            loop {
-                // Poll for events periodically
-                cx.background_executor()
-                    .timer(Duration::from_millis(100))
-                    .await;
+            const WATCH_EVENT_TIMEOUT_MS: u64 = 500;
 
-                // Process all pending events
-                loop {
-                    match event_rx.try_recv() {
-                        Ok(event) => {
+            loop {
+                let next_events = {
+                    let event_rx = Arc::clone(&event_rx);
+                    cx.background_executor().spawn(async move {
+                        let receiver = event_rx.lock().expect("watch event receiver poisoned");
+                        match receiver.recv_timeout(Duration::from_millis(WATCH_EVENT_TIMEOUT_MS)) {
+                            Ok(first_event) => {
+                                let mut events = vec![first_event];
+                                while let Ok(event) = receiver.try_recv() {
+                                    events.push(event);
+                                }
+                                Ok(events)
+                            },
+                            Err(err) => Err(err),
+                        }
+                    })
+                }
+                .await;
+
+                match next_events {
+                    Ok(events) => {
+                        for event in events {
                             Self::handle_watch_event(&this, &mut cx, &photoncast_app, event).await;
-                        },
-                        Err(std::sync::mpsc::TryRecvError::Empty) => {
-                            // No more events, wait for next poll
-                            break;
-                        },
-                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                            tracing::info!("Watcher thread disconnected");
-                            return;
-                        },
-                    }
+                        }
+                    },
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        // No watch events before timeout, continue waiting.
+                    },
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        tracing::info!("Watcher thread disconnected");
+                        return;
+                    },
                 }
             }
         })
@@ -271,9 +287,8 @@ impl LauncherWindow {
                                 .write()
                                 .update_app_icon(&bundle_id, icon_path);
 
-                            // Notify UI that icon is now available
-                            let _ = this_for_icon.update(&mut cx, |_this, cx| {
-                                cx.notify();
+                            let _ = this_for_icon.update(&mut cx, |this, cx| {
+                                this.refresh_visible_app_icons(cx);
                             });
                         }
                     })
@@ -327,9 +342,8 @@ impl LauncherWindow {
                                 .write()
                                 .update_app_icon(&bundle_id, icon_path);
 
-                            // Notify UI that icon has been updated
-                            let _ = this_for_icon.update(&mut cx, |_this, cx| {
-                                cx.notify();
+                            let _ = this_for_icon.update(&mut cx, |this, cx| {
+                                this.refresh_visible_app_icons(cx);
                             });
                         }
                     })
@@ -413,6 +427,51 @@ impl LauncherWindow {
     /// Delegates to [`crate::icon_cache::get_cached_icon_path`].
     pub(super) fn get_cached_icon_path(app_path: &std::path::Path) -> Option<std::path::PathBuf> {
         crate::icon_cache::get_cached_icon_path(app_path)
+    }
+
+    fn backfill_cached_icon_paths(results: &mut [SearchResult]) -> bool {
+        let mut changed = false;
+
+        for result in results {
+            let SearchAction::LaunchApp { path, .. } = &result.action else {
+                continue;
+            };
+
+            let IconSource::AppIcon { icon_path, .. } = &mut result.icon else {
+                continue;
+            };
+
+            if icon_path.is_some() {
+                continue;
+            }
+
+            if let Some(cached_path) = Self::get_cached_icon_path(path) {
+                *icon_path = Some(cached_path);
+                changed = true;
+            }
+        }
+
+        changed
+    }
+
+    fn refresh_visible_app_icons(&mut self, cx: &mut ViewContext<Self>) {
+        let suggestions_changed = Self::backfill_cached_icon_paths(&mut self.search.suggestions);
+        let core_changed = Self::backfill_cached_icon_paths(&mut self.search.core_results);
+
+        if !(suggestions_changed || core_changed) {
+            return;
+        }
+
+        if !matches!(self.search.mode, SearchMode::Calendar { .. }) {
+            self.search.results = self
+                .search
+                .core_results
+                .iter()
+                .map(Self::search_result_to_result_item)
+                .collect();
+        }
+
+        cx.notify();
     }
 
     /// Converts an icon source to a display emoji (fallback)
