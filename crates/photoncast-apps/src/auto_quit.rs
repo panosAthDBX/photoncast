@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::mem;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -185,6 +186,36 @@ impl Default for AutoQuitAppConfig {
     }
 }
 
+fn canonical_bundle_id(bundle_id: &str) -> String {
+    bundle_id.to_ascii_lowercase()
+}
+
+fn merge_app_config(existing: &mut AutoQuitAppConfig, incoming: AutoQuitAppConfig) {
+    // A prior disable should win over any stale mixed-case enabled entry.
+    existing.enabled &= incoming.enabled;
+    existing.timeout_minutes = existing.timeout_minutes.min(incoming.timeout_minutes);
+    existing.last_active = match (existing.last_active.take(), incoming.last_active) {
+        (Some(current), Some(next)) => Some(current.max(next)),
+        (None, Some(next)) => Some(next),
+        (current, None) => current,
+    };
+}
+
+fn canonicalize_config(config: &mut AutoQuitConfig) {
+    let mut apps = mem::take(&mut config.apps).into_iter().collect::<Vec<_>>();
+    apps.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+    for (bundle_id, app_config) in apps {
+        let key = canonical_bundle_id(&bundle_id);
+        match config.apps.get_mut(&key) {
+            Some(existing) => merge_app_config(existing, app_config),
+            None => {
+                config.apps.insert(key, app_config);
+            },
+        }
+    }
+}
+
 // ============================================================================
 // Auto Quit Manager
 // ============================================================================
@@ -206,6 +237,9 @@ impl AutoQuitManager {
     /// Creates a new auto-quit manager with the given configuration.
     #[must_use]
     pub fn new(config: AutoQuitConfig) -> Self {
+        let mut config = config;
+        canonicalize_config(&mut config);
+
         Self {
             config,
             activity_tracker: HashMap::new(),
@@ -277,12 +311,13 @@ impl AutoQuitManager {
     ///
     /// This resets the idle timer for the app.
     pub fn on_app_activated(&mut self, bundle_id: &str, pid: u32) {
+        let bundle_id = canonical_bundle_id(bundle_id);
         self.activity_tracker
-            .insert(bundle_id.to_string(), Instant::now());
-        self.tracked_pids.insert(bundle_id.to_string(), pid);
+            .insert(bundle_id.clone(), Instant::now());
+        self.tracked_pids.insert(bundle_id.clone(), pid);
 
         // Also update the persistent last_active time
-        if let Some(app_config) = self.config.apps.get_mut(bundle_id) {
+        if let Some(app_config) = self.config.apps.get_mut(&bundle_id) {
             app_config.last_active = Some(Utc::now());
         }
     }
@@ -323,7 +358,7 @@ impl AutoQuitManager {
 
             // Check if the tracked process is still the current process for this bundle.
             // If the process changed (e.g., app was relaunched), reset the timer.
-            let current_pid = running_map.get(&bundle_id.to_lowercase()).copied();
+            let current_pid = running_map.get(&canonical_bundle_id(&bundle_id)).copied();
             if let Some(pid) = current_pid {
                 match self.tracked_pids.get(&bundle_id).copied() {
                     Some(tracked_pid) if tracked_pid != pid => {
@@ -379,49 +414,56 @@ impl AutoQuitManager {
     /// * `bundle_id` - The bundle identifier of the app
     /// * `timeout_minutes` - Idle timeout before the app is quit
     pub fn enable_auto_quit(&mut self, bundle_id: &str, timeout_minutes: u32) {
-        let config = self.config.apps.entry(bundle_id.to_string()).or_default();
+        let bundle_id = canonical_bundle_id(bundle_id);
+        let config = self.config.apps.entry(bundle_id.clone()).or_default();
         config.enabled = true;
         config.timeout_minutes = timeout_minutes;
 
         // Start tracking the app
-        self.activity_tracker
-            .insert(bundle_id.to_string(), Instant::now());
+        self.activity_tracker.insert(bundle_id, Instant::now());
     }
 
     /// Disables auto-quit for an app.
     pub fn disable_auto_quit(&mut self, bundle_id: &str) {
-        if let Some(config) = self.config.apps.get_mut(bundle_id) {
+        let bundle_id = canonical_bundle_id(bundle_id);
+        if let Some(config) = self.config.apps.get_mut(&bundle_id) {
             config.enabled = false;
         }
-        self.activity_tracker.remove(bundle_id);
-        self.tracked_pids.remove(bundle_id);
+        self.activity_tracker.remove(&bundle_id);
+        self.tracked_pids.remove(&bundle_id);
     }
 
     /// Checks if auto-quit is enabled for an app.
     #[must_use]
     pub fn is_auto_quit_enabled(&self, bundle_id: &str) -> bool {
+        let bundle_id = canonical_bundle_id(bundle_id);
         self.config
             .apps
-            .get(bundle_id)
+            .get(&bundle_id)
             .is_some_and(|cfg| cfg.enabled)
     }
 
     /// Gets the timeout for an app in minutes.
     #[must_use]
     pub fn get_timeout_minutes(&self, bundle_id: &str) -> Option<u32> {
+        let bundle_id = canonical_bundle_id(bundle_id);
         self.config
             .apps
-            .get(bundle_id)
+            .get(&bundle_id)
             .filter(|cfg| cfg.enabled)
             .map(|cfg| cfg.timeout_minutes)
     }
 
     /// Cleans up tracking for apps that are no longer running.
     pub fn cleanup_stale_entries(&mut self, running_bundle_ids: &[&str]) {
+        let running_bundle_ids: Vec<_> = running_bundle_ids
+            .iter()
+            .map(|bundle_id| canonical_bundle_id(bundle_id))
+            .collect();
         self.activity_tracker
-            .retain(|bundle_id, _| running_bundle_ids.contains(&bundle_id.as_str()));
+            .retain(|bundle_id, _| running_bundle_ids.contains(bundle_id));
         self.tracked_pids
-            .retain(|bundle_id, _| running_bundle_ids.contains(&bundle_id.as_str()));
+            .retain(|bundle_id, _| running_bundle_ids.contains(bundle_id));
     }
 
     /// Gets all apps with auto-quit enabled.
@@ -556,6 +598,48 @@ mod tests {
         manager.disable_auto_quit("com.example.app");
         assert!(!manager.is_auto_quit_enabled("com.example.app"));
         assert_eq!(manager.get_timeout_minutes("com.example.app"), None);
+    }
+
+    #[test]
+    fn test_auto_quit_manager_bundle_ids_are_case_insensitive() {
+        let mut manager = AutoQuitManager::new(AutoQuitConfig::default());
+
+        manager.enable_auto_quit("com.apple.Mail", 5);
+
+        assert!(manager.is_auto_quit_enabled("com.apple.mail"));
+        assert_eq!(manager.get_timeout_minutes("COM.APPLE.MAIL"), Some(5));
+
+        manager.disable_auto_quit("com.apple.mail");
+
+        assert!(!manager.is_auto_quit_enabled("com.apple.Mail"));
+        assert_eq!(manager.get_timeout_minutes("com.apple.Mail"), None);
+    }
+
+    #[test]
+    fn test_auto_quit_manager_canonicalizes_legacy_case_duplicates() {
+        let mut config = AutoQuitConfig::default();
+        config.apps.insert(
+            "com.apple.Mail".to_string(),
+            AutoQuitAppConfig {
+                enabled: true,
+                timeout_minutes: 5,
+                last_active: None,
+            },
+        );
+        config.apps.insert(
+            "com.apple.mail".to_string(),
+            AutoQuitAppConfig {
+                enabled: false,
+                timeout_minutes: 3,
+                last_active: None,
+            },
+        );
+
+        let manager = AutoQuitManager::new(config);
+
+        assert_eq!(manager.config().apps.len(), 1);
+        assert!(manager.config().apps.contains_key("com.apple.mail"));
+        assert!(!manager.is_auto_quit_enabled("com.apple.Mail"));
     }
 
     #[test]
