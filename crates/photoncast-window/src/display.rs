@@ -73,7 +73,19 @@ impl DisplayManager {
             // Sort by index (macOS arrangement order)
             self.displays.sort_by_key(|d| d.index);
 
-            tracing::debug!("Found {} displays", self.displays.len());
+            tracing::debug!("Found {} displays:", self.displays.len());
+            for d in &self.displays {
+                tracing::debug!(
+                    "  display[{}] id={}: ({}, {}) size {}x{}, is_main={}",
+                    d.index,
+                    d.id,
+                    d.frame.origin.x,
+                    d.frame.origin.y,
+                    d.frame.size.width,
+                    d.frame.size.height,
+                    d.is_main
+                );
+            }
         }
     }
 
@@ -101,21 +113,110 @@ impl DisplayManager {
         self.displays.iter().find(|display| {
             let frame = &display.frame;
             point.0 >= frame.origin.x
-                && point.0 <= frame.origin.x + frame.size.width
+                && point.0 < frame.origin.x + frame.size.width
                 && point.1 >= frame.origin.y
-                && point.1 <= frame.origin.y + frame.size.height
+                && point.1 < frame.origin.y + frame.size.height
         })
     }
 
     /// Gets the display containing the given window frame.
     ///
-    /// Returns the display that contains the majority of the window.
+    /// Uses overlap-area detection: returns the display with the greatest
+    /// intersection area with the window frame. Falls back to the nearest
+    /// display (by center-point distance) if there is no overlap, and
+    /// finally to the main display.
     #[must_use]
     pub fn display_containing_frame(&self, frame: &CGRect) -> Option<&DisplayInfo> {
-        // Simple implementation: use window center point
+        if self.displays.is_empty() {
+            return None;
+        }
+
+        tracing::debug!(
+            "display_containing_frame: window=({}, {}) size {}x{}, {} displays available",
+            frame.origin.x,
+            frame.origin.y,
+            frame.size.width,
+            frame.size.height,
+            self.displays.len()
+        );
+        for disp in &self.displays {
+            let overlap = Self::intersection_area(frame, &disp.frame);
+            tracing::debug!(
+                "  disp[{}]: ({}, {}) size {}x{}, is_main={}, overlap={}",
+                disp.index,
+                disp.frame.origin.x,
+                disp.frame.origin.y,
+                disp.frame.size.width,
+                disp.frame.size.height,
+                disp.is_main,
+                overlap
+            );
+        }
+
+        // Find the display with the maximum overlap area
+        let best_by_overlap = self
+            .displays
+            .iter()
+            .filter_map(|d| {
+                let overlap = Self::intersection_area(frame, &d.frame);
+                if overlap > 0.0 {
+                    Some((d, overlap))
+                } else {
+                    None
+                }
+            })
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(d, _)| d);
+
+        if let Some(matched) = best_by_overlap {
+            tracing::debug!(
+                "  -> matched disp[{}] by overlap, is_main={}",
+                matched.index,
+                matched.is_main
+            );
+            return Some(matched);
+        }
+
+        // No overlap found — pick the display nearest to the window center
         let center_x = frame.origin.x + frame.size.width / 2.0;
         let center_y = frame.origin.y + frame.size.height / 2.0;
-        self.display_containing_point((center_x, center_y))
+        tracing::debug!(
+            "  -> no overlap, falling back to nearest (center={}, {})",
+            center_x,
+            center_y
+        );
+
+        self.displays
+            .iter()
+            .min_by(|a, b| {
+                let dist_a = Self::distance_to_rect(center_x, center_y, &a.frame);
+                let dist_b = Self::distance_to_rect(center_x, center_y, &b.frame);
+                dist_a
+                    .partial_cmp(&dist_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    }
+
+    /// Returns the intersection area between two rectangles (0.0 if disjoint).
+    fn intersection_area(a: &CGRect, b: &CGRect) -> f64 {
+        let x_overlap = (a.origin.x + a.size.width)
+            .min(b.origin.x + b.size.width)
+            - a.origin.x.max(b.origin.x);
+        let y_overlap = (a.origin.y + a.size.height)
+            .min(b.origin.y + b.size.height)
+            - a.origin.y.max(b.origin.y);
+        if x_overlap > 0.0 && y_overlap > 0.0 {
+            x_overlap * y_overlap
+        } else {
+            0.0
+        }
+    }
+
+    /// Squared distance from a point to the nearest edge of a rectangle.
+    fn distance_to_rect(px: f64, py: f64, rect: &CGRect) -> f64 {
+        let cx = px.clamp(rect.origin.x, rect.origin.x + rect.size.width);
+        let cy = py.clamp(rect.origin.y, rect.origin.y + rect.size.height);
+        (px - cx).powi(2) + (py - cy).powi(2)
     }
 
     /// Gets the next display in the arrangement order.
@@ -254,5 +355,121 @@ mod tests {
         assert!((translated.origin.x - 1920.0).abs() < f64::EPSILON);
         assert!((translated.size.width - 1280.0).abs() < 0.1);
         assert!((translated.size.height - 1440.0).abs() < 0.1);
+    }
+
+    /// Helper to build a DisplayManager with custom displays for testing.
+    fn manager_with_displays(displays: Vec<DisplayInfo>) -> DisplayManager {
+        DisplayManager { displays }
+    }
+
+    fn make_rect(x: f64, y: f64, w: f64, h: f64) -> CGRect {
+        CGRect::new(
+            &core_graphics::geometry::CGPoint { x, y },
+            &core_graphics::geometry::CGSize {
+                width: w,
+                height: h,
+            },
+        )
+    }
+
+    #[test]
+    fn test_display_containing_frame_overlap_picks_correct_display() {
+        let main = DisplayInfo {
+            id: 1,
+            frame: make_rect(0.0, 0.0, 1920.0, 1080.0),
+            is_main: true,
+            index: 0,
+        };
+        let external = DisplayInfo {
+            id: 2,
+            frame: make_rect(1920.0, 0.0, 2560.0, 1440.0),
+            is_main: false,
+            index: 1,
+        };
+        let mgr = manager_with_displays(vec![main, external]);
+
+        // Window fully on external display
+        let window = make_rect(2000.0, 100.0, 800.0, 600.0);
+        let detected = mgr.display_containing_frame(&window).unwrap();
+        assert_eq!(detected.id, 2);
+    }
+
+    #[test]
+    fn test_display_containing_frame_boundary_window_prefers_secondary() {
+        let main = DisplayInfo {
+            id: 1,
+            frame: make_rect(0.0, 0.0, 1920.0, 1080.0),
+            is_main: true,
+            index: 0,
+        };
+        let external = DisplayInfo {
+            id: 2,
+            frame: make_rect(1920.0, 0.0, 2560.0, 1440.0),
+            is_main: false,
+            index: 1,
+        };
+        let mgr = manager_with_displays(vec![main, external]);
+
+        // Window at left edge of external display (origin exactly at boundary)
+        let window = make_rect(1920.0, 24.0, 1280.0, 708.0);
+        let detected = mgr.display_containing_frame(&window).unwrap();
+        assert_eq!(detected.id, 2);
+    }
+
+    #[test]
+    fn test_display_containing_frame_falls_back_to_nearest() {
+        let main = DisplayInfo {
+            id: 1,
+            frame: make_rect(0.0, 0.0, 1920.0, 1080.0),
+            is_main: true,
+            index: 0,
+        };
+        let external = DisplayInfo {
+            id: 2,
+            frame: make_rect(1920.0, 0.0, 2560.0, 1440.0),
+            is_main: false,
+            index: 1,
+        };
+        let mgr = manager_with_displays(vec![main, external]);
+
+        // Window in the gap between displays (shouldn't happen normally)
+        let window = make_rect(1910.0, -50.0, 10.0, 10.0);
+        let detected = mgr.display_containing_frame(&window);
+        assert!(detected.is_some());
+    }
+
+    #[test]
+    fn test_display_containing_frame_window_straddling_displays() {
+        let main = DisplayInfo {
+            id: 1,
+            frame: make_rect(0.0, 0.0, 1920.0, 1080.0),
+            is_main: true,
+            index: 0,
+        };
+        let external = DisplayInfo {
+            id: 2,
+            frame: make_rect(1920.0, 0.0, 2560.0, 1440.0),
+            is_main: false,
+            index: 1,
+        };
+        let mgr = manager_with_displays(vec![main, external]);
+
+        // Window mostly on external display but straddling the boundary
+        let window = make_rect(1800.0, 100.0, 800.0, 600.0);
+        let detected = mgr.display_containing_frame(&window).unwrap();
+        // 120px overlap with main (1800..1920), 680px overlap with external (1920..2600)
+        assert_eq!(detected.id, 2);
+    }
+
+    #[test]
+    fn test_intersection_area() {
+        let a = make_rect(0.0, 0.0, 100.0, 100.0);
+        let b = make_rect(50.0, 50.0, 100.0, 100.0);
+        let area = DisplayManager::intersection_area(&a, &b);
+        assert!((area - 2500.0).abs() < f64::EPSILON); // 50x50
+
+        // No overlap
+        let c = make_rect(200.0, 200.0, 100.0, 100.0);
+        assert!(DisplayManager::intersection_area(&a, &c) < f64::EPSILON);
     }
 }
