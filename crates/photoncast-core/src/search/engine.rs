@@ -206,6 +206,7 @@ impl SearchEngine {
 
         let mut handles = Vec::with_capacity(self.providers.len());
         let query_string = query.to_string();
+        let timeout = self.config.timeout;
         for provider in &self.providers {
             let provider_name = provider.name().to_string();
             let provider = Arc::clone(provider);
@@ -218,7 +219,7 @@ impl SearchEngine {
         let provider_outcomes = join_all(handles.into_iter().map(
             |(provider_name, handle)| async move {
                 let provider_start = std::time::Instant::now();
-                let outcome = handle.await;
+                let outcome = tokio::time::timeout(timeout, handle).await;
                 (provider_name, provider_start.elapsed(), outcome)
             },
         ))
@@ -238,9 +239,9 @@ impl SearchEngine {
         }
 
         for (provider_name, elapsed, outcome) in provider_outcomes {
+            let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
             match outcome {
-                Ok(results) => {
-                    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+                Ok(Ok(results)) => {
                     trace!(
                         component = "search",
                         operation = "provider_async",
@@ -251,8 +252,23 @@ impl SearchEngine {
                     );
                     all_results.extend(results);
                 },
-                Err(err) => {
-                    warn!("Search provider task failed: {}", err);
+                Ok(Err(err)) => {
+                    warn!(
+                        component = "search",
+                        provider_id = provider_name,
+                        elapsed_ms,
+                        "search provider task failed: {}",
+                        err
+                    );
+                },
+                Err(_) => {
+                    warn!(
+                        component = "search",
+                        provider_id = provider_name,
+                        timeout_ms = timeout.as_millis() as u64,
+                        elapsed_ms,
+                        "search provider timed out, returning empty results"
+                    );
                 },
             }
         }
@@ -711,5 +727,59 @@ mod tests {
         });
 
         assert_eq!(engine.config().timeout, timeout);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_enforcement_drops_slow_provider_results() {
+        // Configure a very short timeout so the slow provider is guaranteed to exceed it.
+        let timeout = Duration::from_millis(50);
+        let mut engine = SearchEngine::with_config(SearchConfig {
+            timeout,
+            ..Default::default()
+        });
+
+        // A fast provider that returns instantly.
+        engine.add_provider(MockProvider::new(
+            "fast",
+            ResultType::Application,
+            vec![create_test_result(
+                "fast-1",
+                "Fast App",
+                100.0,
+                ResultType::Application,
+            )],
+        ));
+
+        // A slow provider that sleeps well beyond the timeout.
+        engine.add_provider(SlowMockProvider {
+            name: "slow",
+            result_type: ResultType::SystemCommand,
+            delay: Duration::from_secs(5),
+            results: vec![create_test_result(
+                "slow-1",
+                "Slow Command",
+                90.0,
+                ResultType::SystemCommand,
+            )],
+        });
+
+        let results = engine.search("test").await;
+
+        // Only the fast provider's results should appear; the slow provider
+        // should have been timed out and returned empty results.
+        assert_eq!(
+            results.total_count, 1,
+            "expected only fast provider results; slow provider should have timed out"
+        );
+        assert_eq!(results.groups.len(), 1);
+        assert_eq!(results.groups[0].result_type, ResultType::Application);
+        assert_eq!(results.groups[0].results[0].title, "Fast App");
+
+        // The search itself should complete quickly (near timeout, not 5s).
+        assert!(
+            results.search_time < Duration::from_secs(1),
+            "search should complete near timeout, not wait for slow provider; elapsed={:?}",
+            results.search_time,
+        );
     }
 }
