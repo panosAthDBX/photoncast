@@ -186,24 +186,20 @@ impl DisplayManager {
             center_y
         );
 
-        self.displays
-            .iter()
-            .min_by(|a, b| {
-                let dist_a = Self::distance_to_rect(center_x, center_y, &a.frame);
-                let dist_b = Self::distance_to_rect(center_x, center_y, &b.frame);
-                dist_a
-                    .partial_cmp(&dist_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.displays.iter().min_by(|a, b| {
+            let dist_a = Self::distance_to_rect(center_x, center_y, &a.frame);
+            let dist_b = Self::distance_to_rect(center_x, center_y, &b.frame);
+            dist_a
+                .partial_cmp(&dist_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     /// Returns the intersection area between two rectangles (0.0 if disjoint).
     fn intersection_area(a: &CGRect, b: &CGRect) -> f64 {
-        let x_overlap = (a.origin.x + a.size.width)
-            .min(b.origin.x + b.size.width)
-            - a.origin.x.max(b.origin.x);
-        let y_overlap = (a.origin.y + a.size.height)
-            .min(b.origin.y + b.size.height)
+        let x_overlap =
+            (a.origin.x + a.size.width).min(b.origin.x + b.size.width) - a.origin.x.max(b.origin.x);
+        let y_overlap = (a.origin.y + a.size.height).min(b.origin.y + b.size.height)
             - a.origin.y.max(b.origin.y);
         if x_overlap > 0.0 && y_overlap > 0.0 {
             x_overlap * y_overlap
