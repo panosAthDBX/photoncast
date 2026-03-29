@@ -1,0 +1,9 @@
+commands:
+  build: cargo build
+  build_release: cargo build --release
+  test: cargo test --workspace -- --test-threads=6
+  test_quick: cargo test --workspace --lib -- --test-threads=6
+  clippy: cargo clippy --workspace -- -D warnings
+  fmt_check: cargo fmt --check
+  fmt: cargo fmt
+  bench: cargo bench -p photoncast-core
