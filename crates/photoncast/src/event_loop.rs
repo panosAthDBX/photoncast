@@ -195,12 +195,7 @@ impl EventLoopState {
         info!("Open quick links requested");
         let mut activated = false;
         if let Some(ref h) = self.quicklinks_handle {
-            if h.update(cx, |view, cx| {
-                let links = self
-                    .shared_rt
-                    .block_on(self.quicklinks_storage.load_all())
-                    .unwrap_or_default();
-                view.set_links(links, cx);
+            if h.update(cx, |_view, cx| {
                 cx.activate(true);
                 cx.activate_window();
             })
@@ -213,19 +208,30 @@ impl EventLoopState {
         }
 
         if !activated {
-            let storage = self.quicklinks_storage.clone();
-            let runtime = self.shared_rt.handle().clone();
             let _ = cx.update(|cx| {
                 if let Some(handle) = open_quicklinks_window(cx) {
-                    let _ = handle.update(cx, |view, cx| {
-                        let links = runtime.block_on(storage.load_all()).unwrap_or_default();
-                        view.set_links(links, cx);
+                    let _ = handle.update(cx, |_view, cx| {
                         cx.activate(true);
                         cx.activate_window();
                     });
                     self.quicklinks_handle = Some(handle);
                 }
             });
+        }
+
+        // Load quicklinks asynchronously on a background thread, then update the view
+        if let Some(handle) = self.quicklinks_handle {
+            let storage = self.quicklinks_storage.clone();
+            cx.spawn(|mut cx| async move {
+                let links = cx
+                    .background_executor()
+                    .spawn(async move { storage.load_all_sync().unwrap_or_default() })
+                    .await;
+                let _ = handle.update(&mut cx, |view, cx| {
+                    view.set_links(links, cx);
+                });
+            })
+            .detach();
         }
     }
 
@@ -364,12 +370,7 @@ impl EventLoopState {
         info!("Manage quicklinks requested");
         let _ = cx.update(|cx| {
             if let Some(ref h) = self.manage_quicklinks_handle {
-                if h.update(cx, |view, cx| {
-                    let links = self
-                        .shared_rt
-                        .block_on(self.quicklinks_storage.load_all())
-                        .unwrap_or_default();
-                    view.set_quicklinks(links, cx);
+                if h.update(cx, |_view, cx| {
                     cx.activate(true);
                     cx.activate_window();
                 })
@@ -395,6 +396,21 @@ impl EventLoopState {
                 }
             }
         });
+
+        // Load quicklinks asynchronously on a background thread, then update the view
+        if let Some(handle) = self.manage_quicklinks_handle {
+            let storage = self.quicklinks_storage.clone();
+            cx.spawn(|mut cx| async move {
+                let links = cx
+                    .background_executor()
+                    .spawn(async move { storage.load_all_sync().unwrap_or_default() })
+                    .await;
+                let _ = handle.update(&mut cx, |view, cx| {
+                    view.set_quicklinks(links, cx);
+                });
+            })
+            .detach();
+        }
     }
 
     fn handle_browse_quicklink_library(&mut self, cx: &mut AsyncAppContext) {
@@ -402,11 +418,6 @@ impl EventLoopState {
         let _ = cx.update(|cx| {
             if let Some(ref h) = self.manage_quicklinks_handle {
                 if h.update(cx, |view, cx| {
-                    let links = self
-                        .shared_rt
-                        .block_on(self.quicklinks_storage.load_all())
-                        .unwrap_or_default();
-                    view.set_quicklinks(links, cx);
                     if !view.is_showing_library() {
                         view.toggle_library(cx);
                     }
@@ -435,6 +446,21 @@ impl EventLoopState {
                 }
             }
         });
+
+        // Load quicklinks asynchronously on a background thread, then update the view
+        if let Some(handle) = self.manage_quicklinks_handle {
+            let storage = self.quicklinks_storage.clone();
+            cx.spawn(|mut cx| async move {
+                let links = cx
+                    .background_executor()
+                    .spawn(async move { storage.load_all_sync().unwrap_or_default() })
+                    .await;
+                let _ = handle.update(&mut cx, |view, cx| {
+                    view.set_quicklinks(links, cx);
+                });
+            })
+            .detach();
+        }
     }
 
     fn handle_execute_quicklink(
@@ -451,20 +477,28 @@ impl EventLoopState {
         };
 
         if photoncast_quicklinks::placeholder::requires_user_input(&final_url) {
+            // Load quicklinks asynchronously to find the one we need
             let storage = self.quicklinks_storage.clone();
             let id = id.to_string();
-            let _ = cx.update(|cx| {
-                if let Ok(links) = self.shared_rt.block_on(storage.load_all()) {
+            cx.spawn(|cx| async move {
+                let links = cx
+                    .background_executor()
+                    .spawn(async move { storage.load_all_sync() })
+                    .await;
+                if let Ok(links) = links {
                     if let Some(link) = links.into_iter().find(|l| l.id.as_str() == id) {
-                        if let Some(handle) = open_argument_input_window(cx, link) {
-                            let _ = handle.update(cx, |_, cx| {
-                                cx.activate(true);
-                                cx.activate_window();
-                            });
-                        }
+                        let _ = cx.update(|cx| {
+                            if let Some(handle) = open_argument_input_window(cx, link) {
+                                let _ = handle.update(cx, |_, cx| {
+                                    cx.activate(true);
+                                    cx.activate_window();
+                                });
+                            }
+                        });
                     }
                 }
-            });
+            })
+            .detach();
         } else {
             info!("Execute quicklink: {}", final_url);
             if let Err(e) = photoncast_core::platform::launch::open_url(&final_url) {
