@@ -1,7 +1,7 @@
 {
   "milestone": "critical-fixes",
-  "round": 2,
-  "status": "pass",
+  "round": 1,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -26,12 +26,31 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 3,
     "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "failed": 2,
+    "failedFeatures": [
+      "async-quicklinks-loading",
+      "flaky-prefetch-test-fix"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "async-quicklinks-loading",
+      "severity": "blocking",
+      "description": "crates/photoncast/src/main.rs:1138 still performs runtime.block_on(storage.load_all()) inside open_manage_quicklinks_window(), so first-open manage/browse quicklinks flows still block the UI thread even after the event_loop.rs refactor."
+    },
+    {
+      "featureId": "flaky-prefetch-test-fix",
+      "severity": "blocking",
+      "description": "crates/photoncast-core/src/search/spotlight/prefetch.rs:619 weakens test_prefetcher_trigger_starts_running to status != PrefetchStatus::Idle, which now accepts Cancelled and no longer verifies the intended Running-or-Completed contract."
+    },
+    {
+      "featureId": "flaky-prefetch-test-fix",
+      "severity": "blocking",
+      "description": "crates/photoncast-core/src/search/spotlight/prefetch.rs:669 weakens test_start_background_prefetch the same way, allowing unrelated non-idle states like Cancelled and masking genuine prefetch-start regressions."
+    }
+  ],
   "appliedUpdates": [
     {
       "target": "library",
@@ -48,33 +67,25 @@
     {
       "target": "rust-fix-worker skill",
       "suggestion": "Let rust-fix-worker honor mission-specific validation overrides (for example, allowing documented --lib test commands instead of always requiring full-workspace cargo test).",
-      "evidence": "The async-quicklinks-loading, search-timeout-enforcement, and fix-remaining-block-on-and-prefetch-tests reviews all observed tension between the skill's mandatory full-workspace validation and this mission's AGENTS.md guidance that library tests are sufficient because the slow icon-extraction integration tests are unrelated. The search-timeout and fix transcripts both relied on the mission-approved --lib command instead of the hard-coded full-workspace suite.",
+      "evidence": "All three reviews observed tension between the skill's mandatory full-workspace validation and this mission's AGENTS.md guidance that library tests are sufficient because slow icon-extraction integration tests are unrelated. The search-timeout worker transcript specifically shows repeated timeout attempts before switching to the mission-approved --lib command.",
       "isSystemic": true
     },
     {
       "target": "rust-fix-worker skill / handoff rules",
       "suggestion": "Require workers to mark skill adherence truthfully when they skip the TDD red phase or other mandatory skill steps, and make the skill explain how to report mission-driven deviations.",
-      "evidence": "The search-timeout-enforcement, flaky-prefetch-test-fix, and fix-remaining-block-on-and-prefetch-tests reviews each found transcripts that skipped the skill's red-phase requirement and/or mission-driven validation steps while still reporting `followedProcedure: true` with no deviations, which makes scrutiny's skill-adherence signal unreliable.",
+      "evidence": "The search-timeout and flaky-prefetch reviews both found transcripts that skipped the skill's red-phase requirement while still reporting followedProcedure: true, which makes scrutiny's skill-adherence signal unreliable.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "The hidden quicklinks helper-level blocking path in `open_manage_quicklinks_window()`.",
-      "reason": "already-documented"
-    },
-    {
-      "observation": "The prefetch-status semantics note that `run_prefetch_queries()` only returns false on cancellation.",
-      "reason": "already-documented"
-    },
-    {
-      "observation": "Repeated rust-fix-worker validation mismatch observations across the async-quicklinks-loading, search-timeout-enforcement, and fix-remaining-block-on-and-prefetch-tests reviews.",
+      "observation": "Duplicate rust-fix-worker validation mismatch observations across all three review reports.",
       "reason": "duplicate"
     },
     {
-      "observation": "Repeated TDD/skill-adherence mismatch observations across the search-timeout-enforcement, flaky-prefetch-test-fix, and fix-remaining-block-on-and-prefetch-tests reviews.",
+      "observation": "Duplicate TDD/skill-adherence mismatch observations across the search-timeout-enforcement and flaky-prefetch-test-fix reviews.",
       "reason": "duplicate"
     }
   ],
-  "previousRound": ".factory/validation/critical-fixes/scrutiny/synthesis.round1.json"
+  "previousRound": null
 }
