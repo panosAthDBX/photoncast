@@ -1,0 +1,33 @@
+{
+  "featureId": "async-quicklinks-loading",
+  "reviewedAt": "2026-03-29T23:29:04.933906+00:00",
+  "commitId": "9708e6780a51c19b4a1c3aa89d825bfff5b1376a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit removes the five targeted block_on() call sites from event_loop.rs and moves those loads onto GPUI async executors, but it does not fully eliminate UI-thread blocking for manage/browse quicklinks because the new-window helper still synchronously loads SQLite data before the window is shown.",
+    "issues": [
+      {
+        "file": "crates/photoncast/src/main.rs",
+        "line": 1138,
+        "severity": "blocking",
+        "description": "`open_manage_quicklinks_window()` still does `runtime.block_on(storage.load_all())` before `open_window_centered()`. `handle_manage_quicklinks()` and `handle_browse_quicklink_library()` still call this helper when `manage_quicklinks_handle` is `None` (event_loop.rs lines 384 and 434 in the reviewed commit), so the first open of those windows still freezes the UI and does not meet the feature requirement to show the view immediately before data arrives. The new async reload in event_loop.rs only adds a second load after the blocking one."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `rust-fix-worker` skill hard-codes full-workspace `cargo test --workspace -- --test-threads=6` as a required final validation step, but this mission's `AGENTS.md` explicitly says `cargo test --workspace --lib -- --test-threads=6` is sufficient because the icon extraction integration tests are slow and unrelated. The worker followed the mission docs and used `--lib`, so the skill procedure does not match mission reality.",
+      "evidence": "SKILL.md step 7 requires `cargo test --workspace -- --test-threads=6`; mission AGENTS.md says `For validation, library tests (`--lib`) are sufficient`; the worker transcript/handoff records `cargo test --workspace --lib -- --test-threads=6` instead of the full-suite command."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The mission description and issue catalog only called out the five `event_loop.rs` `block_on()` sites, but manage/browse quicklinks also rely on `open_manage_quicklinks_window()`, which hides another synchronous quicklinks preload in `main.rs`. That helper-level blocking path was easy to miss and should be captured in shared architecture or issue documentation for future async UI work.",
+      "evidence": "features.json scopes the feature to `crates/photoncast/src/event_loop.rs`; meanwhile `crates/photoncast/src/main.rs:1138` still does `runtime.block_on(storage.load_all())` inside `open_manage_quicklinks_window()`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the five `event_loop.rs` `block_on()` sites were removed, but opening manage/browse quicklinks with no existing window still blocks on `main.rs:1138`, so the feature does not fully satisfy the async/non-blocking requirement."
+}

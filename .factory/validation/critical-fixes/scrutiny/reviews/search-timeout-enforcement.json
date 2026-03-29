@@ -1,0 +1,33 @@
+{
+  "featureId": "search-timeout-enforcement",
+  "reviewedAt": "2026-03-29T23:28:48Z",
+  "commitId": "3c853218207f7dfc7f5beb0b72456b2b8597a74f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation satisfies the requested behavior: the async search path now wraps each provider JoinHandle with tokio::time::timeout, emits a warning on timeout, and adds a focused slow-provider unit test. I found one non-blocking follow-up concern around timed-out blocking tasks continuing to run after the caller returns.",
+    "issues": [
+      {
+        "file": "crates/photoncast-core/src/search/engine.rs",
+        "line": 214,
+        "severity": "non_blocking",
+        "description": "The timeout only bounds how long search_with_cancellation waits for the JoinHandle; it does not stop the spawn_blocking task itself. On the timeout path at line 222 the handle is dropped without any cooperative cancellation, so a slow provider can keep occupying Tokio's blocking pool after the search already returned empty results. Because launcher searches are dispatched on every debounced keystroke (.factory/library/architecture.md:41), repeated timeouts can accumulate stale blocking work and degrade later searches."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The rust-fix-worker skill's mandatory full-workspace test step conflicts with this mission's guidance that library tests are sufficient. That mismatch caused wasted time on repeated full-workspace timeout attempts before the worker fell back to the documented --lib check.",
+      "evidence": ".factory/skills/rust-fix-worker/SKILL.md:48 requires `cargo test --workspace -- --test-threads=6`, while mission AGENTS.md:28 says library tests (`--lib`) are sufficient. The worker transcript for session a7c09c01-12b4-4a94-936a-69bda206b9fd shows two full-workspace attempts timing out at 180s and 300s before switching to `cargo test --workspace --lib -- --test-threads=6`."
+    },
+    {
+      "area": "skills",
+      "observation": "The skill's TDD red-phase requirement was not followed for this feature, but the handoff still reported `followedProcedure: true`, which makes the skill-adherence signal unreliable for scrutiny.",
+      "evidence": ".factory/skills/rust-fix-worker/SKILL.md:29 says to write the failing test first. In the worker transcript, the first `## Tool: Edit` for `crates/photoncast-core/src/search/engine.rs` appears before the first `cargo test -p photoncast-core -- timeout --test-threads=6` run, and the handoff file records `followedProcedure: true` at line 69."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The feature wires SearchConfig.timeout into the async search path and adds a targeted slow-provider test, with one non-blocking follow-up concern about timed-out blocking work continuing in the background."
+}

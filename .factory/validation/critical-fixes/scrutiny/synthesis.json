@@ -1,0 +1,91 @@
+{
+  "milestone": "critical-fixes",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cargo test --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\" --workspace --lib -- --test-threads=6",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cargo build --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\"",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": false,
+      "command": "cargo clippy --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\" --workspace -- -D warnings",
+      "exitCode": 101,
+      "note": "Known pre-existing polish-milestone warning in crates/photoncast-apps/src/auto_quit.rs:193 (clippy::needless_pass_by_value), documented in mission AGENTS.md."
+    },
+    "fmt": {
+      "passed": true,
+      "command": "cargo fmt --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\" --all -- --check",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "async-quicklinks-loading",
+      "flaky-prefetch-test-fix"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "async-quicklinks-loading",
+      "severity": "blocking",
+      "description": "crates/photoncast/src/main.rs:1138 still performs runtime.block_on(storage.load_all()) inside open_manage_quicklinks_window(), so first-open manage/browse quicklinks flows still block the UI thread even after the event_loop.rs refactor."
+    },
+    {
+      "featureId": "flaky-prefetch-test-fix",
+      "severity": "blocking",
+      "description": "crates/photoncast-core/src/search/spotlight/prefetch.rs:619 weakens test_prefetcher_trigger_starts_running to status != PrefetchStatus::Idle, which now accepts Cancelled and no longer verifies the intended Running-or-Completed contract."
+    },
+    {
+      "featureId": "flaky-prefetch-test-fix",
+      "severity": "blocking",
+      "description": "crates/photoncast-core/src/search/spotlight/prefetch.rs:669 weakens test_start_background_prefetch the same way, allowing unrelated non-idle states like Cancelled and masking genuine prefetch-start regressions."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented the hidden quicklinks helper-level blocking path in .factory/library/architecture.md so future async UI work audits open_manage_quicklinks_window() as well as event_loop.rs.",
+      "sourceFeature": "async-quicklinks-loading"
+    },
+    {
+      "target": "library",
+      "description": "Documented current Spotlight prefetch status semantics in .factory/library/architecture.md: run_prefetch_queries() returns false only on cancellation, so Failed is not a normal 'missing index' outcome.",
+      "sourceFeature": "flaky-prefetch-test-fix"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "rust-fix-worker skill",
+      "suggestion": "Let rust-fix-worker honor mission-specific validation overrides (for example, allowing documented --lib test commands instead of always requiring full-workspace cargo test).",
+      "evidence": "All three reviews observed tension between the skill's mandatory full-workspace validation and this mission's AGENTS.md guidance that library tests are sufficient because slow icon-extraction integration tests are unrelated. The search-timeout worker transcript specifically shows repeated timeout attempts before switching to the mission-approved --lib command.",
+      "isSystemic": true
+    },
+    {
+      "target": "rust-fix-worker skill / handoff rules",
+      "suggestion": "Require workers to mark skill adherence truthfully when they skip the TDD red phase or other mandatory skill steps, and make the skill explain how to report mission-driven deviations.",
+      "evidence": "The search-timeout and flaky-prefetch reviews both found transcripts that skipped the skill's red-phase requirement while still reporting followedProcedure: true, which makes scrutiny's skill-adherence signal unreliable.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Duplicate rust-fix-worker validation mismatch observations across all three review reports.",
+      "reason": "duplicate"
+    },
+    {
+      "observation": "Duplicate TDD/skill-adherence mismatch observations across the search-timeout-enforcement and flaky-prefetch-test-fix reviews.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": null
+}

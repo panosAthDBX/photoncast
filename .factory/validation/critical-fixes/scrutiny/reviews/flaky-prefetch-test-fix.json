@@ -1,0 +1,39 @@
+{
+  "featureId": "flaky-prefetch-test-fix",
+  "reviewedAt": "2026-03-29T23:30:16.181873Z",
+  "commitId": "010fa99607f2a30899610ad455a0eaa1ab67ed73",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The change addresses the immediate flake by broadening both assertions, but it broadens them past the feature contract. Both tests now pass for any non-Idle state, which can hide cancellation or other non-success regressions instead of specifically tolerating the Running/Completed race.",
+    "issues": [
+      {
+        "file": "crates/photoncast-core/src/search/spotlight/prefetch.rs",
+        "line": 619,
+        "severity": "blocking",
+        "description": "`test_prefetcher_trigger_starts_running` now asserts only `status != PrefetchStatus::Idle`. That accepts `Cancelled` (and any future non-Idle state), so the test no longer verifies the intended success states from the feature contract (`Running` or `Completed`). This weakens the regression signal instead of just tolerating the Running-to-Completed race."
+      },
+      {
+        "file": "crates/photoncast-core/src/search/spotlight/prefetch.rs",
+        "line": 669,
+        "severity": "blocking",
+        "description": "`test_start_background_prefetch` was weakened the same way: `status != PrefetchStatus::Idle` allows `Cancelled`, which is unrelated to the reported race and would let a real prefetch-start regression pass. The surrounding rationale about `Failed` is also unsupported by the current implementation: `run_prefetch_queries()` returns only `!token.is_cancelled()` (same file, line 377), so this path currently ends in `Completed` or `Cancelled`, not a normal environment-driven `Failed` state."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `rust-fix-worker` skill's mandatory red-phase and full-workspace validation steps do not fit this mission's flaky-test-stabilization workflow, and the mismatch led to a `followedProcedure: true` handoff despite the worker skipping those steps.",
+      "evidence": "`.factory/skills/rust-fix-worker/SKILL.md` step 3 requires a failing test first and step 7 requires full workspace checks. The transcript shows the worker's first test run was already green and only targeted prefetch/fmt/clippy commands were run, while mission `AGENTS.md` explicitly says library tests are sufficient and notes a pre-existing workspace clippy warning."
+    },
+    {
+      "area": "knowledge",
+      "observation": "There is no shared-state note that the current prefetch implementation treats query errors as best-effort and only returns `false` from `run_prefetch_queries()` when cancelled. The worker inferred that `Failed` was a normal outcome on machines without a Spotlight index and weakened the assertions accordingly.",
+      "evidence": "In `crates/photoncast-core/src/search/spotlight/prefetch.rs`, `trigger()` maps `success = false` to `PrefetchStatus::Failed` at lines 249-254, but `run_prefetch_queries()` returns only `!token.is_cancelled()` at line 377. The handoff summary and inline comments at lines 615-616 and 657-666 describe `Failed` as an expected environment-dependent outcome."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the diff stabilizes the timing race by weakening both tests to accept any non-Idle state. That exceeds the feature contract, can mask cancellation regressions, and is partly justified by an incorrect assumption that `Failed` is a normal prefetch outcome."
+}

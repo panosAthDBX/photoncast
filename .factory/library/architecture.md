@@ -35,6 +35,7 @@ photoncast (binary)         — Main app: launcher UI, event loop, preferences, 
 - **Tokio runtime**: Shared `tokio::runtime::Handle` for async ops, passed via `Arc`
 - **Background executor**: GPUI's `cx.background_executor()` for CPU-bound work
 - **CRITICAL**: `block_on()` on the main thread freezes the UI — must use async dispatch
+- **Quicklinks gotcha**: `handle_manage_quicklinks()` / `handle_browse_quicklink_library()` also flow through `open_manage_quicklinks_window()` in `crates/photoncast/src/main.rs`; auditing only `event_loop.rs` is not enough because a helper-level `runtime.block_on(storage.load_all())` there still blocks first-open window creation.
 
 ## Data Flow
 
@@ -42,3 +43,8 @@ photoncast (binary)         — Main app: launcher UI, event loop, preferences, 
 2. `SearchEngine::search()` → parallel provider calls via `tokio::spawn_blocking`
 3. Results merged, ranked (nucleo score + frecency × 35.0 multiplier), top-K selected
 4. UI re-renders with results via GPUI reactive state
+
+## Spotlight Prefetch Status Notes
+
+- `PrefetchStatus::Failed` is not a normal "index missing" outcome in the current implementation.
+- `trigger()` maps `run_prefetch_queries() == false` to `PrefetchStatus::Failed`, but `run_prefetch_queries()` currently returns `false` only when the cancellation token is cancelled; otherwise it returns `true` even if individual query work had best-effort errors.

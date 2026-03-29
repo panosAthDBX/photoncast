@@ -45,16 +45,23 @@ impl DisplayManager {
             let mut display_ids = vec![0u32; max_displays as usize];
             let mut display_count = 0u32;
 
-            unsafe {
+            let display_list_result = unsafe {
                 core_graphics::display::CGGetActiveDisplayList(
                     max_displays,
                     display_ids.as_mut_ptr(),
                     &mut display_count,
-                );
-            }
+                )
+            };
 
             // Get main display ID
             let main_display_id = unsafe { core_graphics::display::CGMainDisplayID() };
+
+            if display_list_result != 0 {
+                tracing::warn!(
+                    "CGGetActiveDisplayList failed with code {}; falling back to main display",
+                    display_list_result
+                );
+            }
 
             // Collect display info
             for (index, &display_id) in display_ids.iter().take(display_count as usize).enumerate()
@@ -72,6 +79,23 @@ impl DisplayManager {
 
             // Sort by index (macOS arrangement order)
             self.displays.sort_by_key(|d| d.index);
+
+            if self.displays.is_empty() {
+                let main_display = CGDisplay::new(main_display_id);
+                let main_bounds = main_display.bounds();
+
+                tracing::warn!(
+                    "No active displays reported; falling back to main display {}",
+                    main_display_id
+                );
+
+                self.displays.push(DisplayInfo {
+                    id: main_display_id,
+                    frame: main_bounds,
+                    is_main: true,
+                    index: 0,
+                });
+            }
 
             tracing::debug!("Found {} displays:", self.displays.len());
             for d in &self.displays {
