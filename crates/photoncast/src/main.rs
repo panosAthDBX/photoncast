@@ -1134,9 +1134,9 @@ fn open_manage_quicklinks_window(
     let launcher_state = launcher_state.clone();
     let runtime = Arc::clone(runtime);
 
-    // Load quicklinks
-    let links = runtime.block_on(storage.load_all()).unwrap_or_default();
-
+    // Open the window immediately with an empty quicklinks list.
+    // Callers (event_loop) load quicklinks asynchronously via
+    // cx.background_executor().spawn() and update the view afterward.
     open_window_centered(
         cx,
         size(LAUNCHER_WIDTH, EXPANDED_HEIGHT),
@@ -1159,7 +1159,6 @@ fn open_manage_quicklinks_window(
             cx.new_view(|cx| {
                 let mut view = QuicklinksManageView::new(cx);
                 view.set_storage(storage.clone(), runtime);
-                view.set_quicklinks(links.clone(), cx);
                 if show_library {
                     view.toggle_library(cx);
                 }

@@ -611,13 +611,16 @@ mod tests {
             "Prefetcher did not reach Running status within timeout"
         );
 
-        // Accept any post-Idle state: the thread ran (or is still running).
-        // On machines without a Spotlight index the queries may fail, so
-        // Failed is also a valid terminal state.
+        // Accept only Running, Completed, or Failed — NOT Idle or Cancelled.
+        // Failed is valid because the test may run in environments without a
+        // Spotlight index.
         let status = prefetcher.status();
         assert!(
-            status != PrefetchStatus::Idle,
-            "Expected prefetcher to have progressed past Idle, got: {status:?}"
+            matches!(
+                status,
+                PrefetchStatus::Running | PrefetchStatus::Completed | PrefetchStatus::Failed
+            ),
+            "Expected Running, Completed, or Failed, got: {status:?}"
         );
 
         println!("Prefetch status after trigger: {status:?}");
@@ -662,12 +665,15 @@ mod tests {
             "Prefetcher did not reach Running status within timeout"
         );
 
-        // Accept any post-Idle state: Running, Completed, or Failed are all
-        // valid outcomes depending on Spotlight availability and timing.
+        // Accept only Running, Completed, or Failed — NOT Idle or Cancelled.
+        // Failed is valid because Spotlight may not be available in all environments.
         let status = prefetcher.status();
         assert!(
-            status != PrefetchStatus::Idle,
-            "Expected prefetcher to have progressed past Idle, got: {status:?}"
+            matches!(
+                status,
+                PrefetchStatus::Running | PrefetchStatus::Completed | PrefetchStatus::Failed
+            ),
+            "Expected Running, Completed, or Failed, got: {status:?}"
         );
 
         // Wait for a terminal state (Completed or Failed) with generous timeout
