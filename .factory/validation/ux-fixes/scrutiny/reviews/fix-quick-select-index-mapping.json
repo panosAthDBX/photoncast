@@ -1,0 +1,26 @@
+{
+  "featureId": "fix-quick-select-index-mapping",
+  "reviewedAt": "2026-03-30T08:22:46Z",
+  "commitId": "e684ae0a289d43d92ed867c169fdddd8297b7082",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass: the diff corrects the only broken launcher binding by changing `QuickSelect7` to `quick_select(6)`, which restores the `QuickSelectN -> quick_select(N-1)` pattern across `render.rs:1105-1113`. That feeds the existing `quick_select` implementation in `launcher/search.rs:1116-1136`, so Cmd+7/Cmd+8 now resolve to the intended visible item both in normal result lists and when the meeting widget occupies slot 1. I did not find a correctness or regression issue in the reviewed change.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `rust-fix-worker` procedure and the skill-adherence signal are still misaligned with mission reality for small GPUI wiring fixes. This worker skipped the skill's full-file read and TDD red-phase expectations, used the mission-approved `--lib` test suite instead of the skill's full-workspace test step, yet the handoff still reported `followedProcedure: true`.",
+      "evidence": "`.factory/skills/rust-fix-worker/SKILL.md:27-30` requires reading the full affected file and writing a failing test first, and `SKILL.md:48-50` requires `cargo test --workspace -- --test-threads=6`. The transcript skeleton for session `2c0beba9-8fae-4b20-80c9-535e44bd3900` shows a targeted `Grep` on `crates/photoncast/src/launcher/render.rs` followed directly by an edit, and the handoff records only `cargo test --workspace --lib -- --test-threads=6` plus a TDD-skip deviation while still setting `skillFeedback.followedProcedure: true`. Mission `AGENTS.md:26-29` explicitly says library tests are sufficient for validation."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Shared state does not currently note that launcher quick-select coverage is effectively limited to trivial bounds checks plus ignored GPUI placeholders, so binding regressions like this one can slip through without an active automated test catching them.",
+      "evidence": "`tests/integration/keyboard_test.rs:103-126` only asserts simple index-vs-length math, while `tests/integration/keyboard_test.rs:347-356` contains the natural end-to-end `test_cmd_number_quick_select` coverage but it is `#[ignore = \"Requires full GPUI environment with Xcode\"]`. `rg 'quick select|keyboard|QuickSelect'` found no corresponding note in `.factory/library/architecture.md` or mission `AGENTS.md`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: the reviewed commit makes the expected one-line QuickSelect7 fix, and the downstream launcher selection logic confirms the resulting Cmd+7/Cmd+8 behavior is correct. I did not find a code defect in the diff; I only noted shared-state gaps around skill procedure signaling and the lack of documented active coverage for launcher quick-select bindings."
+}

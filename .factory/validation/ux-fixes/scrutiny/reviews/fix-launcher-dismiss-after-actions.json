@@ -1,0 +1,33 @@
+{
+  "featureId": "fix-launcher-dismiss-after-actions",
+  "reviewedAt": "2026-03-30T08:22:53Z",
+  "commitId": "ea3b963606ebea863a2b3aacc250c6f1fec0b039",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The diff correctly adds dismissal calls for the non-calendar action paths, but the calendar-mode changes still do not dismiss the launcher because `LauncherWindow::hide()` exits calendar mode instead of hiding the window.",
+    "issues": [
+      {
+        "file": "crates/photoncast/src/launcher/actions.rs",
+        "line": 141,
+        "severity": "blocking",
+        "description": "The new calendar-mode `self.hide(cx)` calls at `actions.rs:141`, `actions.rs:168`, and `actions.rs:188` do not actually dismiss the launcher. `LauncherWindow::hide()` special-cases `SearchMode::Calendar` and immediately calls `exit_calendar_mode(cx)` instead of hiding the window (`crates/photoncast/src/launcher/mod.rs:857-860`). After each action runs, `execute_selected_action()` only closes the actions menu and notifies (`actions.rs:193-194`), so the launcher remains visible in normal mode. This leaves the feature requirement unmet for Calendar `Copy Title`, `Copy Details`, and `Open in Calendar`."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The launcher's `hide()` API is mode-sensitive: in calendar mode it exits the mode instead of dismissing the window. That behavior is not documented in mission AGENTS.md or `.factory/library`, and the feature description explicitly told the worker to add `self.hide(cx)` for calendar actions, which led directly to this incomplete fix.",
+      "evidence": "The feature description in `features.json` says the calendar actions should be fixed by adding `self.hide(cx)`; `crates/photoncast/src/launcher/mod.rs:857-860` shows `hide()` returning early via `exit_calendar_mode(cx)` when `self.search.mode` is `SearchMode::Calendar`; no matching note appears in mission `AGENTS.md` or `.factory/library/*`."
+    },
+    {
+      "area": "skills",
+      "observation": "The `rust-fix-worker` skill's procedure-adherence signal is unreliable here: the handoff marks `followedProcedure: true` even though the worker explicitly skipped the skill's required failing-test-first step.",
+      "evidence": "`.factory/skills/rust-fix-worker/SKILL.md` step 3 requires writing a failing test first; the handoff for session `9d7024f2-3e15-4917-8ce6-274753ca76e3` records that step under `skillFeedback.deviations`, but still sets `skillFeedback.followedProcedure` to `true`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the non-calendar dismissals were added, but the three calendar-mode actions still do not hide the launcher because `hide()` exits calendar mode instead of dismissing the window."
+}
