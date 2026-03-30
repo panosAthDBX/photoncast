@@ -1212,7 +1212,7 @@ impl QuicklinksManageView {
                 colors.text,
                 cx,
                 |_this, _cx| {
-                    // TODO: Implement import
+                    // NOTE: Quicklink import from TOML files is not yet implemented.
                 },
             ))
     }
@@ -1500,7 +1500,8 @@ impl QuicklinksManageView {
                 div().text_lg().child(emoji).into_any_element()
             },
             QuickLinkIcon::Favicon(_path) | QuickLinkIcon::CustomImage(_path) => {
-                // TODO: Load image from path
+                // NOTE: Custom image loading from path is not yet implemented.
+                // Favicon and custom image icons fall back to a generic globe emoji.
                 div().text_lg().child("🌐").into_any_element()
             },
         }

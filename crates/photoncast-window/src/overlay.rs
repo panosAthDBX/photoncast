@@ -32,15 +32,11 @@ pub fn show_overlay(target_frame: CGRect, duration_ms: u32) {
         duration_ms
     );
 
-    // TODO: Implement native macOS overlay window
-    // The visual overlay requires creating a transparent borderless NSWindow
-    // with CALayer-based drawing. This is complex due to:
-    // - objc2 crate version compatibility with NSColor, NSView.layer()
-    // - CGRect/NSRect coordinate system conversion
-    // - Main thread dispatch requirements
-    //
-    // For now, the setting exists and can be toggled, but the visual
-    // feedback is logged rather than displayed.
+    // NOTE: The visual overlay is not yet implemented. It requires creating a
+    // transparent borderless NSWindow with CALayer-based drawing, which is complex
+    // due to objc2 crate compatibility, coordinate system conversion, and main
+    // thread dispatch requirements. The overlay setting can be toggled, but visual
+    // feedback is currently logged rather than displayed.
 }
 
 /// Closes any currently visible overlay.

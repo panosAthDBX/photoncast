@@ -2,11 +2,9 @@
 //!
 //! This module provides command definitions for the PhotonCast launcher UI.
 
-// TODO: Implement UI commands for:
+// NOTE: UI commands are not yet implemented. Planned commands include:
 // - List installed applications
 // - Uninstall application (with preview)
 // - List running applications
 // - Quit/Force Quit application
 // - App sleep management
-
-// Placeholder for now

@@ -104,8 +104,9 @@ impl AppSleepManager {
             return Ok(());
         }
 
-        // TODO: Get list of running apps and check each one
-        // For now, this is a placeholder
+        // NOTE: Active app monitoring is not yet implemented. A future version should
+        // enumerate running apps via process::get_running_apps() and check each one's
+        // idle time against the configured timeout before sending sleep events.
 
         tracing::debug!("Checking for idle apps to sleep");
 

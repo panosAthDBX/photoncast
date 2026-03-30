@@ -88,7 +88,8 @@ impl ExtensionPreviewPane {
                 );
             } else if trimmed.starts_with("```") {
                 // Code block start/end - skip for now
-                // TODO: Handle multi-line code blocks
+                // NOTE: Multi-line fenced code blocks are not yet rendered. Only inline
+                // code (backtick-delimited) is supported. Fenced blocks are skipped.
             } else if trimmed.starts_with("`") && trimmed.ends_with("`") && trimmed.len() > 2 {
                 // Inline code
                 let code = &trimmed[1..trimmed.len() - 1];

@@ -427,10 +427,10 @@ impl ClipboardMonitor {
     const fn read_file_content(
         _pasteboard: &objc2_app_kit::NSPasteboard,
     ) -> Option<ClipboardContentType> {
-        // TODO: Implement file reading from clipboard
-        // The objc2 API for readObjectsForClasses_options is complex.
-        // For now, we skip file types and rely on text/image detection.
-        // Files copied in Finder will appear as text URLs that we can detect.
+        // NOTE: File reading from clipboard is not yet implemented. The objc2 API
+        // for readObjectsForClasses:options: is complex and requires careful handling
+        // of NSURL types. Files copied in Finder currently appear as text URLs which
+        // are detected through the existing text/image detection path.
         None
     }
 }

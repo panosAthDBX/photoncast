@@ -284,7 +284,10 @@ impl ExtensionHostProtocol for ExtensionHostImpl {
     }
 
     fn selected_text(&self) -> ExtensionApiResult<ROption<RString>> {
-        // TODO: Hook into accessibility APIs to read selected text
+        // NOTE: Selected text retrieval is not yet implemented. A future version could
+        // use the macOS Accessibility API (AXUIElement) to read the selected text from
+        // the frontmost application, but this requires accessibility permissions and
+        // careful handling of different app contexts.
         Ok(ROption::RNone).into()
     }
 

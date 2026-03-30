@@ -361,8 +361,9 @@ impl ExtensionManager {
 
         let entry_path = resolve_entry_path(&record.manifest, None)?;
 
-        // TODO: Consider process-based sandboxing for untrusted extensions.
-        // Currently, loaded dylibs run in-process with full host privileges.
+        // NOTE: Extensions currently run in-process with full host privileges.
+        // Process-based sandboxing for untrusted extensions is a potential future
+        // enhancement. The sandbox.rs module provides the foundation for this.
 
         // Verify code signature before loading
         if self.dev_mode {

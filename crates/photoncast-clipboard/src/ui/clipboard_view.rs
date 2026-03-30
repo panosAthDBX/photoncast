@@ -312,7 +312,9 @@ impl ClipboardHistoryView {
     pub fn paste_selected(&self, _cx: &mut ViewContext<Self>) {
         if let Some(item) = self.selected_item() {
             Self::copy_to_system_clipboard(item);
-            // TODO: Simulate Cmd+V to paste
+            // NOTE: Paste simulation (Cmd+V) is not yet implemented. A future version
+            // could use the CGEvent API to synthesize the keypress after copying to
+            // the system clipboard.
         }
     }
 

@@ -305,12 +305,15 @@ fn main() {
                 MenuBarActionKind::ToggleLauncher => AppEvent::ToggleLauncher,
                 MenuBarActionKind::OpenPreferences => AppEvent::OpenPreferences,
                 MenuBarActionKind::CheckForUpdates => {
-                    // TODO: Implement update check when UpdateManager is ready
+                    // NOTE: Update checking is not yet implemented. When an UpdateManager
+                    // is available, this should trigger an async update check and show
+                    // results in a dialog.
                     info!("Check for updates requested from menu bar");
                     return;
                 },
                 MenuBarActionKind::About => {
-                    // TODO: Show about dialog
+                    // NOTE: About dialog is not yet implemented. This should display
+                    // app version, build info, and license information.
                     info!("About requested from menu bar");
                     return;
                 },

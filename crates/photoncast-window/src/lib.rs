@@ -338,7 +338,9 @@ impl WindowManager {
 
             // Animate (simplified - in reality would need a timer/frame callback)
             // For now, just set the final frame
-            // TODO: Implement proper animation loop
+            // NOTE: Animation is currently instant (no frame interpolation). A proper
+            // animation loop would use Core Animation or a gpui::AnimationElement for
+            // smooth transitions between frames.
             self.accessibility_manager
                 .set_window_frame(&window, animation.to)?;
         } else {

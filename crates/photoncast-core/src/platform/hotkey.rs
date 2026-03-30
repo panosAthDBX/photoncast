@@ -449,7 +449,10 @@ impl HotkeyManager {
 
     /// Unregisters the current hotkey.
     pub fn unregister(&mut self) {
-        // TODO: Implement actual unregistration
+        // NOTE: Hotkey unregistration is not yet implemented. macOS retains the
+        // Carbon Event hotkey registration until process exit. A future implementation
+        // could call UnregisterEventHotKey via the Carbon framework to release the
+        // binding at runtime.
         self.current_binding = None;
         self.is_registered = false;
     }
