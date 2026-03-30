@@ -353,7 +353,9 @@ fn scan_screenshots_cached(folder: &str, cache: &ScanCache) -> Vec<Screenshot> {
     let dir_modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
 
     if let Some(ref dir_mod) = dir_modified {
-        let cached = cache.lock().unwrap();
+        let cached = cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(ref scan) = *cached {
             if scan.dir_modified == *dir_mod {
                 return scan.screenshots.clone();
@@ -366,7 +368,9 @@ fn scan_screenshots_cached(folder: &str, cache: &ScanCache) -> Vec<Screenshot> {
 
     // Update cache
     if let Some(dir_mod) = dir_modified {
-        let mut cached = cache.lock().unwrap();
+        let mut cached = cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *cached = Some(CachedScan {
             screenshots: screenshots.clone(),
             dir_modified: dir_mod,

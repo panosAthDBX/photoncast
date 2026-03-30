@@ -68,11 +68,8 @@ impl EventKitManager {
 
     #[cfg(target_os = "macos")]
     fn get_or_create_store(&mut self) -> &Retained<EKEventStore> {
-        if self.event_store.is_none() {
-            let store = unsafe { EKEventStore::new() };
-            self.event_store = Some(store);
-        }
-        self.event_store.as_ref().unwrap()
+        self.event_store
+            .get_or_insert_with(|| unsafe { EKEventStore::new() })
     }
 
     /// Checks the current permission status.
