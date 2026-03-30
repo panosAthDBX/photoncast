@@ -138,6 +138,7 @@ impl LauncherWindow {
                         // Copy Title
                         cx.write_to_clipboard(gpui::ClipboardItem::new_string(event.title.clone()));
                         tracing::info!("Copied event title to clipboard");
+                        self.hide(cx);
                     },
                     2 => {
                         // Copy Details
@@ -164,6 +165,7 @@ impl LauncherWindow {
                         }
                         cx.write_to_clipboard(gpui::ClipboardItem::new_string(details));
                         tracing::info!("Copied event details to clipboard");
+                        self.hide(cx);
                     },
                     3 => {
                         // Open in Calendar
@@ -183,6 +185,7 @@ impl LauncherWindow {
                                 .arg("Calendar")
                                 .spawn();
                         }
+                        self.hide(cx);
                     },
                     _ => {},
                 }
@@ -248,7 +251,7 @@ impl LauncherWindow {
                             tracing::info!("Copied path to clipboard");
                         }
                     }
-                    cx.notify();
+                    self.hide(cx);
                 },
                 3 => {
                     // Copy Bundle ID
@@ -260,7 +263,7 @@ impl LauncherWindow {
                             tracing::info!("Copied bundle ID to clipboard");
                         }
                     }
-                    cx.notify();
+                    self.hide(cx);
                 },
                 4 => {
                     // Toggle Auto Quit - show settings modal to configure
@@ -525,7 +528,7 @@ impl LauncherWindow {
         }
         // Close menu if open
         self.actions_menu.visible = false;
-        cx.notify();
+        self.hide(cx);
     }
 
     /// Handles the Copy File action (Cmd+Shift+C).
@@ -570,7 +573,7 @@ impl LauncherWindow {
         }
         // Close menu if open
         self.actions_menu.visible = false;
-        cx.notify();
+        self.hide(cx);
     }
 
     /// Handler for Show in Finder action (⌘⇧F)
@@ -599,7 +602,7 @@ impl LauncherWindow {
                 }
             }
         }
-        cx.notify();
+        self.hide(cx);
     }
 
     /// Handler for Quit App action (⌘Q)
@@ -616,7 +619,7 @@ impl LauncherWindow {
                 }
             }
         }
-        cx.notify();
+        self.hide(cx);
     }
 
     /// Handler for Force Quit App action (⌘⌥Q)
@@ -649,7 +652,7 @@ impl LauncherWindow {
                 }
             }
         }
-        cx.notify();
+        self.hide(cx);
     }
 
     /// Handler for Hide App action (⌘H)
@@ -667,7 +670,7 @@ impl LauncherWindow {
                 }
             }
         }
-        cx.notify();
+        self.hide(cx);
     }
 
     pub(super) fn open_preferences(&mut self, _: &OpenPreferences, cx: &mut ViewContext<Self>) {

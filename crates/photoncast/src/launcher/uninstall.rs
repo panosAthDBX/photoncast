@@ -86,6 +86,7 @@ impl LauncherWindow {
                 Ok(()) => {
                     tracing::info!("Successfully uninstalled: {}", app_name);
                     self.show_toast(format!("{} uninstalled", app_name), cx);
+                    self.hide(cx);
                 },
                 Err(e) => {
                     tracing::error!("Failed to uninstall {}: {}", app_name, e);
@@ -107,6 +108,7 @@ impl LauncherWindow {
                 Ok(()) => {
                     tracing::info!("Successfully uninstalled {} (kept related files)", app_name);
                     self.show_toast(format!("{} uninstalled (kept related files)", app_name), cx);
+                    self.hide(cx);
                 },
                 Err(e) => {
                     tracing::error!("Failed to uninstall {}: {}", app_name, e);
