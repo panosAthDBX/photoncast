@@ -1108,7 +1108,7 @@ impl Render for LauncherWindow {
             .on_action(cx.listener(|this, _: &QuickSelect4, cx| this.quick_select(3, cx)))
             .on_action(cx.listener(|this, _: &QuickSelect5, cx| this.quick_select(4, cx)))
             .on_action(cx.listener(|this, _: &QuickSelect6, cx| this.quick_select(5, cx)))
-            .on_action(cx.listener(|this, _: &QuickSelect7, cx| this.quick_select(7, cx)))
+            .on_action(cx.listener(|this, _: &QuickSelect7, cx| this.quick_select(6, cx)))
             .on_action(cx.listener(|this, _: &QuickSelect8, cx| this.quick_select(7, cx)))
             .on_action(cx.listener(|this, _: &QuickSelect9, cx| this.quick_select(8, cx)))
             .size_full()
