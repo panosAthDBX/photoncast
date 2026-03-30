@@ -1,0 +1,45 @@
+{
+  "milestone": "misc-ux-fixes-1",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cargo test --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\" --workspace --lib -- --test-threads=6",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cargo build --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\"",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cargo clippy --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\" --workspace -- -D warnings",
+      "exitCode": 0
+    },
+    "fmtCheck": {
+      "passed": true,
+      "command": "cargo fmt --manifest-path \"/Users/panos.athanasiou/code/photoncast/Cargo.toml\" --all --check",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/rust-fix-worker/SKILL.md",
+      "suggestion": "Align the `rust-fix-worker` procedure and skill-feedback contract for trivial mission-scoped fixes: either require workers who skip the red/TDD phase or mission-overridden full-workspace validation to set `followedProcedure: false` with explicit deviations, or relax those mandatory steps when the mission explicitly authorizes a narrower workflow.",
+      "evidence": "This milestone's `fix-join-meeting-dismiss` review found the worker skipped the skill's failing-test-first requirement but still reported `followedProcedure: true`. The same issue was already recorded in `.factory/validation/ux-fixes/scrutiny/synthesis.json` and `.factory/validation/critical-fixes/scrutiny/synthesis.json`, so scrutiny's adherence signal remains unreliable across multiple milestones.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

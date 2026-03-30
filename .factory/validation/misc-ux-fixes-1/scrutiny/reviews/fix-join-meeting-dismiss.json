@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-join-meeting-dismiss",
+  "reviewedAt": "2026-03-30T08:56:38Z",
+  "commitId": "7eafa1adddd0e8361de69181e677b16241aafd6f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the feature metadata, worker transcript skeleton, handoff, prior scrutiny context, commit 7eafa1a, and the current launcher code. The diff adds `self.exit_calendar_mode(cx)` immediately before `self.hide(cx)` in the Join Meeting branch at `crates/photoncast/src/launcher/actions.rs:134-136`. That directly addresses the calendar-mode early return in `LauncherWindow::hide()` (`crates/photoncast/src/launcher/mod.rs:857-860`), so the Join Meeting path now exits calendar mode first and then reaches the real window-dismiss path. The change is scoped to the Join Meeting branch only, so normal hide behavior outside calendar mode is unchanged.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `rust-fix-worker` procedure/adherence signal is still unreliable for trivial fixes: this worker also skipped the skill's required failing-test-first step, but the handoff still reports `followedProcedure: true` with no recorded deviation.",
+      "evidence": "`.factory/skills/rust-fix-worker/SKILL.md` step 3 requires writing a failing test first. The transcript skeleton for worker session `d0585c50-1f15-41b6-8d19-3fd1ce5c480e` shows no test added before the edit, and the handoff `/Users/panos.athanasiou/.factory/missions/3fde10a7-3b8c-434a-95af-71f0fc0d72b9/handoffs/2026-03-30T08-49-19-960Z__fix-join-meeting-dismiss__d0585c50-1f15-41b6-8d19-3fd1ce5c480e.json` sets `handoff.skillFeedback.followedProcedure` to `true` with an empty `deviations` array even though the handoff's `suggestedChanges` explicitly argues for skipping the TDD step."
+    }
+  ],
+  "addressesFailureFrom": "/Users/panos.athanasiou/code/photoncast/.factory/validation/ux-fixes/scrutiny/reviews/fix-calendar-mode-dismiss.json",
+  "summary": "Pass: the Join Meeting dismiss fix is correct and narrowly scoped. It resolves the prior remaining calendar-action inconsistency by exiting calendar mode before calling `hide()`, which lets the launcher actually dismiss without affecting normal-mode hide behavior."
+}
