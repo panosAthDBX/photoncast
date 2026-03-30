@@ -1,7 +1,7 @@
 {
   "milestone": "ux-fixes",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -25,47 +25,28 @@
     }
   },
   "reviewsSummary": {
-    "total": 2,
+    "total": 1,
     "passed": 1,
-    "failed": 1,
-    "failedFeatures": [
-      "fix-launcher-dismiss-after-actions"
-    ]
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
+  "blockingIssues": [],
+  "nonBlockingIssues": [
     {
-      "featureId": "fix-launcher-dismiss-after-actions",
+      "featureId": "fix-calendar-mode-dismiss",
       "file": "crates/photoncast/src/launcher/actions.rs",
-      "line": 141,
-      "severity": "blocking",
-      "description": "The added calendar-mode `self.hide(cx)` calls do not dismiss the launcher because `LauncherWindow::hide()` special-cases `SearchMode::Calendar` and exits calendar mode instead of hiding the window (`crates/photoncast/src/launcher/mod.rs:857-860`). Calendar `Copy Title`, `Copy Details`, and `Open in Calendar` therefore still leave the launcher visible in normal mode after the action runs."
+      "line": 134,
+      "severity": "non_blocking",
+      "description": "The adjacent `Join Meeting` calendar action still calls `self.hide(cx)` directly while `LauncherWindow::hide()` remains mode-sensitive in calendar mode, so that path likely still exits calendar mode without dismissing the launcher. This does not reintroduce the original failure, which was specific to Copy Title, Copy Details, and Open in Calendar."
     }
   ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Documented that `LauncherWindow::hide()` is mode-sensitive and only exits calendar mode instead of dismissing the window when `SearchMode::Calendar` is active.",
-      "sourceFeature": "fix-launcher-dismiss-after-actions"
-    },
-    {
-      "target": "library",
-      "description": "Documented that active quick-select coverage is mostly limited to index/bounds checks and that the end-to-end GPUI quick-select test is ignored, so binding regressions can evade active automated coverage.",
-      "sourceFeature": "fix-quick-select-index-mapping"
-    }
-  ],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "rust-fix-worker skill / handoff rules",
-      "suggestion": "Clarify that `skillFeedback.followedProcedure` must be `false` whenever required steps are skipped, and document how workers should report mission-approved validation deviations such as using `cargo test --workspace --lib -- --test-threads=6` instead of the skill's full-workspace command.",
-      "evidence": "Both reviewed ux-fixes features reported `followedProcedure: true` despite recorded deviations from required skill steps. The quick-select fix skipped the skill's full-file read, TDD red phase, and full-workspace test command while relying on the mission's `--lib` validation guidance; the launcher-dismiss fix also skipped the red phase yet still reported `followedProcedure: true`.",
-      "isSystemic": true
-    }
-  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
-      "observation": "A second reviewer independently noted the same `rust-fix-worker` procedure/adherence mismatch.",
-      "reason": "duplicate"
+      "observation": "The `rust-fix-worker` skill-adherence signal is still unreliable because the fix handoff reports `followedProcedure: true` despite a recorded TDD-step deviation.",
+      "reason": "already-documented in round 1 synthesis"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/ux-fixes/scrutiny/synthesis.round1.json"
 }

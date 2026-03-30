@@ -1,0 +1,28 @@
+{
+  "featureId": "fix-calendar-mode-dismiss",
+  "reviewedAt": "2026-03-30T08:42:00Z",
+  "commitId": "e695dac706f580247603d9f4bf06342ca3720f5e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Compared the original failing diff (ea3b963) with the fix diff (e695dac) and inspected the current launcher code. The fix adds `self.exit_calendar_mode(cx)` before `self.hide(cx)` in the three calendar branches called out by the prior review, so `hide()` now runs in `SearchMode::Normal` and actually dismisses the launcher for Copy Title, Copy Details, and Open in Calendar. That directly resolves the original blocking failure without changing normal-mode hide behavior.",
+    "issues": [
+      {
+        "file": "crates/photoncast/src/launcher/actions.rs",
+        "line": 134,
+        "severity": "non_blocking",
+        "description": "The adjacent `Join Meeting` calendar action still calls `self.hide(cx)` directly while `LauncherWindow::hide()` remains mode-sensitive in calendar mode (`crates/photoncast/src/launcher/mod.rs:857`). That path likely still exits calendar mode without dismissing the launcher. This does not reintroduce the original failure, which was specific to Copy Title, Copy Details, and Open in Calendar, but it leaves one calendar action with inconsistent dismissal behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `rust-fix-worker` skill-adherence signal is still unreliable: the worker skipped the required failing-test-first step, but the handoff still reports `followedProcedure: true`.",
+      "evidence": "`.factory/skills/rust-fix-worker/SKILL.md` step 3 requires writing a failing test first; the fix handoff `/Users/panos.athanasiou/.factory/missions/3fde10a7-3b8c-434a-95af-71f0fc0d72b9/handoffs/2026-03-30T08-32-44-485Z__fix-calendar-mode-dismiss__d39e6522-57fc-41a2-a7a4-8e94b5d46e7b.json` records that step under `handoff.skillFeedback.deviations`, but also sets `handoff.skillFeedback.followedProcedure` to `true`."
+    }
+  ],
+  "addressesFailureFrom": "/Users/panos.athanasiou/code/photoncast/.factory/validation/ux-fixes/scrutiny/reviews/fix-launcher-dismiss-after-actions.json",
+  "summary": "Pass: the fix commit resolves the prior calendar-mode dismissal failure for Copy Title, Copy Details, and Open in Calendar by exiting calendar mode before hiding the launcher. One adjacent non-blocking inconsistency remains for Join Meeting, and the handoff still overstates skill-procedure adherence."
+}
