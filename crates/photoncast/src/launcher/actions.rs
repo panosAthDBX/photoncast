@@ -138,6 +138,8 @@ impl LauncherWindow {
                         // Copy Title
                         cx.write_to_clipboard(gpui::ClipboardItem::new_string(event.title.clone()));
                         tracing::info!("Copied event title to clipboard");
+                        // Exit calendar mode first so hide() actually dismisses the window
+                        self.exit_calendar_mode(cx);
                         self.hide(cx);
                     },
                     2 => {
@@ -165,6 +167,8 @@ impl LauncherWindow {
                         }
                         cx.write_to_clipboard(gpui::ClipboardItem::new_string(details));
                         tracing::info!("Copied event details to clipboard");
+                        // Exit calendar mode first so hide() actually dismisses the window
+                        self.exit_calendar_mode(cx);
                         self.hide(cx);
                     },
                     3 => {
@@ -185,6 +189,8 @@ impl LauncherWindow {
                                 .arg("Calendar")
                                 .spawn();
                         }
+                        // Exit calendar mode first so hide() actually dismisses the window
+                        self.exit_calendar_mode(cx);
                         self.hide(cx);
                     },
                     _ => {},
