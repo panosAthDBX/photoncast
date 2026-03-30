@@ -131,6 +131,8 @@ impl LauncherWindow {
                             if let Err(e) = std::process::Command::new("open").arg(url).spawn() {
                                 tracing::error!("Failed to open conference URL: {}", e);
                             }
+                            // Exit calendar mode first so hide() actually dismisses the window
+                            self.exit_calendar_mode(cx);
                             self.hide(cx);
                         }
                     },
