@@ -5,8 +5,11 @@
 
 use std::io::Write as _;
 use std::path::Path;
+use std::process::Child;
 use std::sync::Arc;
 use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use parking_lot::RwLock;
 use tracing::{debug, info, warn};
@@ -202,6 +205,9 @@ pub struct PhotonCastApp {
     config: IntegrationConfig,
     /// Optional usage tracker for frecency-boosted search ranking.
     usage_tracker: Option<Arc<crate::storage::usage::UsageTracker>>,
+    /// Active Quick Look (qlmanage) child process, if any.
+    /// Stored so it can be killed when a new preview is requested or the preview is dismissed.
+    qlmanage_child: Mutex<Option<Child>>,
 }
 
 impl PhotonCastApp {
@@ -271,6 +277,7 @@ impl PhotonCastApp {
             extension_manager,
             config,
             usage_tracker: None,
+            qlmanage_child: Mutex::new(None),
         }
     }
 
@@ -418,6 +425,24 @@ impl PhotonCastApp {
     #[must_use]
     pub fn extension_manager(&self) -> &Arc<RwLock<ExtensionManager>> {
         &self.extension_manager
+    }
+
+    /// Kills any running qlmanage (Quick Look) process.
+    ///
+    /// Called before spawning a new preview or when the preview is dismissed
+    /// to prevent orphaned qlmanage processes.
+    pub fn kill_qlmanage(&self) {
+        let mut guard = self.qlmanage_child.lock();
+        if let Some(ref mut child) = *guard {
+            if let Err(e) = child.kill() {
+                // ESRCH (no such process) is expected if it already exited
+                tracing::debug!("Failed to kill qlmanage process: {e}");
+            } else {
+                // Reap the child to avoid zombie processes
+                let _ = child.wait();
+            }
+        }
+        *guard = None;
     }
 
     fn validate_extension_url(url: &str) -> Result<(), &'static str> {
@@ -640,10 +665,15 @@ impl PhotonCastApp {
                     });
                 }
 
+                // Kill any existing qlmanage process before spawning a new one
+                self.kill_qlmanage();
+
                 std::process::Command::new("qlmanage")
                     .args(["-p", path])
                     .spawn()
-                    .map(|_| ())
+                    .map(|child| {
+                        *self.qlmanage_child.lock() = Some(child);
+                    })
                     .map_err(|err| ExtensionActionError::OperationFailed {
                         extension_id: extension_id.to_string(),
                         action: "quick_look",
@@ -1414,5 +1444,84 @@ mod tests {
             outcome.results.iter().any(|r| r.title.contains("Updated")),
             "Should find updated app name"
         );
+    }
+
+    #[test]
+    fn test_kill_qlmanage_no_process() {
+        // kill_qlmanage should not panic when no process is running
+        let app = PhotonCastApp::new();
+        assert!(app.qlmanage_child.lock().is_none());
+        app.kill_qlmanage();
+        assert!(app.qlmanage_child.lock().is_none());
+    }
+
+    #[test]
+    fn test_kill_qlmanage_kills_running_process() {
+        let app = PhotonCastApp::new();
+
+        // Spawn a long-running process to simulate qlmanage
+        let child = std::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("failed to spawn sleep");
+        let pid = child.id();
+
+        *app.qlmanage_child.lock() = Some(child);
+        assert!(app.qlmanage_child.lock().is_some());
+
+        app.kill_qlmanage();
+        assert!(app.qlmanage_child.lock().is_none());
+
+        // Verify the process was actually killed (kill -0 checks if process exists)
+        let output = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output()
+            .expect("failed to check process");
+        assert!(
+            !output.status.success(),
+            "Process should no longer be running after kill_qlmanage"
+        );
+    }
+
+    #[test]
+    fn test_kill_qlmanage_replaces_previous_process() {
+        let app = PhotonCastApp::new();
+
+        // Spawn first "qlmanage" (simulated with sleep)
+        let child1 = std::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("failed to spawn sleep");
+        let pid1 = child1.id();
+        *app.qlmanage_child.lock() = Some(child1);
+
+        // Kill first and spawn second
+        app.kill_qlmanage();
+        let child2 = std::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("failed to spawn sleep");
+        let pid2 = child2.id();
+        *app.qlmanage_child.lock() = Some(child2);
+
+        // First process should be dead
+        let output = std::process::Command::new("kill")
+            .args(["-0", &pid1.to_string()])
+            .output()
+            .expect("failed to check process");
+        assert!(!output.status.success(), "First process should be killed");
+
+        // Second process should still be alive
+        let output = std::process::Command::new("kill")
+            .args(["-0", &pid2.to_string()])
+            .output()
+            .expect("failed to check process");
+        assert!(
+            output.status.success(),
+            "Second process should still be running"
+        );
+
+        // Clean up
+        app.kill_qlmanage();
     }
 }

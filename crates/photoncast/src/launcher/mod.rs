@@ -254,6 +254,9 @@ pub struct LauncherWindow {
     previous_frontmost_app: Option<String>,
     previous_frontmost_window_title: Option<String>,
     _appearance_subscription: Option<Subscription>,
+    /// Active Quick Look (qlmanage) child process, if any.
+    /// Stored so it can be killed when a new preview is requested or the launcher is hidden.
+    qlmanage_child: Option<std::process::Child>,
 }
 
 #[derive(Clone)]
@@ -671,6 +674,7 @@ impl LauncherWindow {
             previous_frontmost_app: None,
             previous_frontmost_window_title: None,
             _appearance_subscription: None,
+            qlmanage_child: None,
         };
 
         // Set up appearance observation for auto theme switching.
@@ -833,6 +837,22 @@ impl LauncherWindow {
         }
     }
 
+    /// Kills any running qlmanage (Quick Look) process.
+    ///
+    /// Called before spawning a new preview or when the launcher is hidden
+    /// to prevent orphaned qlmanage processes.
+    fn kill_qlmanage(&mut self) {
+        if let Some(ref mut child) = self.qlmanage_child {
+            if let Err(e) = child.kill() {
+                tracing::debug!("Failed to kill qlmanage process: {e}");
+            } else {
+                // Reap the child to avoid zombie processes
+                let _ = child.wait();
+            }
+        }
+        self.qlmanage_child = None;
+    }
+
     /// Hides the launcher window with animation
     pub fn hide(&mut self, cx: &mut ViewContext<Self>) {
         if matches!(self.search.mode, SearchMode::Calendar { .. }) {
@@ -856,6 +876,9 @@ impl LauncherWindow {
                 crate::constants::LAUNCHER_HEIGHT.0.into(),
             );
         }
+
+        // Kill any running Quick Look preview process
+        self.kill_qlmanage();
 
         self.visible = false;
         self.start_dismiss_animation(cx);

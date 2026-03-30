@@ -1223,12 +1223,23 @@ impl LauncherWindow {
                 view.update(cx, |v, _| v.wants_quick_look = false);
                 if let Some(path) = &selected_path {
                     tracing::info!("Quick Look: {}", path.display());
-                    if let Err(e) = std::process::Command::new("qlmanage")
+                    // Kill any previous qlmanage before spawning a new one
+                    this.kill_qlmanage();
+                    match std::process::Command::new("qlmanage")
                         .arg("-p")
                         .arg(path)
                         .spawn()
                     {
-                        tracing::warn!("Failed to launch Quick Look for {}: {}", path.display(), e);
+                        Ok(child) => {
+                            this.qlmanage_child = Some(child);
+                        },
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to launch Quick Look for {}: {}",
+                                path.display(),
+                                e
+                            );
+                        },
                     }
                     // Don't hide - Quick Look is a preview
                 }
