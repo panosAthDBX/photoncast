@@ -190,7 +190,7 @@ fn canonical_bundle_id(bundle_id: &str) -> String {
     bundle_id.to_ascii_lowercase()
 }
 
-fn merge_app_config(existing: &mut AutoQuitAppConfig, incoming: AutoQuitAppConfig) {
+fn merge_app_config(existing: &mut AutoQuitAppConfig, incoming: &AutoQuitAppConfig) {
     // A prior disable should win over any stale mixed-case enabled entry.
     existing.enabled &= incoming.enabled;
     existing.timeout_minutes = existing.timeout_minutes.min(incoming.timeout_minutes);
@@ -208,7 +208,7 @@ fn canonicalize_config(config: &mut AutoQuitConfig) {
     for (bundle_id, app_config) in apps {
         let key = canonical_bundle_id(&bundle_id);
         match config.apps.get_mut(&key) {
-            Some(existing) => merge_app_config(existing, app_config),
+            Some(existing) => merge_app_config(existing, &app_config),
             None => {
                 config.apps.insert(key, app_config);
             },

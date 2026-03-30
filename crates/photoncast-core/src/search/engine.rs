@@ -265,7 +265,7 @@ impl SearchEngine {
                     warn!(
                         component = "search",
                         provider_id = provider_name,
-                        timeout_ms = timeout.as_millis() as u64,
+                        timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
                         elapsed_ms,
                         "search provider timed out, returning empty results"
                     );

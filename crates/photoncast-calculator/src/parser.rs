@@ -131,6 +131,10 @@ static PERCENTAGE_OF_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::
     .unwrap()
 });
 
+static TIME_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|^\d{1,2}:\d{2}$").unwrap()
+});
+
 static DATE_KEYWORDS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
     vec![
         "today",
@@ -425,8 +429,7 @@ impl ExpressionParser {
         }
 
         // Check for time patterns like "5pm", "14:00"
-        let time_pattern = Regex::new(r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|^\d{1,2}:\d{2}$").unwrap();
-        if time_pattern.is_match(&lower) {
+        if TIME_PATTERN.is_match(&lower) {
             return true;
         }
 
