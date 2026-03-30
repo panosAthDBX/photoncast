@@ -76,17 +76,19 @@ pub fn interpolate_rect(from: &CGRect, to: &CGRect, progress: f64) -> CGRect {
 /// Checks if the system has "Reduce Motion" enabled.
 ///
 /// This respects the macOS accessibility setting for users who prefer
-/// minimal or no animations.
+/// minimal or no animations. Queries `NSWorkspace.accessibilityDisplayShouldReduceMotion`
+/// on macOS.
 #[must_use]
-pub const fn is_reduce_motion_enabled() -> bool {
+pub fn is_reduce_motion_enabled() -> bool {
     #[cfg(target_os = "macos")]
     {
-        // In real implementation:
-        // NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        use objc2_app_kit::NSWorkspace;
 
-        // For now, return false (animations enabled)
-        // TODO: Implement actual reduce motion check
-        false
+        #[allow(deprecated)]
+        unsafe {
+            let workspace = NSWorkspace::sharedWorkspace();
+            objc2::msg_send![&workspace, accessibilityDisplayShouldReduceMotion]
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -263,5 +265,12 @@ mod tests {
         let final_frame = animation.current_frame();
         assert!((final_frame.origin.x - to.origin.x).abs() < f64::EPSILON);
         assert!((final_frame.size.width - to.size.width).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_is_reduce_motion_enabled_does_not_panic() {
+        // The actual value depends on system settings, but the function
+        // must not panic regardless of the system configuration.
+        let _result = is_reduce_motion_enabled();
     }
 }
