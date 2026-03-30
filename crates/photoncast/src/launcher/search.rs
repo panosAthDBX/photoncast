@@ -657,7 +657,9 @@ impl LauncherWindow {
 
             // Open the file with default application
             if let Some(path) = selected_path {
-                let _ = std::process::Command::new("open").arg(&path).spawn();
+                if let Err(e) = std::process::Command::new("open").arg(&path).spawn() {
+                    tracing::warn!("Failed to open {}: {}", path.display(), e);
+                }
                 self.hide(cx);
             }
             return;
@@ -728,10 +730,13 @@ impl LauncherWindow {
                             "Failed to open event directly: {}, opening Calendar app",
                             e
                         );
-                        let _ = std::process::Command::new("open")
+                        if let Err(e) = std::process::Command::new("open")
                             .arg("-a")
                             .arg("Calendar")
-                            .spawn();
+                            .spawn()
+                        {
+                            tracing::warn!("Failed to open Calendar app: {}", e);
+                        }
                     }
                     self.hide(cx);
                     return;
@@ -1194,7 +1199,9 @@ impl LauncherWindow {
                 view.update(cx, |v, _| v.wants_open_file = false);
                 if let Some(path) = &selected_path {
                     tracing::info!("Opening file: {}", path.display());
-                    let _ = std::process::Command::new("open").arg(path).spawn();
+                    if let Err(e) = std::process::Command::new("open").arg(path).spawn() {
+                        tracing::warn!("Failed to open {}: {}", path.display(), e);
+                    }
                     this.hide(cx);
                 }
                 return;
@@ -1204,7 +1211,9 @@ impl LauncherWindow {
                 view.update(cx, |v, _| v.wants_reveal_in_finder = false);
                 if let Some(path) = &selected_path {
                     tracing::info!("Revealing in Finder: {}", path.display());
-                    let _ = photoncast_apps::reveal_in_finder(path);
+                    if let Err(e) = photoncast_apps::reveal_in_finder(path) {
+                        tracing::warn!("Failed to reveal in Finder {}: {}", path.display(), e);
+                    }
                     this.hide(cx);
                 }
                 return;
@@ -1214,10 +1223,13 @@ impl LauncherWindow {
                 view.update(cx, |v, _| v.wants_quick_look = false);
                 if let Some(path) = &selected_path {
                     tracing::info!("Quick Look: {}", path.display());
-                    let _ = std::process::Command::new("qlmanage")
+                    if let Err(e) = std::process::Command::new("qlmanage")
                         .arg("-p")
                         .arg(path)
-                        .spawn();
+                        .spawn()
+                    {
+                        tracing::warn!("Failed to launch Quick Look for {}: {}", path.display(), e);
+                    }
                     // Don't hide - Quick Look is a preview
                 }
                 return;

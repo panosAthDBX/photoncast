@@ -978,7 +978,13 @@ impl PhotonCastApp {
 
         // If disabling, also unload if loaded
         if !new_enabled {
-            let _ = manager.deactivate_and_unload(extension_id);
+            if let Err(e) = manager.deactivate_and_unload(extension_id) {
+                warn!(
+                    extension_id = extension_id,
+                    error = %e,
+                    "Failed to deactivate and unload extension"
+                );
+            }
         }
 
         Ok(())
