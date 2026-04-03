@@ -6,7 +6,7 @@
 //! # Animations
 //!
 //! The launcher supports the following animations (all respecting reduce motion):
-//! - Window appear: 150ms ease-out fade + scale (0.95 → 1.0)
+//! - Window appear: 150ms ease-out scale with immediate visibility
 //! - Window dismiss: 100ms ease-in fade + scale down
 //! - Selection change: 80ms ease-in-out background transition
 //! - Hover highlight: 60ms linear background transition

@@ -49,9 +49,9 @@
 - [x] Add smooth animations and transitions
 
 **Acceptance Criteria:**
-- Window appears/disappears in under 50ms ✓
+- Target: window appears/disappears in under 50ms (see `reports/performance-evidence-2026-04-02.md` for latest manual evidence)
 - Keyboard navigation is intuitive (↑↓, Enter, Esc) ✓
-- UI renders at consistent 120 FPS ✓
+- Target: UI renders at up to 120 FPS on supported hardware (manual GPUI proof path still required)
 
 ### Sprint 2: App Launcher (Weeks 5-8)
 
@@ -112,7 +112,7 @@
 - [x] Results grouped by type (Apps, Commands, Files)
 
 **Acceptance Criteria:**
-- Hotkey responds within 50ms ✓
+- Target: hotkey responds within 50ms (manual proof path exists; CI-safe automated proof still pending)
 - System commands execute correctly ✓
 - File search returns results in under 100ms ✓
 

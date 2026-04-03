@@ -11,6 +11,23 @@ This document describes the Sparkle auto-update system for PhotonCast, including
 - Verify update authenticity via EdDSA signatures
 - Present release notes to users
 
+## Current shipped status (as of 2026-04-02)
+
+PhotonCast currently has **core update-checking library support**, but **app-level wiring is still partial**:
+
+- **Implemented in `photoncast-core`**:
+  - `UpdateManager` construction/configuration
+  - async initialization
+  - manual `check_for_updates()` against the appcast feed
+  - `auto_check_if_needed()` helper logic for launch-time checks
+  - update feed parsing and configuration tests
+- **Not yet wired in the app shell**:
+  - no confirmed startup call path that creates an `UpdateManager` and runs `auto_check_if_needed()`
+  - the menu-bar **Check for Updates** action currently logs a note instead of invoking the update manager (`crates/photoncast/src/main.rs:307-312`)
+  - update installation remains `NotImplemented` in the current core implementation
+
+So the shipped behavior today is best described as: **update subsystem implemented in core, but no verified end-to-end startup/manual UI integration yet**.
+
 ## Architecture
 
 ```

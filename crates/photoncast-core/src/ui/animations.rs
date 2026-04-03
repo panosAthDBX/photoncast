@@ -14,7 +14,7 @@
 //! # Animation Durations
 //!
 //! Standard durations used throughout the application:
-//! - Window appear: 150ms ease-out
+//! - Window appear: 150ms ease-out scale with immediate visibility
 //! - Window dismiss: 100ms ease-in
 //! - Selection change: 80ms ease-in-out
 //! - Hover highlight: 60ms linear
@@ -45,7 +45,11 @@ pub const WINDOW_APPEAR_SCALE_END: f32 = 1.0;
 pub const WINDOW_DISMISS_SCALE_END: f32 = 0.95;
 
 /// Opacity at the start of window appear animation.
-pub const WINDOW_APPEAR_OPACITY_START: f32 = 0.0;
+///
+/// Keep the launcher immediately visible on the first composited frame, even
+/// while scale animation continues, so app-shell visibility is not gated on
+/// follow-up animation ticks during startup.
+pub const WINDOW_APPEAR_OPACITY_START: f32 = 1.0;
 
 /// Opacity at the end of window appear animation.
 pub const WINDOW_APPEAR_OPACITY_END: f32 = 1.0;
@@ -333,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_opacity_constants() {
-        assert!((WINDOW_APPEAR_OPACITY_START - 0.0).abs() < 0.001);
+        assert!((WINDOW_APPEAR_OPACITY_START - 1.0).abs() < 0.001);
         assert!((WINDOW_APPEAR_OPACITY_END - 1.0).abs() < 0.001);
     }
 

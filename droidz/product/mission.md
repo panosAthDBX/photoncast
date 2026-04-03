@@ -21,7 +21,7 @@ Modern macOS power users face a frustrating choice:
 
 | Problem | Current Solutions | PhotonCast Approach |
 |---------|------------------|---------------------|
-| **Slow startup** | Electron apps take 200-500ms to show | Sub-50ms activation |
+| **Slow startup** | Electron apps take 200-500ms to show | Target: sub-50ms launcher reveal |
 | **Subscription fatigue** | Raycast pushing Pro/AI tiers | Forever free, open source |
 | **Privacy concerns** | Cloud-synced data, telemetry | 100% local, zero telemetry |
 | **Resource bloat** | 200MB+ RAM usage | Under 50MB target |
@@ -65,7 +65,7 @@ Modern macOS power users face a frustrating choice:
 
 ## Solution Overview
 
-PhotonCast is a **pure Rust** application launcher using **GPUI** (from Zed editor) for GPU-accelerated rendering at 120 FPS. It provides:
+PhotonCast is a **pure Rust** application launcher using **GPUI** (from Zed editor) with a **120 FPS target on supported hardware**. It provides:
 
 ### Core Capabilities
 
@@ -81,22 +81,22 @@ PhotonCast is a **pure Rust** application launcher using **GPUI** (from Zed edit
 
 6. **System Commands** - Quick access to sleep, restart, lock, empty trash, and more
 
-7. **Raycast Extension Compatibility** - Run thousands of existing Raycast extensions without modification
+7. **Native Extension System (Shipped)** - High-performance Rust extensions for deep system integration
 
-8. **Raycast Store Integration** - Browse, install, and update extensions directly from the Raycast marketplace
+8. **Custom Commands (Shipped)** - User-defined shortcuts and script execution
 
-9. **Native Extension System** - High-performance Rust extensions for deep system integration
+9. **Raycast Extension Compatibility (Planned)** - Long-term compatibility path for running existing Raycast extensions
 
-10. **Custom Commands** - User-defined shortcuts and script execution
+10. **Raycast Store Integration (Planned)** - Long-term store browsing and installation experience
 
-### Key Differentiator: Raycast Extension Ecosystem
+### Key Differentiator: Open Extension Path
 
-PhotonCast isn't just another launcher—it's **compatible with the entire Raycast extension ecosystem**. This means:
+PhotonCast already ships a **native extension system** today, and it is designed to grow toward broader extension compatibility over time. Today that means:
 
-- **Thousands of extensions available on day one** from the Raycast Store
-- **No need to rebuild the ecosystem** from scratch
-- **Community-driven** extensions without vendor lock-in
-- **Open alternative** that respects the work of extension developers
+- **Shipped now:** native Rust extensions with a signed, ABI-stable host API
+- **Planned:** broader Raycast compatibility and store-style discovery in later phases
+- **Open alternative:** extension development without vendor lock-in
+- **Community-friendly path:** grow the ecosystem without forcing subscriptions or AI upsells
 
 ## Value Proposition
 
@@ -105,17 +105,17 @@ PhotonCast isn't just another launcher—it's **compatible with the entire Rayca
 | Feature | PhotonCast | Raycast | Alfred | Spotlight |
 |---------|-----------|---------|--------|-----------|
 | **Price** | Free forever | Free + $10/mo Pro | $34 Powerpack | Free |
-| **Performance** | ~50ms | ~100ms | ~80ms | ~60ms |
+| **Performance** | fast native target; see current perf evidence | ~100ms | ~80ms | ~60ms |
 | **AI Features** | ❌ By design | ✅ Core focus | ✅ Add-on | ✅ Limited |
 | **Open Source** | ✅ Full | ❌ Closed | ❌ Closed | ❌ Closed |
 | **Privacy** | ✅ 100% local | ⚠️ Telemetry | ✅ Local | ⚠️ Apple |
-| **Extensions** | ✅ Raycast-compatible | ✅ Store | ✅ Workflows | ❌ None |
-| **Extension Store** | ✅ Raycast Store | ✅ Native | ❌ Manual | ❌ None |
+| **Extensions** | ✅ Native extensions today; Raycast compatibility planned | ✅ Store | ✅ Workflows | ❌ None |
+| **Extension Store** | 🟡 Planned | ✅ Native | ❌ Manual | ❌ None |
 | **Native** | ✅ Rust/GPUI | ❌ Electron | ✅ Native | ✅ Native |
 
 ### Our Competitive Edge
 
-1. **Raycast Extensions, Zero Lock-in** - Use the thousands of Raycast extensions without the Raycast subscription or AI upselling.
+1. **Native Extensions Today, Compatibility Path Tomorrow** - PhotonCast already ships native extensions and keeps the broader ecosystem path explicit rather than pretending it is fully complete.
 
 2. **No AI, No Compromise** - We focus on core utility. AI is noise, not signal.
 

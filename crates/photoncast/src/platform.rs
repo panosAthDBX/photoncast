@@ -245,13 +245,17 @@ mod macos {
 
     /// Carbon event handler callback — dispatches hotkey events to registered callbacks.
     /// Uses dispatch queue instead of spawning threads to avoid unbounded thread creation.
+    pub(super) fn dispatch_hotkey_callback(callback: Arc<HotkeyCallback>) {
+        use dispatch::Queue;
+        Queue::main().exec_async(move || callback());
+    }
+
     unsafe extern "C" fn hotkey_event_handler(
         _call_ref: carbon_hotkey::EventHandlerCallRef,
         event: carbon_hotkey::EventRef,
         _user_data: *mut std::ffi::c_void,
     ) -> i32 {
         use carbon_hotkey::*;
-        use dispatch::Queue;
 
         let mut hotkey_id = EventHotKeyID {
             signature: 0,
@@ -277,8 +281,7 @@ mod macos {
                 debug!("Carbon hotkey: Cmd+Space");
                 if let Ok(cb) = HOTKEY_CALLBACK.lock() {
                     if let Some(callback) = cb.as_ref() {
-                        let callback = Arc::clone(callback);
-                        Queue::main().exec_async(move || callback());
+                        dispatch_hotkey_callback(Arc::clone(callback));
                     }
                 }
             },
@@ -286,8 +289,7 @@ mod macos {
                 debug!("Carbon hotkey: Cmd+Shift+V");
                 if let Ok(cb) = CLIPBOARD_HOTKEY_CALLBACK.lock() {
                     if let Some(callback) = cb.as_ref() {
-                        let callback = Arc::clone(callback);
-                        Queue::main().exec_async(move || callback());
+                        dispatch_hotkey_callback(Arc::clone(callback));
                     }
                 }
             },
@@ -915,6 +917,10 @@ pub fn trigger_menu_bar_action(_action: MenuBarActionKind) {}
 mod tests {
     use super::*;
     use std::path::Path;
+    #[cfg(target_os = "macos")]
+    use std::sync::{mpsc, Arc};
+    #[cfg(target_os = "macos")]
+    use std::time::{Duration, Instant};
 
     #[test]
     #[cfg(target_os = "macos")]
@@ -946,5 +952,84 @@ mod tests {
             // Cleanup
             let _ = std::fs::remove_file(&output_path);
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn wait_for_hotkey_callback(
+        rx: &mpsc::Receiver<Instant>,
+        timeout: Duration,
+    ) -> Result<Instant, mpsc::RecvTimeoutError> {
+        use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop};
+
+        let deadline = Instant::now() + timeout;
+        loop {
+            match rx.try_recv() {
+                Ok(instant) => return Ok(instant),
+                Err(mpsc::TryRecvError::Empty) => {
+                    if Instant::now() >= deadline {
+                        return Err(mpsc::RecvTimeoutError::Timeout);
+                    }
+                    let _ = unsafe {
+                        CFRunLoop::run_in_mode(
+                            kCFRunLoopDefaultMode,
+                            Duration::from_millis(10),
+                            false,
+                        )
+                    };
+                },
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    return Err(mpsc::RecvTimeoutError::Disconnected);
+                },
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a macOS app-shell/main-run-loop environment; command-line unit tests do not service the hotkey callback path reliably"]
+    #[cfg(target_os = "macos")]
+    fn test_hotkey_callback_dispatch_latency_snapshot() {
+        let (tx, rx) = mpsc::channel();
+        let callback: Arc<HotkeyCallback> = Arc::new(Box::new(move || {
+            let _ = tx.send(Instant::now());
+        }));
+
+        let start = Instant::now();
+        super::macos::dispatch_hotkey_callback(callback);
+
+        let fired_at =
+            wait_for_hotkey_callback(&rx, Duration::from_millis(250))
+                .expect("main-queue hotkey callback should fire promptly");
+        let elapsed = fired_at.duration_since(start);
+
+        eprintln!(
+            "Hotkey async callback dispatch snapshot: {:?} (target {:?})",
+            elapsed,
+            Duration::from_millis(50)
+        );
+        assert!(elapsed > Duration::ZERO);
+    }
+
+    #[test]
+    #[ignore = "requires a macOS app-shell/main-run-loop environment and a representative machine"]
+    #[cfg(target_os = "macos")]
+    fn test_hotkey_callback_dispatch_under_50ms_strict() {
+        let (tx, rx) = mpsc::channel();
+        let callback: Arc<HotkeyCallback> = Arc::new(Box::new(move || {
+            let _ = tx.send(Instant::now());
+        }));
+
+        let start = Instant::now();
+        super::macos::dispatch_hotkey_callback(callback);
+
+        let fired_at =
+            wait_for_hotkey_callback(&rx, Duration::from_millis(250))
+                .expect("main-queue hotkey callback should fire promptly");
+        let elapsed = fired_at.duration_since(start);
+
+        assert!(
+            elapsed <= Duration::from_millis(50),
+            "Hotkey callback dispatch took {:?}, target is 50ms",
+            elapsed
+        );
     }
 }

@@ -458,7 +458,7 @@ Detection locations: Location field, Notes, Structured conference data
 
 **Join Meeting Behavior:**
 - **Enter key joins meeting** for events with conference links (primary action)
-- Join button shown within 15 minutes of start time
+- Join action shown whenever a conference link is detected for the selected event
 - Opens conference URL in default browser
 
 **Permission Handling:**
@@ -955,8 +955,8 @@ confirm = true
 | Extension | Description |
 |-----------|-------------|
 | GitHub Repositories | Browse and search your repos |
-| System Preferences | Quick access to all macOS settings |
-| Color Picker | Screen eyedropper, format conversion, palette storage |
+| System Preferences | Quick access to macOS settings |
+| Screenshots Browser | Browse and search recent screenshots |
 
 **Bundled vs Downloaded:** All first-party extensions bundled (better first-run experience)
 

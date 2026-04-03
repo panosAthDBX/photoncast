@@ -249,8 +249,6 @@ impl PhotonCastApp {
             }
         }
 
-        // Auto-load enabled extensions for search
-        extension_manager.auto_load_enabled();
         let extension_manager = Arc::new(RwLock::new(extension_manager));
 
         // Create the search engine with configured settings
@@ -279,6 +277,17 @@ impl PhotonCastApp {
             usage_tracker: None,
             qlmanage_child: Mutex::new(None),
         }
+    }
+
+    /// Auto-loads enabled extensions after the core application has been
+    /// initialized.
+    ///
+    /// This is intentionally separate from [`with_config`] so app shells can
+    /// defer extension activation until after their first window is visible,
+    /// reducing startup latency without changing the extension system itself.
+    pub fn autoload_enabled_extensions(&self) {
+        let mut manager = self.extension_manager.write();
+        manager.auto_load_enabled();
     }
 
     /// Attaches a usage tracker for frecency-boosted search.
@@ -1139,6 +1148,19 @@ impl PhotonCastApp {
         }
     }
 
+    /// Returns the bundle ID for an indexed app at the given path.
+    #[must_use]
+    pub fn app_bundle_id_by_path(&self, path: &std::path::Path) -> Option<String> {
+        let apps = self.app_index.read();
+        let path_str = path.to_string_lossy();
+        let path_normalized = path_str.trim_end_matches('/');
+        apps.iter().find_map(|app| {
+            let app_path_str = app.path.to_string_lossy();
+            let app_path_normalized = app_path_str.trim_end_matches('/');
+            (app_path_normalized == path_normalized).then(|| app.bundle_id.to_string())
+        })
+    }
+
     /// Removes an app from the index by its path.
     ///
     /// Returns `true` if an app was removed, `false` if no app was found at that path.
@@ -1217,6 +1239,7 @@ mod tests {
     use crate::indexer::AppBundleId;
     use chrono::Utc;
     use std::path::PathBuf;
+    use std::time::Instant;
     use tempfile::NamedTempFile;
 
     fn create_test_app(name: &str, bundle_id: &str) -> IndexedApp {
@@ -1288,6 +1311,12 @@ mod tests {
         PhotonCastApp::with_config(config)
     }
 
+    fn create_realistic_test_apps(count: usize) -> Vec<IndexedApp> {
+        (0..count)
+            .map(|i| create_test_app(&format!("TestApp{i}"), &format!("com.test.app{i}")))
+            .collect()
+    }
+
     #[test]
     fn test_search_with_apps() {
         let app = create_test_app_with_timeout();
@@ -1298,6 +1327,58 @@ mod tests {
 
         let outcome = app.search("saf");
         assert!(!outcome.timed_out, "search should not timeout");
+        assert!(!outcome.results.is_empty());
+    }
+
+    #[test]
+    fn test_app_initialization_performance_snapshot() {
+        let start = Instant::now();
+        let _app = create_test_app_with_timeout();
+        let elapsed = start.elapsed();
+
+        eprintln!(
+            "PhotonCastApp initialization snapshot: {:?} (target {:?})",
+            elapsed,
+            crate::utils::profiling::targets::COLD_START
+        );
+        assert!(elapsed > std::time::Duration::ZERO);
+    }
+
+    #[test]
+    #[ignore = "performance-sensitive baseline check; run manually on a representative machine"]
+    fn test_app_initialization_under_100ms_strict() {
+        let start = Instant::now();
+        let _app = create_test_app_with_timeout();
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed <= crate::utils::profiling::targets::COLD_START,
+            "PhotonCastApp initialization took {:?}, target is {:?}",
+            elapsed,
+            crate::utils::profiling::targets::COLD_START
+        );
+    }
+
+    #[test]
+    fn test_search_with_200_apps_under_30ms_smoke() {
+        let app = create_test_app_with_timeout();
+        app.set_apps(create_realistic_test_apps(200));
+
+        // Warm up caches/indexes so the measurement reflects the steady-state
+        // interactive search path users experience after startup.
+        let _ = app.search("test");
+
+        let start = Instant::now();
+        let outcome = app.search("testapp");
+        let elapsed = start.elapsed();
+
+        assert!(!outcome.timed_out, "search should not timeout");
+        assert!(
+            elapsed <= crate::utils::profiling::targets::SEARCH_LATENCY,
+            "Search took {:?}, target is {:?}",
+            elapsed,
+            crate::utils::profiling::targets::SEARCH_LATENCY
+        );
         assert!(!outcome.results.is_empty());
     }
 
@@ -1397,6 +1478,24 @@ mod tests {
         let removed_fake = app.remove_app_by_path(&PathBuf::from("/Applications/Fake.app"));
         assert!(!removed_fake);
         assert_eq!(app.app_count(), 1);
+    }
+
+    #[test]
+    fn test_app_bundle_id_by_path() {
+        let app = PhotonCastApp::new();
+        let safari = create_test_app("Safari", "com.apple.Safari");
+        let safari_path = safari.path.clone();
+
+        app.set_apps(vec![safari]);
+
+        assert_eq!(
+            app.app_bundle_id_by_path(&safari_path).as_deref(),
+            Some("com.apple.Safari")
+        );
+        assert_eq!(
+            app.app_bundle_id_by_path(&PathBuf::from("/Applications/Fake.app")),
+            None
+        );
     }
 
     #[test]

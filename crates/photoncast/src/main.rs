@@ -16,6 +16,7 @@
 
 use std::cell::RefCell;
 use std::sync::mpsc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -130,6 +131,24 @@ fn init_logging() {
     info!("Starting PhotonCast v{}", env!("CARGO_PKG_VERSION"));
 }
 
+fn write_perf_marker(label: &str) {
+    let Some(path) = std::env::var_os("PHOTONCAST_PERF_MARKERS_PATH") else {
+        return;
+    };
+
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let line = format!("{label},{now_ms}\n");
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
+}
+
 /// Loads the application configuration from disk and applies global settings.
 ///
 /// Falls back to [`Config::default()`] if the config file cannot be read.
@@ -242,9 +261,9 @@ fn init_clipboard(runtime_handle: &tokio::runtime::Handle) -> Option<Arc<RwLock<
 
 fn main() {
     init_logging();
+    write_perf_marker("main_start");
 
     let app_config = load_app_config();
-
     // Check for hotkey conflicts with Spotlight (non-blocking, informational only)
     check_spotlight_conflict();
 
@@ -257,9 +276,6 @@ fn main() {
 
     // Register global hotkeys (non-blocking, requires accessibility permission)
     init_hotkeys(&event_tx);
-
-    // Request calendar permission on startup (non-blocking)
-    init_calendar_permission();
 
     // Create a single shared Tokio runtime for the entire application.
     // All async work (clipboard, quicklinks, timers, etc.) uses this runtime
@@ -298,7 +314,25 @@ fn main() {
         // Store clipboard state in global
         let clipboard_for_window = clipboard_state.clone();
 
-        // Create menu bar status item with channel for events
+        // Create initial launcher window
+        let launcher_state = LauncherSharedState::new(Arc::clone(&shared_runtime));
+        write_perf_marker("before_open_launcher_window");
+        let window_handle = open_launcher_window(cx, &launcher_state);
+        write_perf_marker("after_open_launcher_window");
+
+        // Defer extension auto-load until after the first launcher window is
+        // created so extension activation does not sit on the critical path for
+        // initial window visibility.
+        {
+            let photoncast_app = launcher_state.photoncast_app();
+            let _ = cx.background_executor().spawn(async move {
+                photoncast_app.read().autoload_enabled_extensions();
+            });
+        }
+
+        // Create menu bar status item with channel for events after the first
+        // launcher window is created, so menu-bar initialization does not delay
+        // initial window visibility.
         let menu_tx = event_tx.clone();
         match create_menu_bar_item(move |action| {
             let event = match action {
@@ -326,10 +360,6 @@ fn main() {
             Ok(()) => info!("Menu bar status item created"),
             Err(e) => error!("Failed to create menu bar status item: {}", e),
         }
-
-        // Create initial launcher window
-        let launcher_state = LauncherSharedState::new(Arc::clone(&shared_runtime));
-        let window_handle = open_launcher_window(cx, &launcher_state);
 
         // Spawn a task to listen for app events (hotkey, menu bar)
         let clipboard_state_for_events = clipboard_for_window;
@@ -454,6 +484,7 @@ fn main() {
         .detach();
 
         info!("PhotonCast initialized successfully");
+        write_perf_marker("app_initialized");
     });
 
     // Cleanup: unregister hotkey
@@ -556,6 +587,26 @@ fn poll_until_window_frontmost(
     false
 }
 
+fn select_window_command_target(
+    actual_bundle_id: Option<String>,
+    actual_title: Option<String>,
+    captured_bundle_id: Option<String>,
+    captured_title: Option<String>,
+) -> (Option<String>, Option<String>) {
+    match captured_bundle_id {
+        Some(bundle_id) => {
+            let title = captured_title.or_else(|| {
+                actual_bundle_id
+                    .as_deref()
+                    .filter(|actual| *actual == bundle_id)
+                    .and(actual_title)
+            });
+            (Some(bundle_id), title)
+        },
+        None => (actual_bundle_id, actual_title.or(captured_title)),
+    }
+}
+
 /// Executes a window management command outside of GPUI window context.
 /// This avoids reentrancy panics when moving windows triggers windowDidMove notifications.
 fn execute_window_command(
@@ -627,9 +678,12 @@ fn execute_window_command(
         (target_bundle_id.clone(), target_window_title.clone())
     };
 
-    // Prefer the CGWindowList result, fall back to passed target if CGWindowList failed
-    let effective_bundle_id = actual_bundle_id.or(target_bundle_id);
-    let effective_title = actual_title.or(target_window_title);
+    let (effective_bundle_id, effective_title) = select_window_command_target(
+        actual_bundle_id,
+        actual_title,
+        target_bundle_id,
+        target_window_title,
+    );
 
     // Activate the target app
     let target_app = if let Some(ref bundle_id) = effective_bundle_id {
@@ -735,6 +789,50 @@ fn execute_window_command(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::select_window_command_target;
+
+    #[test]
+    fn test_select_window_command_target_prefers_captured_app_and_title() {
+        let (bundle_id, title) = select_window_command_target(
+            Some("com.apple.TextEdit".to_string()),
+            Some("Notes".to_string()),
+            Some("com.apple.Safari".to_string()),
+            Some("Inbox".to_string()),
+        );
+
+        assert_eq!(bundle_id.as_deref(), Some("com.apple.Safari"));
+        assert_eq!(title.as_deref(), Some("Inbox"));
+    }
+
+    #[test]
+    fn test_select_window_command_target_uses_actual_title_when_bundle_matches() {
+        let (bundle_id, title) = select_window_command_target(
+            Some("com.apple.Safari".to_string()),
+            Some("Inbox".to_string()),
+            Some("com.apple.Safari".to_string()),
+            None,
+        );
+
+        assert_eq!(bundle_id.as_deref(), Some("com.apple.Safari"));
+        assert_eq!(title.as_deref(), Some("Inbox"));
+    }
+
+    #[test]
+    fn test_select_window_command_target_falls_back_to_actual_when_capture_missing() {
+        let (bundle_id, title) = select_window_command_target(
+            Some("com.apple.TextEdit".to_string()),
+            Some("Draft".to_string()),
+            None,
+            None,
+        );
+
+        assert_eq!(bundle_id.as_deref(), Some("com.apple.TextEdit"));
+        assert_eq!(title.as_deref(), Some("Draft"));
+    }
+}
+
 /// Gets the bundle ID and window title of the frontmost application.
 /// This is called before Photoncast activates to remember which window was active.
 ///
@@ -817,19 +915,18 @@ fn open_launcher_window(
             window_bounds: Some(WindowBounds::Windowed(calculate_window_bounds(cx))),
             focus: true,
             show: true,
-            // Use PopUp to create an NSPanel that doesn't fully activate the app
-            // This prevents media playback from pausing when the launcher is shown
-            kind: WindowKind::PopUp,
+            // Use a normal window to test whether nonactivating popup/panel
+            // semantics are contributing to delayed externally visible
+            // presentation in the launcher-appear harness.
+            kind: WindowKind::Normal,
             is_movable: false,
             display_id: cx.displays().first().map(|d| d.id()),
-            window_background: WindowBackgroundAppearance::Blurred,
+            window_background: WindowBackgroundAppearance::Opaque,
             app_id: Some("app.photoncast".to_string()),
             window_min_size: Some(size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT)),
             window_decorations: Some(WindowDecorations::Client),
         },
         |cx| {
-            // Don't call cx.activate(true) - PopUp windows don't need full app activation
-            // and doing so would pause media playback in other apps
             cx.new_view(|cx| LauncherWindow::new(cx, &launcher_state))
         },
     ) {
@@ -1300,22 +1397,6 @@ fn register_key_bindings(cx: &mut AppContext) {
             Some("ClipboardHistory"),
         ),
     ]);
-}
-
-/// Requests calendar access permission on startup.
-///
-/// This is a non-blocking check - if permission is not yet granted,
-/// it will trigger the macOS permission dialog.
-fn init_calendar_permission() {
-    let calendar = photoncast_calendar::CalendarCommand::with_default_config();
-    if !calendar.has_permission() {
-        info!("Requesting calendar permission...");
-        if let Err(e) = calendar.request_permission() {
-            warn!("Calendar permission request failed: {}", e);
-        }
-    } else {
-        info!("Calendar permission already granted");
-    }
 }
 
 /// Checks if Spotlight's Cmd+Space shortcut is enabled and logs a warning if so.
