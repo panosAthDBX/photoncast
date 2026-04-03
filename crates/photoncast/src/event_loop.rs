@@ -39,6 +39,19 @@ pub(crate) struct EventLoopState {
 }
 
 impl EventLoopState {
+    fn foreground_launcher(cx: &mut ViewContext<LauncherWindow>, branch: &'static str) {
+        if let Err(err) = crate::platform::activate_ignoring_other_apps() {
+            tracing::error!(
+                "Failed to foreground PhotonCast for {} launcher window: {}",
+                branch,
+                err
+            );
+        }
+        cx.activate(true);
+        cx.activate_window();
+        cx.focus_self();
+    }
+
     /// Dispatch a single [`AppEvent`] to the appropriate handler.
     ///
     /// Returns `false` when the event loop should stop (quit / channel closed).
@@ -107,7 +120,9 @@ impl EventLoopState {
                         previous_window_title.clone(),
                     );
                     view.toggle(cx);
-                    cx.focus_self();
+                    if view.is_visible() {
+                        Self::foreground_launcher(cx, "existing");
+                    }
                 })
                 .is_ok()
             });
@@ -115,11 +130,12 @@ impl EventLoopState {
             if !window_exists {
                 self.current_handle = open_launcher_window(cx, &self.launcher_state);
                 if let Some(ref h) = self.current_handle {
-                    let _ = h.update(cx, |view, _cx| {
+                    let _ = h.update(cx, |view, cx| {
                         view.set_previous_frontmost_window(
                             previous_app.clone(),
                             previous_window_title.clone(),
                         );
+                        Self::foreground_launcher(cx, "new");
                     });
                 }
             }

@@ -16,9 +16,9 @@
 
 use std::cell::RefCell;
 use std::sync::mpsc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::*;
 use parking_lot::RwLock;
@@ -59,7 +59,7 @@ use photoncast_core::theme::PhotonTheme;
 use photoncast_quicklinks::ui::{
     ArgumentInputEvent, ArgumentInputView, CreateQuicklinkView, QuicklinksManageView,
 };
-use platform::{create_menu_bar_item, MenuBarActionKind};
+use platform::{create_menu_bar_item, is_menu_bar_active, remove_menu_bar_item, MenuBarActionKind};
 use preferences_window::PreferencesWindow;
 
 actions!(
@@ -147,6 +147,45 @@ fn write_perf_marker(label: &str) {
         .append(true)
         .open(path)
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
+}
+
+pub(crate) fn dispatch_menu_bar_action(action: MenuBarActionKind) {
+    let event = match action {
+        MenuBarActionKind::ToggleLauncher => AppEvent::ToggleLauncher,
+        MenuBarActionKind::OpenPreferences => AppEvent::OpenPreferences,
+        MenuBarActionKind::CheckForUpdates => {
+            info!("Check for updates requested from menu bar");
+            return;
+        },
+        MenuBarActionKind::About => {
+            info!("About requested from menu bar");
+            return;
+        },
+        MenuBarActionKind::Quit => AppEvent::QuitApp,
+    };
+
+    if let Err(e) = app_events::send_event(event) {
+        error!("Failed to send menu bar event: {}", e);
+    }
+}
+
+pub(crate) fn sync_menu_bar_visibility(show_in_menu_bar: bool) -> Result<(), String> {
+    if show_in_menu_bar {
+        if is_menu_bar_active() {
+            return Ok(());
+        }
+
+        create_menu_bar_item(dispatch_menu_bar_action)?;
+        info!("Menu bar status item created");
+        return Ok(());
+    }
+
+    if is_menu_bar_active() {
+        remove_menu_bar_item();
+        info!("Menu bar status item removed");
+    }
+
+    Ok(())
 }
 
 /// Loads the application configuration from disk and applies global settings.
@@ -303,6 +342,9 @@ fn main() {
         let auto_sync = app_config.appearance.theme == ThemeSetting::Auto;
         let theme = PhotonTheme::new(flavor, accent).with_auto_sync(auto_sync);
         cx.set_global(theme);
+        if let Err(e) = platform::sync_activation_policy(app_config.general.show_in_dock) {
+            error!("Failed to sync Dock activation policy: {}", e);
+        }
         info!(
             "Theme initialized: flavor={:?}, accent={:?}, auto_sync={}",
             flavor, accent, auto_sync
@@ -333,32 +375,9 @@ fn main() {
         // Create menu bar status item with channel for events after the first
         // launcher window is created, so menu-bar initialization does not delay
         // initial window visibility.
-        let menu_tx = event_tx.clone();
-        match create_menu_bar_item(move |action| {
-            let event = match action {
-                MenuBarActionKind::ToggleLauncher => AppEvent::ToggleLauncher,
-                MenuBarActionKind::OpenPreferences => AppEvent::OpenPreferences,
-                MenuBarActionKind::CheckForUpdates => {
-                    // NOTE: Update checking is not yet implemented. When an UpdateManager
-                    // is available, this should trigger an async update check and show
-                    // results in a dialog.
-                    info!("Check for updates requested from menu bar");
-                    return;
-                },
-                MenuBarActionKind::About => {
-                    // NOTE: About dialog is not yet implemented. This should display
-                    // app version, build info, and license information.
-                    info!("About requested from menu bar");
-                    return;
-                },
-                MenuBarActionKind::Quit => AppEvent::QuitApp,
-            };
-            if let Err(e) = menu_tx.send(event) {
-                error!("Failed to send menu bar event: {}", e);
-            }
-        }) {
-            Ok(()) => info!("Menu bar status item created"),
-            Err(e) => error!("Failed to create menu bar status item: {}", e),
+        match sync_menu_bar_visibility(app_config.general.show_in_menu_bar) {
+            Ok(()) => {},
+            Err(e) => error!("Failed to sync menu bar status item: {}", e),
         }
 
         // Spawn a task to listen for app events (hotkey, menu bar)
@@ -926,9 +945,7 @@ fn open_launcher_window(
             window_min_size: Some(size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT)),
             window_decorations: Some(WindowDecorations::Client),
         },
-        |cx| {
-            cx.new_view(|cx| LauncherWindow::new(cx, &launcher_state))
-        },
+        |cx| cx.new_view(|cx| LauncherWindow::new(cx, &launcher_state)),
     ) {
         Ok(handle) => Some(handle),
         Err(e) => {

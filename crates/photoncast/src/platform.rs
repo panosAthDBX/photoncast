@@ -12,8 +12,8 @@ mod macos {
     #[allow(deprecated)]
     use objc2::{define_class, msg_send_id, AllocAnyThread, MainThreadOnly};
     use objc2_app_kit::{
-        NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu,
-        NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
+        NSApplication, NSApplicationActivationPolicy, NSBitmapImageFileType, NSBitmapImageRep,
+        NSButton, NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
     };
     use objc2_foundation::{
         MainThreadMarker, NSDictionary, NSObject, NSObjectProtocol, NSRect, NSSize, NSString,
@@ -53,6 +53,47 @@ mod macos {
             // Animate the resize
             window.setFrame_display_animate(new_frame, true, true);
         });
+    }
+
+    /// Sets the app activation policy to match the intended Dock visibility.
+    ///
+    /// `show_in_dock = true` uses a regular app activation policy.
+    /// `show_in_dock = false` uses accessory mode so the app stays out of the Dock
+    /// while still allowing windows and a menu bar status item.
+    pub fn sync_activation_policy(show_in_dock: bool) -> Result<(), String> {
+        let mtm = MainThreadMarker::new()
+            .ok_or_else(|| "sync_activation_policy must run on the main thread".to_string())?;
+        let app = NSApplication::sharedApplication(mtm);
+        let policy = if show_in_dock {
+            NSApplicationActivationPolicy::Regular
+        } else {
+            NSApplicationActivationPolicy::Accessory
+        };
+
+        #[allow(deprecated)]
+        let changed = app.setActivationPolicy(policy);
+        if changed {
+            info!(show_in_dock, ?policy, "Updated app activation policy");
+            Ok(())
+        } else {
+            Err(format!("Failed to set activation policy to {:?}", policy))
+        }
+    }
+
+    /// Explicitly foregrounds the current app, even when running as a UIElement.
+    ///
+    /// This is intentionally a narrow launcher-facing escape hatch for cases
+    /// where window-local GPUI activation is insufficient to make PhotonCast
+    /// the true frontmost app.
+    pub fn activate_ignoring_other_apps() -> Result<(), String> {
+        let mtm = MainThreadMarker::new().ok_or_else(|| {
+            "activate_ignoring_other_apps must run on the main thread".to_string()
+        })?;
+        let app = NSApplication::sharedApplication(mtm);
+        #[allow(deprecated)]
+        app.activateIgnoringOtherApps(true);
+        info!("Requested app foreground activation");
+        Ok(())
     }
 
     /// Gets app icon using NSWorkspace and returns PNG data.
@@ -885,6 +926,16 @@ pub fn get_app_path_for_bundle_id(_bundle_id: &str) -> Option<std::path::PathBuf
 }
 
 #[cfg(not(target_os = "macos"))]
+pub fn sync_activation_policy(_show_in_dock: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn activate_ignoring_other_apps() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuBarActionKind {
     ToggleLauncher,
@@ -996,9 +1047,8 @@ mod tests {
         let start = Instant::now();
         super::macos::dispatch_hotkey_callback(callback);
 
-        let fired_at =
-            wait_for_hotkey_callback(&rx, Duration::from_millis(250))
-                .expect("main-queue hotkey callback should fire promptly");
+        let fired_at = wait_for_hotkey_callback(&rx, Duration::from_millis(250))
+            .expect("main-queue hotkey callback should fire promptly");
         let elapsed = fired_at.duration_since(start);
 
         eprintln!(
@@ -1021,9 +1071,8 @@ mod tests {
         let start = Instant::now();
         super::macos::dispatch_hotkey_callback(callback);
 
-        let fired_at =
-            wait_for_hotkey_callback(&rx, Duration::from_millis(250))
-                .expect("main-queue hotkey callback should fire promptly");
+        let fired_at = wait_for_hotkey_callback(&rx, Duration::from_millis(250))
+            .expect("main-queue hotkey callback should fire promptly");
         let elapsed = fired_at.duration_since(start);
 
         assert!(

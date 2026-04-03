@@ -778,6 +778,11 @@ impl LauncherWindow {
         }
     }
 
+    #[must_use]
+    pub const fn is_visible(&self) -> bool {
+        self.visible
+    }
+
     /// Shows the launcher window with animation
     #[allow(dead_code)]
     pub fn show(&mut self, cx: &mut ViewContext<Self>) {

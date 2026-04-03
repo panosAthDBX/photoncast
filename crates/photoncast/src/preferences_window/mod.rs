@@ -175,6 +175,9 @@ impl PreferencesWindow {
         self.config.general.show_in_menu_bar = !self.config.general.show_in_menu_bar;
         self.has_changes = true;
         self.save_config();
+        if let Err(e) = crate::sync_menu_bar_visibility(self.config.general.show_in_menu_bar) {
+            tracing::error!("Failed to apply menu bar visibility change: {}", e);
+        }
         cx.notify();
     }
 

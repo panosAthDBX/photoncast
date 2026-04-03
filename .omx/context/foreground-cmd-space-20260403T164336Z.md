@@ -1,0 +1,26 @@
+# Context Snapshot — foreground-cmd-space
+
+- Task statement: Investigate why PhotonCast activates on Cmd+Space but does not come to the foreground.
+- Desired outcome: Clarify the intended frontmost/activation behavior before planning a fix.
+- Stated solution: None yet; user requested deep interview.
+- Probable intent hypothesis: Restore launcher behavior where Cmd+Space reliably brings PhotonCast in front like Spotlight/Raycast.
+- Known facts/evidence:
+  - Hotkey path sends `AppEvent::ToggleLauncher` from `crates/photoncast/src/main.rs:224`.
+  - Toggle event handling only calls `view.toggle(cx)` and `cx.focus_self()` on an existing launcher window in `crates/photoncast/src/event_loop.rs:101-111`; unlike other windows, it does not call `cx.activate(true)` / `cx.activate_window()`.
+  - Launcher windows are opened with `focus: true`, `show: true`, and `WindowKind::Normal` in `crates/photoncast/src/main.rs:923-946`.
+  - Recent local change added `sync_activation_policy(show_in_dock)` in `crates/photoncast/src/platform.rs:55-76` and calls it at startup from `crates/photoncast/src/main.rs:335`.
+  - The installed app currently runs as `ApplicationType = UIElement` with `LSUIElement = true`.
+- Constraints:
+  - User previously wanted Dock-hidden mode to still work.
+  - Need to preserve intended product UX, not just force a workaround.
+- Unknowns/open questions:
+  - Should Cmd+Space make PhotonCast the true frontmost app even when Dock-hidden / agent-mode?
+  - Is the desired behavior different depending on `show_in_dock`?
+  - Is launcher visibility without app-frontmost activation ever acceptable?
+- Decision-boundary unknowns:
+  - Whether OMX may change activation semantics for Dock-hidden mode.
+- Likely codebase touchpoints:
+  - `crates/photoncast/src/main.rs`
+  - `crates/photoncast/src/event_loop.rs`
+  - `crates/photoncast/src/platform.rs`
+  - `crates/photoncast/src/launcher/mod.rs`

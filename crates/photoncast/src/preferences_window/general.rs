@@ -3,6 +3,18 @@
 use super::*;
 
 impl PreferencesWindow {
+    fn apply_dock_visibility_change(&mut self, show_in_dock: bool) -> Result<(), String> {
+        match photoncast_core::platform::set_dock_visibility(show_in_dock) {
+            Ok(()) | Err(photoncast_core::platform::DockVisibilityError::RestartRequired) => {
+                self.config.general.show_in_dock = show_in_dock;
+                self.has_changes = true;
+                self.save_config();
+                Ok(())
+            },
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
     pub(super) fn render_general_section(&self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let colors = get_colors(cx);
         div()
@@ -68,11 +80,10 @@ impl PreferencesWindow {
 
     /// Handles "Restart Later" button - dismisses dialog without restarting
     fn dismiss_restart_dialog(&mut self, cx: &mut ViewContext<Self>) {
-        // Save the config change but don't restart
         if let Some(new_value) = self.pending_dock_visibility.take() {
-            self.config.general.show_in_dock = new_value;
-            self.has_changes = true;
-            self.save_config();
+            if let Err(err) = self.apply_dock_visibility_change(new_value) {
+                tracing::error!("Failed to apply dock visibility change: {}", err);
+            }
         }
         self.show_restart_dialog = false;
         cx.notify();
@@ -80,11 +91,13 @@ impl PreferencesWindow {
 
     /// Handles "Restart Now" button - saves config and restarts the app
     fn restart_app_now(&mut self, cx: &mut ViewContext<Self>) {
-        // Save the config change
         if let Some(new_value) = self.pending_dock_visibility.take() {
-            self.config.general.show_in_dock = new_value;
-            self.has_changes = true;
-            self.save_config();
+            if let Err(err) = self.apply_dock_visibility_change(new_value) {
+                tracing::error!("Failed to apply dock visibility change: {}", err);
+                self.show_restart_dialog = false;
+                cx.notify();
+                return;
+            }
         }
 
         // Close the preferences window
