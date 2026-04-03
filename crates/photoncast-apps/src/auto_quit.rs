@@ -433,6 +433,17 @@ impl AutoQuitManager {
         self.tracked_pids.remove(&bundle_id);
     }
 
+    /// Removes all auto-quit state for an app.
+    ///
+    /// Returns `true` if any persisted config or runtime tracking was removed.
+    pub fn remove_app(&mut self, bundle_id: &str) -> bool {
+        let bundle_id = canonical_bundle_id(bundle_id);
+        let removed_config = self.config.apps.remove(&bundle_id).is_some();
+        let removed_activity = self.activity_tracker.remove(&bundle_id).is_some();
+        let removed_pid = self.tracked_pids.remove(&bundle_id).is_some();
+        removed_config || removed_activity || removed_pid
+    }
+
     /// Checks if auto-quit is enabled for an app.
     #[must_use]
     pub fn is_auto_quit_enabled(&self, bundle_id: &str) -> bool {
@@ -640,6 +651,22 @@ mod tests {
         assert_eq!(manager.config().apps.len(), 1);
         assert!(manager.config().apps.contains_key("com.apple.mail"));
         assert!(!manager.is_auto_quit_enabled("com.apple.Mail"));
+    }
+
+    #[test]
+    fn test_remove_app_clears_auto_quit_config_and_tracking() {
+        let mut manager = AutoQuitManager::new(AutoQuitConfig::default());
+
+        manager.enable_auto_quit("com.example.app", 5);
+        manager.on_app_activated("com.example.app", 42);
+
+        assert!(manager.remove_app("COM.EXAMPLE.APP"));
+        assert!(!manager.is_auto_quit_enabled("com.example.app"));
+        assert_eq!(manager.get_timeout_minutes("com.example.app"), None);
+        assert!(!manager.config().apps.contains_key("com.example.app"));
+        assert!(!manager.activity_tracker.contains_key("com.example.app"));
+        assert!(!manager.tracked_pids.contains_key("com.example.app"));
+        assert!(!manager.remove_app("com.example.app"));
     }
 
     #[test]

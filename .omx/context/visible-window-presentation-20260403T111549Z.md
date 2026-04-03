@@ -1,0 +1,33 @@
+# Context Snapshot
+
+- Task statement: Work on visible window presentation.
+- Desired outcome: Clarify the intended optimization target and constraints before planning/execution.
+- Stated solution: Deep-interview first.
+- Probable intent hypothesis: Improve the time from launch/hotkey to the launcher becoming visibly present on screen, since current manual harness evidence is much slower than the stated target.
+- Known facts/evidence:
+  - Manual launcher-appear proof path exists via `scripts/run-launcher-appear-proof.sh`.
+  - Latest measured launcher visibility was about 998ms.
+  - Internal markers from the same run were much faster: ~155ms to before `open_launcher_window`, ~64ms across `open_launcher_window`, and ~13ms to app initialized after that.
+  - Extension auto-load was already deferred until after first window creation.
+  - Menu bar setup was already moved after first window creation.
+  - Startup calendar permission prompting was already removed from startup.
+  - Remaining evidence suggests the largest gap is between app initialization and externally visible window presentation.
+- Constraints:
+  - Brownfield optimization on the existing PhotonCast app.
+  - Need to preserve product correctness and avoid regressing core behavior without explicit intent.
+  - Deep-interview mode only; no direct implementation in this turn.
+- Unknowns/open questions:
+  - Is the goal perceived speed only, or exact measured time-to-visible under the current harness?
+  - May we further defer non-critical work beyond what was already deferred?
+  - Is slight degradation in initial readiness acceptable if the window becomes visible earlier?
+  - Should we optimize window presentation mechanics specifically, or any startup work that helps visible time?
+- Decision-boundary unknowns:
+  - Can OMX trade immediate completeness for earlier visible presentation?
+  - Can OMX change startup semantics if behavior is preserved after visibility?
+- Likely codebase touchpoints:
+  - `crates/photoncast/src/main.rs`
+  - `crates/photoncast/src/launcher/mod.rs`
+  - `crates/photoncast/src/platform.rs`
+  - `crates/photoncast-core/src/app/integration.rs`
+  - `scripts/run-launcher-appear-proof.sh`
+  - `reports/performance-evidence-2026-04-02.md`

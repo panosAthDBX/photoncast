@@ -1,0 +1,49 @@
+{
+  "active": false,
+  "current_phase": "completed",
+  "started_at": "2026-04-03T11:20:00Z",
+  "iteration": 3,
+  "task_description": "Create a consensus plan for improving visible window presentation while preserving startup semantics, using the deep-interview spec as source of truth.",
+  "source_spec": ".omx/specs/deep-interview-visible-window-presentation.md",
+  "context_snapshot": ".omx/context/visible-window-presentation-20260403T111549Z.md",
+  "mode": "consensus",
+  "deliberate": false,
+  "review_iteration": 2,
+  "status": "approved",
+  "last_turn_at": "2026-04-03T12:20:50.414Z",
+  "completed_at": "2026-04-03T11:30:00Z",
+  "draft_path": ".omx/drafts/ralplan-specs-vision-match-audit-draft.md",
+  "prd_path": ".omx/plans/prd-specs-vision-match-audit.md",
+  "test_spec_path": ".omx/plans/test-spec-specs-vision-match-audit.md",
+  "applied_improvements": [
+    "added claimed-but-unshipped appendix handling",
+    "aligned team launch guidance with shared team worker prompt contract",
+    "strengthened evidence downgrade/verification rules"
+  ],
+  "recommended_handoff": "$ralph or $team",
+  "plan_paths": [
+    ".omx/plans/prd-specs-vision-match-audit.md",
+    ".omx/plans/test-spec-specs-vision-match-audit.md"
+  ],
+  "critic_verdict": "APPROVE",
+  "architect_review": "completed",
+  "architect_verdict": "APPROVE",
+  "architect_summary": "Need Stage 0 promise classifier, stronger evidence tiers for principle-level findings, explicit split between shipped native extension surface and future Raycast ambitions, and frozen authority matrix before parallel lanes.",
+  "plan_artifacts": [
+    ".omx/plans/prd-specs-vision-match-audit.md",
+    ".omx/plans/test-spec-specs-vision-match-audit.md"
+  ],
+  "residual_risk": "low",
+  "revision_summary": [
+    "Widened verification from file-existence checks to artifact-content checks",
+    "Made the union inventory + per-promise traceability table explicit required artifacts",
+    "Added the theme surface to shipped implementation roots and coverage checks"
+  ],
+  "final_prd": ".omx/plans/prd-visible-window-presentation.md",
+  "final_test_spec": ".omx/plans/test-spec-visible-window-presentation.md",
+  "approval_notes": [
+    "Measurement rule tightened to same-machine baseline with median-of-3 by default when noisy",
+    "Activation/window-kind guardrails made explicit",
+    "Marker-vs-visibility comparison required after each pass"
+  ]
+}

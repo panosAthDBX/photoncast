@@ -1,0 +1,32 @@
+# Context Snapshot
+
+- Task statement: Look into our specs and vision, for taste and quality, and determine whether the implementation matches them.
+- Desired outcome: A grounded audit/handoff that compares the current implementation against the product vision and specs.
+- Stated solution: Deep-interview first, then likely a planning/audit handoff.
+- Probable intent hypothesis: Validate whether PhotonCast still feels aligned with its stated product principles (speed, privacy, simplicity, maintainability, no-AI posture) rather than only feature checklist completion.
+- Known facts/evidence:
+  - Product mission: `droidz/product/mission.md`
+  - Product roadmap: `droidz/product/roadmap.md`
+  - Architecture overview: `ARCHITECTURE.md`
+  - Current repo implementation spans `crates/` with launcher/core/apps/calculator/calendar/clipboard/quicklinks/timer/window and extension crates.
+  - README claims many features already implemented.
+  - Specs under `droidz/specs/` mix implemented and draft states.
+- Constraints:
+  - Brownfield repo audit.
+  - Deep-interview mode only; no direct implementation.
+  - Need to reduce user effort by discovering repo facts directly.
+- Unknowns/open questions:
+  - Which documents are authoritative when roadmap/specs/README differ?
+  - What exactly counts as “taste and quality” for this audit?
+  - How deep should the comparison go: shipped features only, UX/code quality, performance/privacy principles, or all of these?
+  - Does the user want a lightweight assessment or a spec-by-spec gap analysis artifact?
+- Decision-boundary unknowns:
+  - May OMX prioritize mission/principles over individual draft specs when judging alignment?
+  - May OMX infer quality heuristics from the mission/standards without extra confirmation?
+- Likely codebase touchpoints:
+  - `droidz/product/mission.md`
+  - `droidz/product/roadmap.md`
+  - `droidz/specs/**/spec.md`
+  - `README.md`
+  - `ARCHITECTURE.md`
+  - `crates/photoncast*/**`

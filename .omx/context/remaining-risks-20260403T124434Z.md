@@ -1,0 +1,28 @@
+# Context Snapshot
+
+- Task statement: Clarify what “remaining risks” should mean and how they should be used next.
+- Desired outcome: A bounded, actionable understanding of which remaining risks matter most and what downstream artifact/handoff is wanted.
+- Stated solution: Deep-interview first.
+- Probable intent hypothesis: The user wants to understand the residual risks after the recent visible-window-presentation work and possibly decide whether to keep optimizing, revert, or document/accept those risks.
+- Known facts/evidence:
+  - Recent work improved manual launcher-appear median from about 1706ms baseline into the 900-1100ms range, but still far from the <50ms claim.
+  - Internal markers show app init/window creation are much faster than externally visible presentation.
+  - Startup semantics were explicitly preserved in recent work.
+  - Update subsystem exists in core but startup/menu-bar integration is not fully wired end-to-end.
+  - Hotkey <50ms and 120 FPS still lack CI-safe automated proof.
+  - Current installed app was rebuilt locally from a dirty workspace, not from a clean official release.
+- Constraints:
+  - Brownfield repo/project risk discussion.
+  - Deep-interview mode only for this turn.
+  - Ask only one highest-leverage question.
+- Unknowns/open questions:
+  - Does the user mean remaining technical risks in the current build, product/spec risks, release-readiness risks, or project-management risks?
+  - Is the desired output a ranked list, a go/no-go decision aid, or a plan to mitigate them?
+- Decision-boundary unknowns:
+  - Should OMX prioritize runtime/perf risks over release/install hygiene risks?
+  - Should risks be judged for the current local build or for the product generally?
+- Likely codebase touchpoints:
+  - reports/performance-evidence-2026-04-02.md
+  - reports/specs-vision-match-audit-2026-04-02.md
+  - reports/specs-vision-prioritized-fix-list-2026-04-02.md
+  - .omx/specs/deep-interview-visible-window-presentation.md

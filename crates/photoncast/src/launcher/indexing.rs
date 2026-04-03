@@ -129,6 +129,7 @@ impl LauncherWindow {
     /// - An app is uninstalled
     pub(super) fn start_app_watching(&self, cx: &mut ViewContext<Self>) {
         let photoncast_app = Arc::clone(&self.photoncast_app);
+        let auto_quit_manager = Arc::clone(&self.auto_quit.manager);
         let shared_runtime = Arc::clone(&self.calculator.runtime);
 
         // Start the watcher in a background thread (requires Tokio runtime)
@@ -186,7 +187,14 @@ impl LauncherWindow {
                 match next_events {
                     Ok(events) => {
                         for event in events {
-                            Self::handle_watch_event(&this, &mut cx, &photoncast_app, event).await;
+                            Self::handle_watch_event(
+                                &this,
+                                &mut cx,
+                                &photoncast_app,
+                                &auto_quit_manager,
+                                event,
+                            )
+                            .await;
                         }
                     },
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
@@ -257,6 +265,7 @@ impl LauncherWindow {
         this: &WeakView<Self>,
         cx: &mut AsyncWindowContext,
         photoncast_app: &Arc<RwLock<PhotonCastApp>>,
+        auto_quit_manager: &Arc<RwLock<AutoQuitManager>>,
         event: WatchEvent,
     ) {
         match event {
@@ -361,6 +370,10 @@ impl LauncherWindow {
                     if !path.exists() {
                         // App was likely uninstalled, remove from index
                         tracing::info!(path = %path.display(), "App no longer exists, removing from index");
+                        if let Some(bundle_id) = photoncast_app.read().app_bundle_id_by_path(&path)
+                        {
+                            Self::remove_auto_quit_app(auto_quit_manager, &bundle_id);
+                        }
                         let removed = photoncast_app.write().remove_app_by_path(&path);
                         if removed {
                             // Clear cached icon
@@ -386,6 +399,9 @@ impl LauncherWindow {
             },
             WatchEvent::AppRemoved(path) => {
                 tracing::info!(path = %path.display(), "App removed, updating index...");
+                if let Some(bundle_id) = photoncast_app.read().app_bundle_id_by_path(&path) {
+                    Self::remove_auto_quit_app(auto_quit_manager, &bundle_id);
+                }
                 let removed = photoncast_app.write().remove_app_by_path(&path);
                 if removed {
                     tracing::info!(path = %path.display(), "Removed app from index");
@@ -415,6 +431,27 @@ impl LauncherWindow {
         app_path: &std::path::Path,
     ) -> Option<std::path::PathBuf> {
         crate::icon_cache::get_icon_static(app_path)
+    }
+
+    fn remove_auto_quit_app(auto_quit_manager: &Arc<RwLock<AutoQuitManager>>, bundle_id: &str) {
+        let removed = {
+            let mut manager = auto_quit_manager.write();
+            let removed = manager.remove_app(bundle_id);
+            if removed {
+                if let Err(err) = manager.save() {
+                    tracing::warn!(
+                        bundle_id,
+                        error = %err,
+                        "Failed to persist auto-quit removal"
+                    );
+                }
+            }
+            removed
+        };
+
+        if removed {
+            tracing::info!(bundle_id, "Removed auto-quit state for deleted app");
+        }
     }
 
     /// Clears the cached icon for an app.

@@ -1,0 +1,464 @@
+{
+  "catalog_version": "1.0",
+  "generated": "2026-03-29",
+  "summary": {
+    "total_issues": 49,
+    "by_severity": { "high": 7, "medium": 22, "low": 20 },
+    "categories": 7
+  },
+
+  "categories": [
+
+    {
+      "category": "UI Thread Blocking",
+      "description": "block_on() calls on the UI/event-loop thread that freeze the interface while async I/O completes",
+      "priority": "HIGH",
+      "items": [
+        {
+          "id": "UIB-1",
+          "file": "crates/photoncast/src/event_loop.rs",
+          "line": 201,
+          "description": "block_on(quicklinks_storage.load_all()) inside handle_open_quick_links — blocks UI while loading quicklinks from SQLite when re-activating existing window",
+          "severity": "high",
+          "suggested_fix": "Spawn a background task via cx.background_executor() to load links, then update the view in a callback. Use a loading spinner placeholder."
+        },
+        {
+          "id": "UIB-2",
+          "file": "crates/photoncast/src/event_loop.rs",
+          "line": 221,
+          "description": "runtime.block_on(storage.load_all()) inside handle_open_quick_links — blocks UI while loading quicklinks when creating a new window",
+          "severity": "high",
+          "suggested_fix": "Same as UIB-1: load asynchronously, show empty view first, then populate."
+        },
+        {
+          "id": "UIB-3",
+          "file": "crates/photoncast/src/event_loop.rs",
+          "line": 370,
+          "description": "block_on(quicklinks_storage.load_all()) inside handle_manage_quicklinks — blocks UI thread when opening manage quicklinks",
+          "severity": "high",
+          "suggested_fix": "Move to background executor, update view on completion."
+        },
+        {
+          "id": "UIB-4",
+          "file": "crates/photoncast/src/event_loop.rs",
+          "line": 407,
+          "description": "block_on(quicklinks_storage.load_all()) inside handle_browse_quicklink_library — blocks UI thread when browsing library",
+          "severity": "high",
+          "suggested_fix": "Move to background executor, update view on completion."
+        },
+        {
+          "id": "UIB-5",
+          "file": "crates/photoncast/src/event_loop.rs",
+          "line": 457,
+          "description": "block_on(storage.load_all()) inside handle_execute_quicklink — blocks UI while loading all quicklinks just to find one by ID",
+          "severity": "high",
+          "suggested_fix": "Add a storage.get_by_id() method, or load all asynchronously. This call is particularly wasteful since it loads all links to find one."
+        }
+      ]
+    },
+
+    {
+      "category": "Search Timeout Enforcement",
+      "description": "SearchConfig.timeout field (100ms default) is defined but never enforced — slow providers can block indefinitely",
+      "priority": "MEDIUM",
+      "items": [
+        {
+          "id": "STO-1",
+          "file": "crates/photoncast-core/src/search/engine.rs",
+          "line": 38,
+          "description": "SearchConfig.timeout is set to Duration::from_millis(100) but neither search_sync() nor search()/search_with_cancellation() wrap provider calls in a timeout. search_sync() calls each provider sequentially with no time limit. search() uses tokio::task::spawn_blocking without tokio::time::timeout wrapping.",
+          "severity": "medium",
+          "suggested_fix": "In search_with_cancellation(), wrap each spawn_blocking handle with tokio::time::timeout(self.config.timeout, handle). In search_sync(), check elapsed time after each provider and bail early. For the async path: `match tokio::time::timeout(self.config.timeout, handle).await { Ok(Ok(results)) => ..., _ => vec![] }`"
+        }
+      ]
+    },
+
+    {
+      "category": "Flaky Tests",
+      "description": "Tests with inherent race conditions due to background thread timing",
+      "priority": "LOW",
+      "items": [
+        {
+          "id": "FLK-1",
+          "file": "crates/photoncast-core/src/search/spotlight/prefetch.rs",
+          "line": 587,
+          "description": "test_prefetcher_trigger_starts_running — asserts status reaches Running within 5s, but the background thread may complete so fast it jumps to Completed before the poll loop observes Running. The wait_for_status helper handles this (>= comparison), but on slow CI the 50ms initial_delay plus Spotlight query can vary wildly.",
+          "severity": "low",
+          "suggested_fix": "Accept both Running and Completed as success in the assertion (already partially done). Alternatively, use a barrier or condvar to synchronize instead of polling."
+        },
+        {
+          "id": "FLK-2",
+          "file": "crates/photoncast-core/src/search/spotlight/prefetch.rs",
+          "line": 647,
+          "description": "test_start_background_prefetch — creates a real SpotlightSearchService and triggers actual Spotlight queries. Flaky in CI (no Spotlight index), timing-dependent assertions on status reaching Running/Completed within 5–10s.",
+          "severity": "low",
+          "suggested_fix": "Mock SpotlightSearchService or use a trait-based abstraction. For now, mark #[ignore] in CI or gate with env var. The real fix is injecting a mock service that returns canned results."
+        }
+      ]
+    },
+
+    {
+      "category": "Unwraps in Non-Test Code",
+      "description": "Calls to .unwrap() outside #[cfg(test)] modules that could panic in production",
+      "priority": "MEDIUM",
+      "items": [
+        {
+          "id": "UNW-1",
+          "file": "crates/photoncast-ext-screenshots/src/lib.rs",
+          "line": 356,
+          "description": "cache.lock().unwrap() — std::sync::Mutex poisoning panic if another thread panicked while holding the lock",
+          "severity": "medium",
+          "category_label": "RISKY",
+          "suggested_fix": "Use parking_lot::Mutex (no poisoning) or handle the PoisonError: cache.lock().unwrap_or_else(|e| e.into_inner())"
+        },
+        {
+          "id": "UNW-2",
+          "file": "crates/photoncast-ext-screenshots/src/lib.rs",
+          "line": 369,
+          "description": "cache.lock().unwrap() — same std::sync::Mutex poisoning risk",
+          "severity": "medium",
+          "category_label": "RISKY",
+          "suggested_fix": "Same as UNW-1."
+        },
+        {
+          "id": "UNW-3",
+          "file": "crates/photoncast-calendar/src/conference.rs",
+          "line": 7,
+          "description": "Regex::new(...).unwrap() in LazyLock — compile-time constant regex pattern",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — literal regex in LazyLock. No change needed."
+        },
+        {
+          "id": "UNW-4",
+          "file": "crates/photoncast-calendar/src/conference.rs",
+          "line": 11,
+          "description": "Regex::new(...).unwrap() in LazyLock — compile-time constant regex",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — literal regex in LazyLock. No change needed."
+        },
+        {
+          "id": "UNW-5",
+          "file": "crates/photoncast-calendar/src/conference.rs",
+          "line": 14,
+          "description": "Regex::new(...).unwrap() in LazyLock — compile-time constant regex",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — literal regex in LazyLock. No change needed."
+        },
+        {
+          "id": "UNW-6",
+          "file": "crates/photoncast-calculator/src/parser.rs",
+          "lines": [40, 59, 76, 93, 112, 131],
+          "description": "Regex::new(...).unwrap() in LazyLock — 6 compile-time constant regex patterns for calculator parsing",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — all literal regex strings in LazyLock. No change needed."
+        },
+        {
+          "id": "UNW-7",
+          "file": "crates/photoncast-calculator/src/parser.rs",
+          "line": 428,
+          "description": "Regex::new(...).unwrap() inside is_time_format() function — called on every input evaluation",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe pattern, but wasteful — regex is recompiled on each call. Move to a LazyLock static for efficiency."
+        },
+        {
+          "id": "UNW-8",
+          "file": "crates/photoncast-calculator/src/evaluator.rs",
+          "lines": [20, 26],
+          "description": "Regex::new(...).unwrap() in LazyLock — compile-time constant regex patterns for implicit multiplication",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — literal regex in LazyLock. No change needed."
+        },
+        {
+          "id": "UNW-9",
+          "file": "crates/photoncast-timer/src/parser.rs",
+          "lines": [19, 25, 30, 36],
+          "description": "Regex::new(...).unwrap() in LazyLock — 4 compile-time constant timer parsing patterns",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — literal regex in LazyLock. No change needed."
+        },
+        {
+          "id": "UNW-10",
+          "file": "crates/photoncast-calendar/src/eventkit.rs",
+          "line": 75,
+          "description": "self.event_store.as_ref().unwrap() — panics if event_store is None, but called immediately after setting it in a conditional block above",
+          "severity": "medium",
+          "category_label": "RISKY",
+          "suggested_fix": "The code checks is_none() and sets it, then unwraps. While logically safe, refactor to use get_or_insert_with() pattern: `self.event_store.get_or_insert_with(|| unsafe { EKEventStore::new() })`"
+        },
+        {
+          "id": "UNW-11",
+          "file": "crates/photoncast-calculator/src/commands.rs",
+          "line": 164,
+          "description": "input.chars().next().unwrap() — called after checking !input.is_empty() on line 160, so logically safe",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Logically safe due to prior empty check. Could use .expect(\"checked non-empty\") for documentation."
+        },
+        {
+          "id": "UNW-12",
+          "file": "crates/photoncast-core/src/search/spotlight/service.rs",
+          "line": 239,
+          "description": "NonZeroUsize::new(50).unwrap() — literal non-zero value",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — literal 50 is non-zero. No change needed."
+        },
+        {
+          "id": "UNW-13",
+          "file": "crates/photoncast-core/src/search/spotlight/predicate.rs",
+          "line": 926,
+          "description": "self.builders.into_iter().next().unwrap() — called only when builders.len() == 1 (checked on line 925)",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe due to prior length check. Could use .expect(\"checked len == 1\") for clarity."
+        },
+        {
+          "id": "UNW-14",
+          "file": "crates/photoncast-core/src/indexer/icons.rs",
+          "line": 82,
+          "description": "NonZeroUsize::new(1).unwrap() used as fallback in .unwrap_or() — literal non-zero",
+          "severity": "low",
+          "category_label": "SAFE",
+          "suggested_fix": "Safe — literal 1 is non-zero. Could use NonZeroUsize::MIN for cleaner code."
+        }
+      ]
+    },
+
+    {
+      "category": "TODO/FIXME/HACK Comments",
+      "description": "Unfinished work markers in non-test code",
+      "priority": "MEDIUM",
+      "items": [
+        {
+          "id": "TODO-1",
+          "file": "crates/photoncast-window/src/animation.rs",
+          "line": 88,
+          "description": "TODO: Implement actual reduce motion check — accessibility feature stub, always returns false",
+          "severity": "medium",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Query NSWorkspace.accessibilityDisplayShouldReduceMotion via objc2 bindings"
+        },
+        {
+          "id": "TODO-2",
+          "file": "crates/photoncast-core/src/platform/hotkey.rs",
+          "line": 452,
+          "description": "TODO: Implement actual unregistration — hotkey cleanup is a no-op",
+          "severity": "medium",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Implement UnregisterEventHotKey via Carbon framework or equivalent"
+        },
+        {
+          "id": "TODO-3",
+          "file": "crates/photoncast-core/src/extensions/manager.rs",
+          "line": 364,
+          "description": "TODO: Consider process-based sandboxing for untrusted extensions — security enhancement note",
+          "severity": "low",
+          "represents_unfinished_work": false,
+          "suggested_fix": "Aspirational note — sandbox.rs already exists. Consider removing or converting to a tracking issue."
+        },
+        {
+          "id": "TODO-4",
+          "file": "crates/photoncast-core/src/extensions/host.rs",
+          "line": 287,
+          "description": "TODO: Hook into accessibility APIs to read selected text — extension host capability stub",
+          "severity": "medium",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Implement via AXUIElement API or osascript approach"
+        },
+        {
+          "id": "TODO-5",
+          "file": "crates/photoncast-core/src/ui/preferences.rs",
+          "lines": [228, 229, 230, 231, 232, 233],
+          "description": "6 TODOs for preferences UI: actual GPUI views, theme preview, accent color preview, shortcut capture widget, excluded apps UI, settings validation",
+          "severity": "medium",
+          "represents_unfinished_work": true,
+          "suggested_fix": "These are planned features for the preferences panel. Prioritize shortcut capture widget and settings validation."
+        },
+        {
+          "id": "TODO-6",
+          "file": "crates/photoncast-window/src/overlay.rs",
+          "line": 35,
+          "description": "TODO: Implement native macOS overlay window — visual overlay stub",
+          "severity": "low",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Implement NSWindow overlay with appropriate window level"
+        },
+        {
+          "id": "TODO-7",
+          "file": "crates/photoncast-window/src/lib.rs",
+          "line": 341,
+          "description": "TODO: Implement proper animation loop — window animation is placeholder",
+          "severity": "low",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Use Core Animation or gpui::AnimationElement for smooth transitions"
+        },
+        {
+          "id": "TODO-8",
+          "file": "crates/photoncast-apps/src/sleep.rs",
+          "line": 107,
+          "description": "TODO: Get list of running apps and check each one — sleep prevention check incomplete",
+          "severity": "medium",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Use process::get_running_apps() and check audio/video activity"
+        },
+        {
+          "id": "TODO-9",
+          "file": "crates/photoncast-clipboard/src/monitor.rs",
+          "line": 430,
+          "description": "TODO: Implement file reading from clipboard — clipboard file paste not implemented",
+          "severity": "low",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Read NSPasteboard file URLs and store file references"
+        },
+        {
+          "id": "TODO-10",
+          "file": "crates/photoncast-clipboard/src/ui/clipboard_view.rs",
+          "line": 315,
+          "description": "TODO: Simulate Cmd+V to paste — paste action not implemented",
+          "severity": "medium",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Use CGEvent API to synthesize Cmd+V keypress"
+        },
+        {
+          "id": "TODO-11",
+          "file": "crates/photoncast/src/main.rs",
+          "lines": [308, 313],
+          "description": "TODO: Implement update check when UpdateManager is ready; TODO: Show about dialog",
+          "severity": "low",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Implement update check and about dialog UI"
+        },
+        {
+          "id": "TODO-12",
+          "file": "crates/photoncast-quicklinks/src/ui/manage_view.rs",
+          "lines": [1215, 1503],
+          "description": "TODO: Implement import; TODO: Load image from path — quicklinks UI features incomplete",
+          "severity": "low",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Implement TOML import UI and favicon image loading"
+        },
+        {
+          "id": "TODO-13",
+          "file": "crates/photoncast/src/extension_views/preview.rs",
+          "line": 91,
+          "description": "TODO: Handle multi-line code blocks — extension preview markdown rendering incomplete",
+          "severity": "low",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Parse fenced code blocks in markdown preview rendering"
+        },
+        {
+          "id": "TODO-14",
+          "file": "crates/photoncast-apps/src/commands.rs",
+          "line": 5,
+          "description": "TODO: Implement UI commands for: — entire module appears to be a stub for planned app commands",
+          "severity": "medium",
+          "represents_unfinished_work": true,
+          "suggested_fix": "Complete the UI command implementations or remove the stub"
+        }
+      ]
+    },
+
+    {
+      "category": "Orphaned Processes",
+      "description": "Command::new().spawn() calls where the Child handle is dropped without waiting, potentially leaving zombie processes",
+      "priority": "MEDIUM",
+      "items": [
+        {
+          "id": "ORP-1",
+          "file": "crates/photoncast-core/src/commands/system.rs",
+          "lines": [160, 167, 231],
+          "description": "Three spawn() calls for pmset sleepnow, pmset displaysleepnow, and open ScreenSaverEngine. The Child handle is returned from spawn but the Result is propagated with ? — the Child is then dropped, meaning the process is detached. For fire-and-forget commands (sleep, screensaver) this is acceptable.",
+          "severity": "low",
+          "suggested_fix": "ACCEPTABLE for fire-and-forget system commands. Optionally spawn a thread to wait() to avoid zombie PIDs."
+        },
+        {
+          "id": "ORP-2",
+          "file": "crates/photoncast-core/src/platform/accessibility.rs",
+          "line": 170,
+          "description": "Command::new('open').spawn()? for opening System Preferences — Child dropped immediately",
+          "severity": "low",
+          "suggested_fix": "ACCEPTABLE — opening System Preferences is fire-and-forget."
+        },
+        {
+          "id": "ORP-3",
+          "file": "crates/photoncast/src/launcher/search.rs",
+          "line": 660,
+          "description": "let _ = Command::new('open').arg(&path).spawn() — explicitly discards result and Child handle when opening a file",
+          "severity": "low",
+          "suggested_fix": "ACCEPTABLE for 'open' command. The let _ = pattern explicitly acknowledges the dropped handle."
+        },
+        {
+          "id": "ORP-4",
+          "file": "crates/photoncast/src/launcher/search.rs",
+          "lines": [695, 714, 723, 731],
+          "description": "Multiple let _ = Command::new('open').spawn() calls for opening URLs, apps, and paths",
+          "severity": "low",
+          "suggested_fix": "ACCEPTABLE for fire-and-forget 'open' invocations."
+        },
+        {
+          "id": "ORP-5",
+          "file": "crates/photoncast/src/launcher/search.rs",
+          "line": 1217,
+          "description": "let _ = Command::new('qlmanage').spawn() — Quick Look preview, Child dropped",
+          "severity": "low",
+          "suggested_fix": "ACCEPTABLE, but qlmanage should ideally be killed when the preview is dismissed. Consider storing the Child handle."
+        },
+        {
+          "id": "ORP-6",
+          "file": "crates/photoncast-calendar/src/eventkit.rs",
+          "line": 133,
+          "description": "let _ = Command::new('open').spawn() — opening calendar event URL, Child dropped",
+          "severity": "low",
+          "suggested_fix": "ACCEPTABLE for fire-and-forget URL opening."
+        },
+        {
+          "id": "ORP-7",
+          "file": "crates/photoncast-core/src/extensions/sandbox.rs",
+          "line": 229,
+          "description": "command.spawn()? — Child is stored in SandboxedExtension struct, properly managed. NOT an orphan.",
+          "severity": "low",
+          "suggested_fix": "NO FIX NEEDED — process handle is stored and managed."
+        },
+        {
+          "id": "ORP-8",
+          "file": "crates/photoncast-core/src/app/integration.rs",
+          "line": 643,
+          "description": "Command::new('qlmanage').spawn() — Quick Look preview for app info, Child dropped",
+          "severity": "medium",
+          "suggested_fix": "Store the Child handle so the qlmanage process can be killed when the preview panel is closed."
+        },
+        {
+          "id": "ORP-9",
+          "file": "crates/photoncast-core/src/app/integration.rs",
+          "line": 763,
+          "description": "Command::new('osascript').spawn() for window focus — fire-and-forget AppleScript",
+          "severity": "low",
+          "suggested_fix": "ACCEPTABLE for one-shot osascript commands."
+        }
+      ]
+    },
+
+    {
+      "category": "Clippy Warning",
+      "description": "The 1 known clippy warning in photoncast-apps",
+      "priority": "LOW",
+      "items": [
+        {
+          "id": "CLW-1",
+          "file": "crates/photoncast-apps/src/auto_quit.rs",
+          "line": 193,
+          "description": "merge_app_config function — clippy warning: 'this argument is passed by value, but not consumed in the function body' at line 193. The `incoming: AutoQuitAppConfig` parameter is passed by value but only its fields are read (enabled, timeout_minutes) or moved (last_active). Clippy detects that the struct itself isn't consumed as a whole.",
+          "severity": "low",
+          "suggested_fix": "Change signature to `incoming: &AutoQuitAppConfig` and adjust field access: use `incoming.enabled` (Copy), `incoming.timeout_minutes` (Copy), and `incoming.last_active` (clone or borrow). Alternatively, since last_active is an Option<DateTime> (which is Copy via chrono), simply changing to `&AutoQuitAppConfig` should work directly."
+        }
+      ]
+    }
+  ]
+}

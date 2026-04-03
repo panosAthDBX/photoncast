@@ -1,0 +1,80 @@
+{
+  "active": false,
+  "current_phase": "completed",
+  "started_at": "2026-04-03T11:40:00Z",
+  "iteration": 4,
+  "interview_id": "deep-interview-remaining-risks-20260403",
+  "profile": "standard",
+  "type": "brownfield",
+  "initial_idea": "remaining risks",
+  "rounds": [
+    {
+      "round": 1,
+      "question": "When you say “remaining risks”, do you want me to focus on the risks of the current installed local build specifically, or the remaining risks of the PhotonCast product/codebase overall?",
+      "answer": "remaining risks of the PhotonCast product/codebase overall",
+      "interpretation": "The user wants product/codebase-level residual risks, not just the currently installed local build.",
+      "scores": {
+        "intent": 0.88,
+        "outcome": 0.62,
+        "scope": 0.8,
+        "constraints": 0.72,
+        "success": 0.38,
+        "context": 0.9
+      },
+      "ambiguity": 0.24,
+      "readiness": {
+        "non_goals_explicit": false,
+        "decision_boundaries_explicit": false,
+        "pressure_pass_complete": false
+      }
+    },
+    {
+      "round": 2,
+      "question": "Do you want the output to be a ranked risk register for the product/codebase overall, or a go/no-go recommendation about whether PhotonCast is in a healthy enough state to stop here versus keep changing it?",
+      "answer": "ranked risk register",
+      "interpretation": "The user wants a ranked risk register, not a go/no-go recommendation.",
+      "scores": {
+        "intent": 0.9,
+        "outcome": 0.9,
+        "scope": 0.84,
+        "constraints": 0.76,
+        "success": 0.82,
+        "context": 0.9
+      },
+      "ambiguity": 0.11,
+      "readiness": {
+        "non_goals_explicit": false,
+        "decision_boundaries_explicit": false,
+        "pressure_pass_complete": false
+      }
+    }
+  ],
+  "current_ambiguity": 0.08,
+  "threshold": 0.2,
+  "max_rounds": 12,
+  "challenge_modes_used": [
+    "contrarian"
+  ],
+  "codebase_context": {
+    "evidence": [
+      "recent visible-window work still leaves >900ms external visibility",
+      "startup semantics preserved",
+      "manual harnesses exist for hotkey/launcher appearance",
+      "local reinstall was from a dirty workspace but user wants overall product/codebase risks"
+    ],
+    "likely_touchpoints": [
+      "reports/performance-evidence-2026-04-02.md",
+      "reports/specs-vision-match-audit-2026-04-02.md",
+      "reports/specs-vision-prioritized-fix-list-2026-04-02.md"
+    ]
+  },
+  "current_stage": "completed",
+  "current_focus": "handoff",
+  "context_snapshot_path": ".omx/context/remaining-risks-20260403T124434Z.md",
+  "last_turn_at": "2026-04-03T12:52:53.265Z",
+  "completed_at": "2026-04-03T12:47:30Z",
+  "transcript_path": ".omx/interviews/remaining-risks-20260403T124730Z.md",
+  "spec_path": ".omx/specs/deep-interview-remaining-risks.md",
+  "handoff_recommendation": "$ralplan",
+  "residual_risk": "low"
+}
