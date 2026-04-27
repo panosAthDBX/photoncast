@@ -33,6 +33,7 @@ pub mod bundle;
 pub mod config;
 pub mod error;
 pub mod models;
+pub mod privileged;
 pub mod process;
 pub mod scanner;
 pub mod sleep;
@@ -55,6 +56,7 @@ pub use error::{AppError, Result};
 pub use models::{
     Application, RelatedFile, RelatedFileCategory, RunningApp, RunningApplication, UninstallPreview,
 };
+pub use privileged::{uninstall_with_privileges, PrivilegedResponse, PrivilegedUninstallMode};
 pub use process::{
     force_quit_app_action, get_frontmost_app_bundle_id, get_running_apps_detailed,
     is_app_responding, is_app_running, quit_app_by_bundle_id, quit_app_with_timeout,
