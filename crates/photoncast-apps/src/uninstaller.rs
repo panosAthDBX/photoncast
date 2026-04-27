@@ -161,17 +161,34 @@ fn move_to_trash(path: &Path) -> Result<()> {
         },
         Err(error) => {
             let error_msg = error.localizedDescription().to_string();
+            let permission_denied = is_trash_permission_denied(&error_msg);
+            let hint = if permission_denied {
+                "This app requires administrator permission. Use privileged uninstall to remove it."
+                    .to_string()
+            } else {
+                "Quit the app and any helper processes, then try uninstalling again.".to_string()
+            };
             tracing::error!(
                 "Failed to move to Trash: {} - {}",
                 path.display(),
                 error_msg
             );
-            Err(AppError::Io(std::io::Error::other(format!(
-                "Failed to move to Trash: {}",
-                error_msg
-            ))))
+            Err(AppError::Trash {
+                path: path.display().to_string(),
+                message: error_msg,
+                hint,
+                permission_denied,
+            })
         },
     }
+}
+
+fn is_trash_permission_denied(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("permission")
+        || lower.contains("not permitted")
+        || lower.contains("not allowed")
+        || lower.contains("access")
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -401,6 +418,23 @@ mod tests {
     fn test_move_nonexistent_to_trash() {
         let result = move_to_trash(Path::new("/nonexistent/path/that/does/not/exist"));
         assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, AppError::Trash { .. }));
+        assert!(error.to_string().contains("Quit the app"));
+    }
+
+    #[test]
+    fn test_trash_error_detects_permission_denied_text() {
+        assert!(super::is_trash_permission_denied(
+            "“Brave Browser” couldn’t be moved to the trash because you don’t have permission to access it."
+        ));
+    }
+
+    #[test]
+    fn test_trash_error_does_not_treat_missing_file_as_permission_denied() {
+        assert!(!super::is_trash_permission_denied(
+            "The file doesn’t exist."
+        ));
     }
 
     // =========================================================================

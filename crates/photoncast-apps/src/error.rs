@@ -32,6 +32,23 @@ pub enum AppError {
     #[error("permission denied: {0}")]
     PermissionDenied(String),
 
+    /// Privileged uninstall helper is not available.
+    #[error("privileged uninstall unavailable: {0}")]
+    PrivilegedUnavailable(String),
+
+    /// Privileged uninstall failed.
+    #[error("privileged uninstall failed: {0}")]
+    PrivilegedFailed(String),
+
+    /// Trash operation failed.
+    #[error("failed to move {path} to Trash: {message}. {hint}")]
+    Trash {
+        path: String,
+        message: String,
+        hint: String,
+        permission_denied: bool,
+    },
+
     /// Configuration error.
     #[error("config error: {0}")]
     ConfigError(String),
