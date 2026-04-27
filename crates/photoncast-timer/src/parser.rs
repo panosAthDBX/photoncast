@@ -165,15 +165,11 @@ fn parse_time(caps: &regex::Captures) -> Result<DateTime<Utc>> {
     // Handle AM/PM
     if let Some(period) = period {
         match period.as_str() {
-            "am" => {
-                if hour == 12 {
-                    hour = 0;
-                }
+            "am" if hour == 12 => {
+                hour = 0;
             },
-            "pm" => {
-                if hour != 12 {
-                    hour += 12;
-                }
+            "pm" if hour != 12 => {
+                hour += 12;
             },
             _ => {},
         }

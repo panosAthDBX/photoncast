@@ -704,31 +704,25 @@ impl CreateQuicklinkView {
         // Handle backspace for text input (delete character before cursor)
         if key == "backspace" {
             match self.focus {
-                CreateQuicklinkFocus::Name => {
-                    if self.name_cursor > 0 {
-                        let mut chars: Vec<char> = self.name_input.chars().collect();
-                        chars.remove(self.name_cursor - 1);
-                        self.name_input = chars.into_iter().collect();
-                        self.name_cursor -= 1;
-                        self.name_error = None;
-                    }
+                CreateQuicklinkFocus::Name if self.name_cursor > 0 => {
+                    let mut chars: Vec<char> = self.name_input.chars().collect();
+                    chars.remove(self.name_cursor - 1);
+                    self.name_input = chars.into_iter().collect();
+                    self.name_cursor -= 1;
+                    self.name_error = None;
                 },
-                CreateQuicklinkFocus::Link => {
-                    if self.link_cursor > 0 {
-                        let mut chars: Vec<char> = self.link_input.chars().collect();
-                        chars.remove(self.link_cursor - 1);
-                        self.link_input = chars.into_iter().collect();
-                        self.link_cursor -= 1;
-                        self.link_error = None;
-                    }
+                CreateQuicklinkFocus::Link if self.link_cursor > 0 => {
+                    let mut chars: Vec<char> = self.link_input.chars().collect();
+                    chars.remove(self.link_cursor - 1);
+                    self.link_input = chars.into_iter().collect();
+                    self.link_cursor -= 1;
+                    self.link_error = None;
                 },
-                CreateQuicklinkFocus::Alias => {
-                    if self.alias_cursor > 0 {
-                        let mut chars: Vec<char> = self.alias_input.chars().collect();
-                        chars.remove(self.alias_cursor - 1);
-                        self.alias_input = chars.into_iter().collect();
-                        self.alias_cursor -= 1;
-                    }
+                CreateQuicklinkFocus::Alias if self.alias_cursor > 0 => {
+                    let mut chars: Vec<char> = self.alias_input.chars().collect();
+                    chars.remove(self.alias_cursor - 1);
+                    self.alias_input = chars.into_iter().collect();
+                    self.alias_cursor -= 1;
                 },
                 _ => {},
             }
