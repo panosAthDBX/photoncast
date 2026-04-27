@@ -362,6 +362,13 @@ impl LauncherWindow {
         let colors = get_launcher_colors(cx);
         let app_name = preview.app.name.clone();
         let space_freed = preview.space_freed_formatted.clone();
+        let privileged_error = self.uninstall.privileged_error.clone();
+        let has_privileged_target = self.uninstall.privileged_target.is_some();
+        let admin_button_label = if self.uninstall.awaiting_delete_confirmation {
+            "Confirm Delete"
+        } else {
+            "Admin Uninstall"
+        };
 
         // Group files by category
         let mut categories: std::collections::BTreeMap<
@@ -581,6 +588,34 @@ impl LauncherWindow {
                                     }),
                             ),
                     )
+                    .when_some(privileged_error, |el, error_message| {
+                        el.child(
+                            div()
+                                .mx_5()
+                                .mb_3()
+                                .p_3()
+                                .rounded(px(8.0))
+                                .border_1()
+                                .border_color(colors.warning)
+                                .bg(colors.surface)
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(colors.warning)
+                                        .child("Administrator permission required"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .text_color(colors.text_muted)
+                                        .child(error_message),
+                                ),
+                        )
+                    })
                     // Action buttons
                     .child(
                         div()
@@ -669,6 +704,38 @@ impl LauncherWindow {
                                             .text_color(text)
                                             .child("Uninstall"),
                                     )
+                            })
+                            .when(has_privileged_target, |el| {
+                                let warning = colors.warning;
+                                let warning_hover = hsla(
+                                    warning.h,
+                                    warning.s,
+                                    (warning.l + 0.1).min(1.0),
+                                    warning.a,
+                                );
+                                el.child(
+                                    div()
+                                        .id("uninstall-privileged")
+                                        .flex_1()
+                                        .h(px(36.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(8.0))
+                                        .bg(warning)
+                                        .hover(move |el| el.bg(warning_hover))
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(|this, _, cx| {
+                                            this.perform_privileged_uninstall(cx);
+                                        }))
+                                        .child(
+                                            div()
+                                                .text_size(px(13.0))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(colors.text)
+                                                .child(admin_button_label),
+                                        ),
+                                )
                             }),
                     ),
             )

@@ -667,6 +667,10 @@ impl LauncherWindow {
 
         // If uninstall preview is showing, perform the uninstall
         if self.uninstall.preview.is_some() {
+            if self.uninstall.privileged_target.is_some() {
+                self.perform_privileged_uninstall(cx);
+                return;
+            }
             self.perform_uninstall(cx);
             return;
         }

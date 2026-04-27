@@ -69,6 +69,9 @@ impl LauncherWindow {
                 tracing::info!("Created uninstall preview for: {}", preview.app.name);
                 self.uninstall.preview = Some(preview);
                 self.uninstall.files_selected_index = 0;
+                self.uninstall.privileged_error = None;
+                self.uninstall.privileged_target = None;
+                self.uninstall.awaiting_delete_confirmation = false;
                 cx.notify();
             },
             Err(e) => {
@@ -87,6 +90,22 @@ impl LauncherWindow {
                     tracing::info!("Successfully uninstalled: {}", app_name);
                     self.show_toast(format!("{} uninstalled", app_name), cx);
                     self.hide(cx);
+                },
+                Err(photoncast_apps::AppError::Trash {
+                    permission_denied: true,
+                    path,
+                    message,
+                    ..
+                }) => {
+                    tracing::error!(
+                        "Failed to uninstall {} without privileges: {}",
+                        app_name,
+                        message
+                    );
+                    self.uninstall.privileged_target = Some(std::path::PathBuf::from(path));
+                    self.uninstall.privileged_error = Some(message);
+                    self.uninstall.preview = Some(preview);
+                    cx.notify();
                 },
                 Err(e) => {
                     tracing::error!("Failed to uninstall {}: {}", app_name, e);
@@ -110,6 +129,22 @@ impl LauncherWindow {
                     self.show_toast(format!("{} uninstalled (kept related files)", app_name), cx);
                     self.hide(cx);
                 },
+                Err(photoncast_apps::AppError::Trash {
+                    permission_denied: true,
+                    path,
+                    message,
+                    ..
+                }) => {
+                    tracing::error!(
+                        "Failed to uninstall {} without privileges: {}",
+                        app_name,
+                        message
+                    );
+                    self.uninstall.privileged_target = Some(std::path::PathBuf::from(path));
+                    self.uninstall.privileged_error = Some(message);
+                    self.uninstall.preview = Some(preview);
+                    cx.notify();
+                },
                 Err(e) => {
                     tracing::error!("Failed to uninstall {}: {}", app_name, e);
                     self.show_toast(format!("Uninstall failed: {}", e), cx);
@@ -121,7 +156,64 @@ impl LauncherWindow {
     /// Cancels the uninstall preview dialog
     pub(super) fn cancel_uninstall_preview(&mut self, cx: &mut ViewContext<Self>) {
         self.uninstall.preview = None;
+        self.uninstall.privileged_error = None;
+        self.uninstall.privileged_target = None;
+        self.uninstall.awaiting_delete_confirmation = false;
         cx.notify();
+    }
+
+    /// Handles the privileged uninstall action after normal Trash fails with permission denied.
+    pub(super) fn perform_privileged_uninstall(&mut self, cx: &mut ViewContext<Self>) {
+        let Some(path) = self.uninstall.privileged_target.clone() else {
+            self.show_toast("No privileged uninstall target".to_string(), cx);
+            return;
+        };
+
+        let mode = if self.uninstall.awaiting_delete_confirmation {
+            photoncast_apps::PrivilegedUninstallMode::DeleteConfirmed
+        } else {
+            photoncast_apps::PrivilegedUninstallMode::TrashFirst
+        };
+
+        match photoncast_apps::uninstall_with_privileges(&path, mode) {
+            Ok(response) => {
+                tracing::info!(
+                    "Privileged uninstall succeeded: {} {}",
+                    response.code,
+                    path.display()
+                );
+                self.uninstall.preview = None;
+                self.uninstall.privileged_target = None;
+                self.uninstall.privileged_error = None;
+                self.uninstall.awaiting_delete_confirmation = false;
+                self.show_toast(response.message, cx);
+                self.hide(cx);
+            },
+            Err(photoncast_apps::AppError::PrivilegedFailed(message))
+                if message.contains("needs-delete-confirmation") =>
+            {
+                tracing::warn!(
+                    "Privileged Trash move needs delete confirmation for {}: {}",
+                    path.display(),
+                    message
+                );
+                self.uninstall.awaiting_delete_confirmation = true;
+                self.uninstall.privileged_error = Some(format!(
+                    "Trash failed even with administrator privileges. Confirm direct deletion to remove {}.",
+                    path.display()
+                ));
+                cx.notify();
+            },
+            Err(error) => {
+                tracing::error!(
+                    "Privileged uninstall failed for {}: {}",
+                    path.display(),
+                    error
+                );
+                self.uninstall.privileged_error = Some(error.to_string());
+                cx.notify();
+            },
+        }
     }
 
     /// Toggles selection of a related file in the uninstall preview

@@ -177,6 +177,12 @@ pub struct UninstallState {
     pub preview: Option<UninstallPreview>,
     /// Selected index in the uninstall files list
     pub files_selected_index: usize,
+    /// Persistent privileged uninstall error shown in the preview dialog.
+    pub privileged_error: Option<String>,
+    /// Target app path that requires privileged uninstall.
+    pub privileged_target: Option<std::path::PathBuf>,
+    /// Whether direct deletion has been explicitly confirmed after Trash fallback failed.
+    pub awaiting_delete_confirmation: bool,
 }
 
 /// Meeting / calendar state
@@ -633,6 +639,9 @@ impl LauncherWindow {
             uninstall: UninstallState {
                 preview: None,
                 files_selected_index: 0,
+                privileged_error: None,
+                privileged_target: None,
+                awaiting_delete_confirmation: false,
             },
             meeting: MeetingState {
                 next_meeting: None,
