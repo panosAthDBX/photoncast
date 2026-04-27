@@ -47,13 +47,47 @@ CONTENTS_DIR="${APP_BUNDLE_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 FRAMEWORKS_DIR="${CONTENTS_DIR}/Frameworks"
+LAUNCH_SERVICES_DIR="${CONTENTS_DIR}/Library/LaunchServices"
 SIGNING_IDENTITY="${PHOTONCAST_SIGNING_IDENTITY:-}"
 SIGNING_KEYCHAIN="${PHOTONCAST_SIGNING_KEYCHAIN:-}"
+SIGNING_CERT_SHA1=""
+SWIFTC_BIN="${SWIFTC_BIN:-}"
+if [[ -z "$SWIFTC_BIN" ]]; then
+    SWIFTC_BIN="/usr/bin/swiftc"
+fi
+
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+    IDENTITY_ARGS=(-v -p codesigning)
+    if [[ -n "$SIGNING_KEYCHAIN" ]]; then
+        IDENTITY_ARGS+=("$SIGNING_KEYCHAIN")
+    fi
+
+    IDENTITIES=$(security find-identity "${IDENTITY_ARGS[@]}" 2>/dev/null || true)
+    for pattern in "Developer ID Application" "Apple Development" "PhotonCast Local Dev"; do
+        SIGNING_IDENTITY=$(printf '%s\n' "$IDENTITIES" | \
+            grep "$pattern" | \
+            head -1 | \
+            sed -E 's/.*"([^"]+)".*/\1/' || true)
+        if [[ -n "$SIGNING_IDENTITY" ]]; then
+            break
+        fi
+    done
+fi
+
+if [[ -n "$SIGNING_IDENTITY" ]]; then
+    CERT_QUERY_ARGS=(-c "$SIGNING_IDENTITY" -Z)
+    if [[ -n "$SIGNING_KEYCHAIN" ]]; then
+        CERT_QUERY_ARGS+=("$SIGNING_KEYCHAIN")
+    fi
+    SIGNING_CERT_SHA1=$(security find-certificate "${CERT_QUERY_ARGS[@]}" 2>/dev/null | \
+        sed -n 's/^SHA-1 hash: //p' | \
+        head -1 || true)
+fi
 
 # Clean and create build directory
 echo -e "${BLUE}Setting up build directory...${NC}"
 rm -rf "${BUILD_DIR}"
-mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}" "${FRAMEWORKS_DIR}"
+mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}" "${FRAMEWORKS_DIR}" "${LAUNCH_SERVICES_DIR}"
 
 # Build optimized release binary
 echo -e "${BLUE}Building optimized release binary...${NC}"
@@ -85,6 +119,52 @@ else
     echo -e "${YELLOW}Warning: Extension runner not found at ${EXTENSION_RUNNER_PATH}${NC}"
 fi
 
+# Build privileged uninstall helper and client bridge
+HELPER_INFO_PLIST="${BUILD_DIR}/helper-info.generated.plist"
+cp "${PROJECT_ROOT}/resources/privileged-helper/helper-info.plist" "$HELPER_INFO_PLIST"
+if [[ -n "$SIGNING_CERT_SHA1" ]]; then
+    echo -e "${BLUE}Pinning privileged helper authorization to signing certificate ${SIGNING_CERT_SHA1}${NC}"
+    python3 - "$HELPER_INFO_PLIST" "$BUNDLE_ID" "$SIGNING_CERT_SHA1" <<'PY'
+import plistlib
+import sys
+
+path, bundle_id, cert_sha1 = sys.argv[1:]
+with open(path, "rb") as handle:
+    plist = plistlib.load(handle)
+plist["SMAuthorizedClients"] = [
+    f'identifier "{bundle_id}" and certificate leaf = H"{cert_sha1}"',
+    f'identifier "photoncast-privileged-client" and certificate leaf = H"{cert_sha1}"',
+]
+with open(path, "wb") as handle:
+    plistlib.dump(plist, handle)
+PY
+fi
+
+echo -e "${BLUE}Building privileged uninstall helper...${NC}"
+"${SWIFTC_BIN}" \
+    "${PROJECT_ROOT}/native/privileged-uninstall/PhotonCastPrivilegedShared.swift" \
+    "${PROJECT_ROOT}/native/privileged-uninstall/PhotonCastPrivilegedHelper.swift" \
+    -Xlinker -sectcreate \
+    -Xlinker __TEXT \
+    -Xlinker __info_plist \
+    -Xlinker "$HELPER_INFO_PLIST" \
+    -Xlinker -sectcreate \
+    -Xlinker __TEXT \
+    -Xlinker __launchd_plist \
+    -Xlinker "${PROJECT_ROOT}/resources/privileged-helper/com.photoncast.privileged-uninstall.helper.plist" \
+    -o "${LAUNCH_SERVICES_DIR}/com.photoncast.privileged-uninstall.helper"
+chmod +x "${LAUNCH_SERVICES_DIR}/com.photoncast.privileged-uninstall.helper"
+
+echo -e "${BLUE}Building privileged uninstall client...${NC}"
+"${SWIFTC_BIN}" \
+    "${PROJECT_ROOT}/native/privileged-uninstall/PhotonCastPrivilegedShared.swift" \
+    "${PROJECT_ROOT}/native/privileged-uninstall/PhotonCastPrivilegedClient.swift" \
+    -o "${MACOS_DIR}/photoncast-privileged-client"
+chmod +x "${MACOS_DIR}/photoncast-privileged-client"
+
+cp "${PROJECT_ROOT}/resources/privileged-helper/com.photoncast.privileged-uninstall.helper.plist" \
+   "${LAUNCH_SERVICES_DIR}/com.photoncast.privileged-uninstall.helper.plist"
+
 # Copy and update Info.plist
 echo -e "${BLUE}Setting up Info.plist...${NC}"
 if [[ -f "${PROJECT_ROOT}/resources/Info.plist" ]]; then
@@ -93,6 +173,22 @@ if [[ -f "${PROJECT_ROOT}/resources/Info.plist" ]]; then
     # Update version in Info.plist
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "${CONTENTS_DIR}/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${CONTENTS_DIR}/Info.plist"
+    if [[ -n "$SIGNING_CERT_SHA1" ]]; then
+        python3 - "${CONTENTS_DIR}/Info.plist" "$SIGNING_CERT_SHA1" <<'PY'
+import plistlib
+import sys
+
+path, cert_sha1 = sys.argv[1:]
+helper_id = "com.photoncast.privileged-uninstall.helper"
+with open(path, "rb") as handle:
+    plist = plistlib.load(handle)
+plist.setdefault("SMPrivilegedExecutables", {})[helper_id] = (
+    f'identifier "{helper_id}" and certificate leaf = H"{cert_sha1}"'
+)
+with open(path, "wb") as handle:
+    plistlib.dump(plist, handle)
+PY
+    fi
 else
     echo -e "${YELLOW}Warning: Info.plist not found in resources/, creating minimal version...${NC}"
     cat > "${CONTENTS_DIR}/Info.plist" << EOF

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.photoncast.privileged-uninstall.helper</string>
+    <key>CFBundleName</key>
+    <string>PhotonCastPrivilegedUninstallHelper</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0-beta</string>
+    <key>SMAuthorizedClients</key>
+    <array>
+        <string>identifier "com.photoncast.app" and anchor trusted</string>
+        <string>identifier "photoncast-privileged-client" and anchor trusted</string>
+    </array>
+</dict>
+</plist>

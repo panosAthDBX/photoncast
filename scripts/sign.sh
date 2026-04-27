@@ -155,6 +155,14 @@ if [[ -d "$EXTENSIONS_DIR" ]]; then
     done
 fi
 
+# Sign privileged helper tools before signing the containing app bundle.
+LAUNCH_SERVICES_DIR="${APP_BUNDLE}/Contents/Library/LaunchServices"
+if [[ -d "$LAUNCH_SERVICES_DIR" ]]; then
+    find "$LAUNCH_SERVICES_DIR" -type f ! -name "*.plist" | while read -r file; do
+        sign_binary "$file"
+    done
+fi
+
 # Sign every embedded executable in Contents/MacOS
 MACOS_DIR="${APP_BUNDLE}/Contents/MacOS"
 if [[ -d "$MACOS_DIR" ]]; then
