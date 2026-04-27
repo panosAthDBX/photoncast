@@ -60,7 +60,7 @@ impl FileProvider {
     pub fn new(max_results: usize) -> Self {
         Self {
             backend: FileSearchBackend::new(FileSearchStrategy::SpotlightWithFallback {
-                timeout: Duration::from_millis(1000),
+                timeout: Duration::from_secs(1),
             }),
             max_results,
             scope: None,

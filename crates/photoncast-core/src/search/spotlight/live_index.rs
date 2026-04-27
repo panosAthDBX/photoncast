@@ -286,7 +286,7 @@ impl LiveFileIndex {
                 .collect();
 
             // Sort by last used (most recent first)
-            results.sort_by(|a, b| b.last_used_date.cmp(&a.last_used_date));
+            results.sort_by_key(|result| std::cmp::Reverse(result.last_used_date));
             results.truncate(max_results);
             return results;
         }
