@@ -367,9 +367,9 @@ fn main() {
         // initial window visibility.
         {
             let photoncast_app = launcher_state.photoncast_app();
-            let _ = cx.background_executor().spawn(async move {
+            std::mem::drop(cx.background_executor().spawn(async move {
                 photoncast_app.read().autoload_enabled_extensions();
-            });
+            }));
         }
 
         // Create menu bar status item with channel for events after the first
@@ -805,50 +805,6 @@ fn execute_window_command(
 
     if let Err(e) = result {
         tracing::error!("Window command failed: {}", e);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::select_window_command_target;
-
-    #[test]
-    fn test_select_window_command_target_prefers_captured_app_and_title() {
-        let (bundle_id, title) = select_window_command_target(
-            Some("com.apple.TextEdit".to_string()),
-            Some("Notes".to_string()),
-            Some("com.apple.Safari".to_string()),
-            Some("Inbox".to_string()),
-        );
-
-        assert_eq!(bundle_id.as_deref(), Some("com.apple.Safari"));
-        assert_eq!(title.as_deref(), Some("Inbox"));
-    }
-
-    #[test]
-    fn test_select_window_command_target_uses_actual_title_when_bundle_matches() {
-        let (bundle_id, title) = select_window_command_target(
-            Some("com.apple.Safari".to_string()),
-            Some("Inbox".to_string()),
-            Some("com.apple.Safari".to_string()),
-            None,
-        );
-
-        assert_eq!(bundle_id.as_deref(), Some("com.apple.Safari"));
-        assert_eq!(title.as_deref(), Some("Inbox"));
-    }
-
-    #[test]
-    fn test_select_window_command_target_falls_back_to_actual_when_capture_missing() {
-        let (bundle_id, title) = select_window_command_target(
-            Some("com.apple.TextEdit".to_string()),
-            Some("Draft".to_string()),
-            None,
-            None,
-        );
-
-        assert_eq!(bundle_id.as_deref(), Some("com.apple.TextEdit"));
-        assert_eq!(title.as_deref(), Some("Draft"));
     }
 }
 
@@ -1444,5 +1400,49 @@ fn check_login_item_status() {
         Err(e) => {
             warn!("Could not check login item status: {}", e);
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_window_command_target;
+
+    #[test]
+    fn test_select_window_command_target_prefers_captured_app_and_title() {
+        let (bundle_id, title) = select_window_command_target(
+            Some("com.apple.TextEdit".to_string()),
+            Some("Notes".to_string()),
+            Some("com.apple.Safari".to_string()),
+            Some("Inbox".to_string()),
+        );
+
+        assert_eq!(bundle_id.as_deref(), Some("com.apple.Safari"));
+        assert_eq!(title.as_deref(), Some("Inbox"));
+    }
+
+    #[test]
+    fn test_select_window_command_target_uses_actual_title_when_bundle_matches() {
+        let (bundle_id, title) = select_window_command_target(
+            Some("com.apple.Safari".to_string()),
+            Some("Inbox".to_string()),
+            Some("com.apple.Safari".to_string()),
+            None,
+        );
+
+        assert_eq!(bundle_id.as_deref(), Some("com.apple.Safari"));
+        assert_eq!(title.as_deref(), Some("Inbox"));
+    }
+
+    #[test]
+    fn test_select_window_command_target_falls_back_to_actual_when_capture_missing() {
+        let (bundle_id, title) = select_window_command_target(
+            Some("com.apple.TextEdit".to_string()),
+            Some("Draft".to_string()),
+            None,
+            None,
+        );
+
+        assert_eq!(bundle_id.as_deref(), Some("com.apple.TextEdit"));
+        assert_eq!(title.as_deref(), Some("Draft"));
     }
 }

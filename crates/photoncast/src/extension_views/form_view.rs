@@ -972,24 +972,24 @@ impl Render for ExtensionFormView {
                                     text.insert(cursor_pos, ch);
                                     this.cursor_positions.insert(field_id, cursor_pos + 1);
                                 },
-                                Some(FieldValue::Number(_)) => {
-                                    if ch.is_ascii_digit() || ch == '.' || ch == '-' {
-                                        let text = match this.values.get(&field_id) {
-                                            Some(FieldValue::Number(n)) => {
-                                                if *n == 0.0 {
-                                                    String::new()
-                                                } else {
-                                                    n.to_string()
-                                                }
-                                            },
-                                            _ => String::new(),
-                                        };
-                                        let mut text = text;
-                                        text.insert(cursor_pos, ch);
-                                        if let Ok(n) = text.parse::<f64>() {
-                                            this.values.insert(field_id.clone(), FieldValue::Number(n));
-                                            this.cursor_positions.insert(field_id, cursor_pos + 1);
-                                        }
+                                Some(FieldValue::Number(_))
+                                    if ch.is_ascii_digit() || ch == '.' || ch == '-' =>
+                                {
+                                    let text = match this.values.get(&field_id) {
+                                        Some(FieldValue::Number(n)) => {
+                                            if *n == 0.0 {
+                                                String::new()
+                                            } else {
+                                                n.to_string()
+                                            }
+                                        },
+                                        _ => String::new(),
+                                    };
+                                    let mut text = text;
+                                    text.insert(cursor_pos, ch);
+                                    if let Ok(n) = text.parse::<f64>() {
+                                        this.values.insert(field_id.clone(), FieldValue::Number(n));
+                                        this.cursor_positions.insert(field_id, cursor_pos + 1);
                                     }
                                 },
                                 _ => {},
