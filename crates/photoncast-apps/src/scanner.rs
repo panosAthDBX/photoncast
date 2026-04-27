@@ -258,7 +258,17 @@ fn scan_location(
     };
 
     for entry in entries {
-        let entry = entry?;
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                tracing::warn!(
+                    "Skipping unreadable related-file entry in {}: {}",
+                    base_path.display(),
+                    error
+                );
+                continue;
+            },
+        };
         let path = entry.path();
         let file_name = entry.file_name().to_string_lossy().to_string();
 
@@ -269,11 +279,32 @@ fn scan_location(
                 && file_name.starts_with(&format!("{}.", bundle_id)));
 
         if matches {
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    tracing::warn!(
+                        "Skipping unreadable related file candidate: {} - {}",
+                        path.display(),
+                        error
+                    );
+                    continue;
+                },
+            };
+
             // Calculate size
-            let size_bytes = if path.is_file() {
-                entry.metadata()?.len()
+            let size_bytes = if metadata.is_file() {
+                metadata.len()
+            } else if metadata.is_dir() {
+                calculate_directory_size(&path).unwrap_or_else(|error| {
+                    tracing::warn!(
+                        "Could not calculate related-file size: {} - {}",
+                        path.display(),
+                        error
+                    );
+                    0
+                })
             } else {
-                calculate_directory_size(&path)?
+                0
             };
 
             related_files.push(RelatedFile {
@@ -306,5 +337,49 @@ mod tests {
         // Should not error, just return empty list
         let result = scan_related_files(&app);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_scan_location_keeps_match_with_unreadable_descendant() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_path = std::env::temp_dir().join(format!(
+            "photoncast-apps-scan-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&temp_path).unwrap();
+
+        let app_cache = temp_path.join("com.brave.Browser");
+        std::fs::create_dir(&app_cache).unwrap();
+        std::fs::write(app_cache.join("readable.txt"), b"12345").unwrap();
+
+        let unreadable_dir = app_cache.join("unreadable");
+        std::fs::create_dir(&unreadable_dir).unwrap();
+        std::fs::write(unreadable_dir.join("hidden.txt"), b"hidden").unwrap();
+
+        let original_permissions = std::fs::metadata(&unreadable_dir).unwrap().permissions();
+        std::fs::set_permissions(&unreadable_dir, std::fs::Permissions::from_mode(0o0)).unwrap();
+
+        let mut related_files = Vec::new();
+        let result = scan_location(
+            &temp_path,
+            "Brave Browser",
+            "com.brave.Browser",
+            RelatedFileCategory::Caches,
+            &mut related_files,
+        );
+
+        std::fs::set_permissions(&unreadable_dir, original_permissions).unwrap();
+        std::fs::remove_dir_all(&temp_path).unwrap();
+
+        assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
+        assert_eq!(related_files.len(), 1);
+        assert_eq!(related_files[0].path, app_cache);
+        assert_eq!(related_files[0].size_bytes, 5);
     }
 }

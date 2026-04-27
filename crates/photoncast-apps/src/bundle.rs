@@ -136,13 +136,56 @@ pub(crate) fn calculate_directory_size(path: &Path) -> Result<u64> {
     let mut total = 0;
 
     if path.is_file() {
-        return Ok(path.metadata()?.len());
+        return Ok(path.metadata().map_or_else(
+            |error| {
+                tracing::warn!(
+                    "Skipping unreadable file while calculating size: {} - {}",
+                    path.display(),
+                    error
+                );
+                0
+            },
+            |metadata| metadata.len(),
+        ));
     }
 
     if path.is_dir() {
-        for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
-            let metadata = entry.metadata()?;
+        let entries = match std::fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(
+                    "Skipping unreadable directory while calculating size: {} - {}",
+                    path.display(),
+                    error
+                );
+                return Ok(0);
+            },
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    tracing::warn!(
+                        "Skipping unreadable directory entry while calculating size: {} - {}",
+                        path.display(),
+                        error
+                    );
+                    continue;
+                },
+            };
+
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    tracing::warn!(
+                        "Skipping unreadable path while calculating size: {} - {}",
+                        entry.path().display(),
+                        error
+                    );
+                    continue;
+                },
+            };
 
             if metadata.is_file() {
                 total += metadata.len();
@@ -341,6 +384,39 @@ mod tests {
         assert_eq!(UninstallPreview::format_bytes(1536), "1.50 KB");
         assert_eq!(UninstallPreview::format_bytes(1_572_864), "1.50 MB");
         assert_eq!(UninstallPreview::format_bytes(1_610_612_736), "1.50 GB");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_calculate_directory_size_skips_unreadable_children() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_path = std::env::temp_dir().join(format!(
+            "photoncast-apps-size-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&temp_path).unwrap();
+
+        let readable_file = temp_path.join("readable.txt");
+        std::fs::write(&readable_file, b"12345").unwrap();
+
+        let unreadable_dir = temp_path.join("unreadable");
+        std::fs::create_dir(&unreadable_dir).unwrap();
+        std::fs::write(unreadable_dir.join("hidden.txt"), b"hidden").unwrap();
+
+        let original_permissions = std::fs::metadata(&unreadable_dir).unwrap().permissions();
+        std::fs::set_permissions(&unreadable_dir, std::fs::Permissions::from_mode(0o0)).unwrap();
+
+        let result = calculate_directory_size(&temp_path);
+
+        std::fs::set_permissions(&unreadable_dir, original_permissions).unwrap();
+        std::fs::remove_dir_all(&temp_path).unwrap();
+
+        assert_eq!(result.unwrap(), 5);
     }
 
     #[cfg(target_os = "macos")]
