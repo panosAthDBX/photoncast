@@ -187,7 +187,7 @@ impl EventKitManager {
         }
 
         // Sort by start time
-        result.sort_by(|a, b| a.start.cmp(&b.start));
+        result.sort_by_key(|event| event.start);
 
         tracing::debug!(
             "EventKit: Found {} events between {} and {}",
@@ -221,8 +221,7 @@ impl EventKitManager {
                     "event-{}",
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_nanos())
-                        .unwrap_or(0)
+                        .map_or(0, |d| d.as_nanos())
                 )
             },
             |s| s.to_string(),

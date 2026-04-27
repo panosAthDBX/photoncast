@@ -124,8 +124,7 @@ impl CommandUsageTracker for InMemoryUsageTracker {
     fn record_execution(&self, command_id: &str) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+            .map_or(0, |d| d.as_secs() as i64);
 
         let mut executions = self.executions.write();
         let entry = executions.entry(command_id.to_string()).or_insert((0, 0));
